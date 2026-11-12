@@ -1,0 +1,41 @@
+/* Developer tab › App tools (src/dev/apptools.js) */
+.apt-top { padding-bottom: 8px; }
+.apt-top .dev-picker { margin-bottom: 6px; }
+.apt-actions { margin: 16px 0 0; }
+.chip.apt-on { background: var(--good-soft); color: var(--good); }
+.apt-h3 { font-size: 13px; font-weight: 500; color: var(--muted); margin: 18px 0 8px; }
+.apt-gap { margin-top: 4px; }
+.apt-det { margin-top: 14px; }
+.apt-det summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 4px 0; }
+.apt-list { columns: 2 280px; margin: 8px 0 0; padding-left: 18px; }
+.apt-list li { break-inside: avoid; font-size: 12px; }
+
+.apt-form { display: grid; gap: 10px; }
+.apt-form input[type=text] { width: 100%; }
+.apt-two { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.apt-check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+.apt-extras { display: grid; gap: 8px; }
+.apt-extras:empty { display: none; }
+.apt-extra { display: grid; grid-template-columns: 1fr 130px 2fr auto; gap: 8px; align-items: center; }
+.apt-out { min-height: 0; max-height: 260px; margin-top: 14px; }
+.apt-hist { margin-top: 14px; display: grid; gap: 6px; }
+.apt-hist:empty { display: none; }
+.apt-histrow { display: flex; gap: 6px; align-items: center; }
+.apt-histbtn { flex: 1; min-width: 0; text-align: left; border: 0; cursor: pointer; padding: 7px 14px; border-radius: 999px; background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apt-histbtn:hover { box-shadow: inset 0 0 0 1px var(--ink); }
+
+.apt-grow { flex: 1; }
+.apt-crumbs { min-width: 0; }
+.apt-jumps .btn { font-family: var(--mono); font-size: 12px; }
+.apt-files { max-height: 460px; overflow: auto; border-radius: 18px; }
+.apt-table td:first-child { overflow-wrap: anywhere; }
+.apt-table td:nth-child(2), .apt-table td:nth-child(3) { white-space: nowrap; font-size: 12.5px; }
+.apt-view { min-height: 0; max-height: 420px; }
+.card.apt-drop { box-shadow: 0 0 0 2px var(--ink) inset; }
+
+@media (max-width: 700px) {
+  .apt-two { grid-template-columns: 1fr; }
+  .apt-extra { grid-template-columns: 1fr 1fr; }
+  .apt-table td:nth-child(3), .apt-table th:nth-child(3) { display: none; }
+}

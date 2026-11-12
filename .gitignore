@@ -1,0 +1,5 @@
+node_modules/
+dist/
+renderer/app.js
+renderer/app.js.map
+.DS_Store

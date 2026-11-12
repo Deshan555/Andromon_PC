@@ -1,0 +1,82 @@
+{
+  "name": "droid-desk",
+  "productName": "Droid Desk",
+  "version": "0.1.0",
+  "description": "Android phone manager for Windows and macOS (ADB over USB)",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "build:renderer": "esbuild src/app.js --bundle --format=esm --target=chrome120 --minify --sourcemap --outfile=renderer/app.js",
+    "start": "npm run build:renderer && electron .",
+    "web": "npm run build:renderer && python3 -m http.server 8000 --bind 127.0.0.1 --directory renderer",
+    "dist:mac": "npm run build:renderer && electron-builder --mac",
+    "dist:win": "npm run build:renderer && electron-builder --win",
+    "build:uihelper": "sh uihelper/build.sh",
+    "build:companion": "cd ../android && ./gradlew assembleRelease -q && cp app/build/outputs/apk/release/app-release.apk ../pc/renderer/companion.apk"
+  },
+  "devDependencies": {
+    "@yume-chan/adb": "2.6.4",
+    "@yume-chan/adb-credential-web": "2.1.0",
+    "@yume-chan/adb-daemon-webusb": "2.3.2",
+    "@yume-chan/adb-scrcpy": "2.3.2",
+    "@yume-chan/scrcpy": "2.3.0",
+    "@yume-chan/scrcpy-decoder-webcodecs": "2.5.3",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "fflate": "0.8.3",
+    "mediabunny": "1.62.0",
+    "qrcode-generator": "1.4.4"
+  },
+  "build": {
+    "appId": "dev.droiddesk.app",
+    "productName": "Droid Desk",
+    "files": [
+      "main.js",
+      "preload.js",
+      "localsend.js",
+      "netlink.js",
+      "wadb.js",
+      "inspector.js",
+      "apiclient.js",
+      "traceview.js",
+      "backupfs.js",
+      "renderer/**/*",
+      "!renderer/*.map"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "extendInfo": {
+        "NSUserNotificationAlertStyle": "alert"
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  }
+}

@@ -1,0 +1,41 @@
+/* Developer tab › Logcat (src/dev/logcat.js) */
+.lc-bar input[type=search] { flex: 1; min-width: 180px; padding: 7px 16px; border: 0; border-radius: 999px; background: var(--panel-2); outline: none; box-shadow: inset 0 0 0 1px var(--border); }
+.lc-bar input[type=search]:focus { box-shadow: 0 0 0 2px var(--ink); }
+.lc-sw { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.lc-sw .switch { width: 40px; height: 24px; }
+.lc-sw .switch::after { width: 18px; height: 18px; }
+.lc-sw .switch[aria-checked="true"]::after { left: 19px; }
+.lc-status { font-size: 12.5px; }
+.lc-status.live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--good-dot, #3fae8f); margin-right: 6px; vertical-align: 1px; }
+.lc-crashbtn { background: var(--danger-soft); color: var(--danger); box-shadow: none; font-weight: 500; }
+
+/* The log itself: dark, monospace, like the Shell output */
+.lc-view { background: #121216; color: #e6e6ec; border-radius: 22px; padding: 10px 0; height: 62vh; min-height: 280px; overflow: auto;
+  font-family: var(--mono); font-size: 12px; line-height: 1.55; outline: none; }
+.lc-row { display: flex; gap: 10px; padding: 0 16px; white-space: pre; min-width: max-content; }
+.lc-view.wrap .lc-row { white-space: pre-wrap; min-width: 0; }
+.lc-view.wrap .lc-m { overflow-wrap: anywhere; min-width: 0; }
+.lc-row:hover { background: rgba(255,255,255,.05); }
+.lc-t { color: #7c7c88; flex: none; }
+.lc-p { color: #7c7c88; flex: none; min-width: 5ch; text-align: right; }
+.lc-l { flex: none; width: 2ch; text-align: center; border-radius: 4px; font-weight: 600; }
+.lc-g { flex: none; color: #b9b4f2; max-width: 26ch; overflow: hidden; text-overflow: ellipsis; }
+.lc-view.wrap .lc-g { white-space: nowrap; }
+.l-V .lc-m, .l-D .lc-m { color: #9a9aa6; }
+.l-V .lc-l, .l-D .lc-l { color: #9a9aa6; }
+.l-I .lc-l { color: #7fdcc0; }
+.l-W .lc-m, .l-W .lc-l { color: #f2cb5c; }
+.l-E .lc-m, .l-E .lc-l, .l-F .lc-m, .l-F .lc-l, .l-A .lc-m, .l-A .lc-l { color: #ff8f8a; }
+.lc-row.crash { background: rgba(240,90,85,.16); }
+.lc-row.flash { animation: lc-flash 2.4s ease-out; }
+@keyframes lc-flash { 0%, 40% { background: rgba(247,216,111,.45); } 100% { background: rgba(240,90,85,.16); } }
+.lc-view .empty { color: #9a9aa6; white-space: normal; }
+
+/* Crash list */
+.lc-crashes { background: var(--panel-2); border-radius: 20px; padding: 14px 16px; margin-bottom: 12px; max-height: 40vh; overflow: auto; }
+.lc-crashes .dev-head { margin-bottom: 8px; }
+.lc-crash { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border); }
+.lc-crash-main { min-width: 0; }
+.lc-crash-first { color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; }
+.lc-crash-btns { display: flex; gap: 6px; flex: none; }
+@media (max-width: 720px) { .lc-crash { flex-direction: column; align-items: flex-start; } .lc-view { height: 55vh; } }

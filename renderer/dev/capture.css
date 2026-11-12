@@ -1,0 +1,12 @@
+/* Developer tab › Capture (src/dev/capture.js) */
+.cap-opts { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-bottom: 14px; }
+.cap-field { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.cap-timer { font-family: var(--mono); font-size: 13px; color: var(--danger); font-weight: 500; }
+.btn.danger-fill { background: var(--danger); color: #fff; box-shadow: none; }
+.cap-result:empty { display: none; }
+.cap-result { margin-top: 14px; }
+.cap-video { display: block; max-width: 100%; max-height: 56vh; border-radius: 20px; background: #000; margin-bottom: 10px; }
+.cap-bar { height: 8px; margin: 4px 0 10px; }
+.cap-bar > i { transition: width .3s; }
+.cap-status { font-size: 13px; min-height: 1.5em; }
+.cap-top { margin: -4px 0 12px; }

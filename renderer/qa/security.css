@@ -1,0 +1,33 @@
+/* App testing › Security scan (src/qa/security.js) */
+[data-dev="security"] .sec-opt { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--panel-2); border-radius: 20px; margin-top: 4px; cursor: pointer; }
+[data-dev="security"] .sec-opt > span { display: flex; flex-direction: column; min-width: 0; }
+[data-dev="security"] .sec-drop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px; border-radius: 20px; border: 2px dashed var(--border); background: var(--panel-2); }
+[data-dev="security"] .sec-drop.over { border-color: var(--ink); }
+[data-dev="security"] .sec-progress { margin-top: 12px; }
+[data-dev="security"] .sec-progress .bar > i { transition: width .2s; }
+[data-dev="security"] .sec-kv { margin-bottom: 14px; }
+[data-dev="security"] .sec-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+[data-dev="security"] .sec-chip { border: 0; cursor: pointer; font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 999px; background: var(--chip); color: var(--text); }
+[data-dev="security"] .sec-chip b { font-weight: 600; }
+[data-dev="security"] .sec-chip.on { background: var(--ink); color: var(--on-ink); }
+[data-dev="security"] .sec-list { display: grid; gap: 8px; }
+[data-dev="security"] .sec-item { background: var(--panel-2); border-radius: 18px; padding: 0; overflow: hidden; }
+[data-dev="security"] .sec-item > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; }
+[data-dev="security"] .sec-item > summary::-webkit-details-marker { display: none; }
+[data-dev="security"] .sec-item > summary::after { content: "▸"; margin-left: auto; color: var(--muted); transition: transform .15s; }
+[data-dev="security"] .sec-item[open] > summary::after { transform: rotate(90deg); }
+[data-dev="security"] .sec-title { font-weight: 500; min-width: 0; }
+[data-dev="security"] .sec-cat { font-size: 12px; color: var(--muted); white-space: nowrap; }
+[data-dev="security"] .sec-sev { flex: none; font-size: 11.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px; min-width: 64px; text-align: center; }
+[data-dev="security"] .sec-sev.sev-high { background: var(--danger); color: #fff; }
+[data-dev="security"] .sec-sev.sev-medium { background: var(--warn-soft); color: var(--warn-ink); box-shadow: inset 0 0 0 1px var(--warn-ink); }
+[data-dev="security"] .sec-sev.sev-low { background: var(--warn-soft); color: var(--warn-ink); }
+[data-dev="security"] .sec-sev.sev-info { background: var(--chip); color: var(--muted); }
+[data-dev="security"] .sec-chip.sev-high b { color: var(--danger); }
+[data-dev="security"] .sec-chip.sev-medium b, [data-dev="security"] .sec-chip.sev-low b { color: var(--warn-ink); }
+[data-dev="security"] .sec-chip.on b { color: inherit; }
+[data-dev="security"] .sec-body { padding: 0 16px 14px; font-size: 13.5px; }
+[data-dev="security"] .sec-body p { margin: 0 0 6px; }
+[data-dev="security"] .sec-fix b { font-weight: 600; }
+[data-dev="security"] .sec-ev { margin: 8px 0 0; padding: 10px 14px 10px 28px; background: var(--card); border-radius: 14px; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+[data-dev="security"] .sec-ev li { margin: 2px 0; }

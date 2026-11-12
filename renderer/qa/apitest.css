@@ -1,0 +1,54 @@
+/* App testing › API tester (src/qa/apitest.js) */
+[data-dev="apitest"] .at-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { [data-dev="apitest"] .at-layout { grid-template-columns: 1fr; } }
+[data-dev="apitest"] .at-side { padding: 18px; position: sticky; top: 12px; max-height: calc(100vh - 40px); overflow: auto; }
+[data-dev="apitest"] .at-side select { flex: 1; min-width: 0; }
+[data-dev="apitest"] .at-cols { display: grid; gap: 2px; margin-top: 8px; }
+[data-dev="apitest"] .at-col-h { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 10px 0 4px; font-size: 13px; }
+[data-dev="apitest"] .at-col-h b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-dev="apitest"] .at-col-act { display: flex; gap: 2px; flex: none; }
+[data-dev="apitest"] .at-mini { border: 0; background: var(--chip); color: var(--text); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font: inherit; font-size: 13px; line-height: 1; flex: none; }
+[data-dev="apitest"] .at-mini:hover { background: var(--ink); color: var(--on-ink); }
+[data-dev="apitest"] .at-req { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 12px; cursor: pointer; color: var(--text); font: inherit; font-size: 13px; }
+[data-dev="apitest"] .at-req:hover { background: var(--panel-2); }
+[data-dev="apitest"] .at-req.on { background: var(--ink); color: var(--on-ink); }
+[data-dev="apitest"] .at-rn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-dev="apitest"] .at-m { flex: none; width: 52px; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+[data-dev="apitest"] .m-get { color: #2f8f6e; } [data-dev="apitest"] .m-post { color: #b7791f; } [data-dev="apitest"] .m-put { color: #2a78d6; }
+[data-dev="apitest"] .m-patch { color: #7c5cd6; } [data-dev="apitest"] .m-delete { color: var(--danger); } [data-dev="apitest"] .m-head, [data-dev="apitest"] .m-options { color: var(--muted); }
+[data-dev="apitest"] .at-req.on .at-m { color: inherit; }
+[data-dev="apitest"] .at-hs { font-family: var(--mono); font-size: 11px; color: var(--good); }
+[data-dev="apitest"] .at-hs.bad { color: var(--danger); }
+[data-dev="apitest"] .at-hist { margin-top: 16px; display: grid; gap: 2px; }
+[data-dev="apitest"] .at-env, [data-dev="apitest"] .at-menu { background: var(--panel-2); border-radius: 18px; padding: 12px; margin: 8px 0; display: grid; gap: 8px; }
+[data-dev="apitest"] .at-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+[data-dev="apitest"] .at-method { flex: none; font-family: var(--mono); font-weight: 600; }
+[data-dev="apitest"] .at-url { flex: 1; min-width: 0; }
+[data-dev="apitest"] .at-name { flex: 1; min-width: 0; font-weight: 500; }
+[data-dev="apitest"] .at-tabs { margin-bottom: 12px; flex-wrap: wrap; }
+[data-dev="apitest"] .at-kv, [data-dev="apitest"] .at-tests { display: grid; gap: 6px; margin-bottom: 8px; }
+[data-dev="apitest"] .at-kvrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 26px; gap: 6px; align-items: center; }
+[data-dev="apitest"] .at-testrow { grid-template-columns: 180px minmax(0, 1fr) minmax(0, 1fr) 26px; }
+[data-dev="apitest"] .at-kvrow input, [data-dev="apitest"] .at-kvrow select { min-width: 0; width: 100%; }
+[data-dev="apitest"] .at-kvrow input[hidden] { display: none; }
+[data-dev="apitest"] .at-grow input { flex: 1; min-width: 160px; }
+[data-dev="apitest"] .at-body { width: 100%; min-height: 160px; resize: vertical; border: 0; border-radius: 18px; padding: 12px 16px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); color: var(--text); outline: none; margin-bottom: 8px; }
+[data-dev="apitest"] .at-body:focus { box-shadow: 0 0 0 2px var(--ink); }
+[data-dev="apitest"] .at-num { width: 90px; }
+[data-dev="apitest"] .at-resp .chip { margin: 0 6px 10px 0; display: inline-block; }
+[data-dev="apitest"] .chip.at-ok { background: var(--good-soft); color: var(--good); font-weight: 500; }
+[data-dev="apitest"] .chip.at-bad { background: var(--danger-soft); color: var(--danger); font-weight: 500; }
+[data-dev="apitest"] pre.at-out { min-height: 120px; max-height: 60vh; }
+[data-dev="apitest"] .at-img { max-width: 100%; max-height: 50vh; border-radius: 12px; }
+[data-dev="apitest"] .at-err { color: var(--danger); margin: 0; overflow-wrap: anywhere; }
+[data-dev="apitest"] .at-results { display: grid; gap: 6px; }
+[data-dev="apitest"] .at-result { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 8px 14px; border-radius: 14px; background: var(--panel-2); font-size: 13px; }
+[data-dev="apitest"] .at-result b { font-size: 12px; }
+[data-dev="apitest"] .at-result.pass b { color: var(--good); }
+[data-dev="apitest"] .at-result.fail b { color: var(--danger); }
+[data-dev="apitest"] .at-result span { overflow-wrap: anywhere; }
+[data-dev="apitest"] .at-side { overflow-x: hidden; }
+[data-dev="apitest"] .at-cols > *, [data-dev="apitest"] .at-hist > * { min-width: 0; }
+[data-dev="apitest"] .at-side > .dev-row:first-child { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+[data-dev="apitest"] .at-side > .dev-row:first-child > .dev-lbl { grid-column: 1 / -1; }
+[data-dev="apitest"] .at-side > .dev-row:first-child > select { width: 100%; }

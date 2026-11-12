@@ -1,0 +1,8 @@
+/* Shell tab: saved snippets (src/devtools.js › mountShellExtras) */
+.snips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 14px; align-items: center; }
+.snip { display: inline-flex; align-items: center; border-radius: 999px; background: var(--chip); font-size: 12.5px; }
+.snip button { border: 0; background: none; cursor: pointer; padding: 4px 4px 4px 12px; color: var(--text); font: inherit; }
+.snip button:hover { text-decoration: underline; }
+.snip .x { padding: 4px 10px 4px 4px; color: var(--muted); opacity: 0; transition: opacity .15s; }
+.snip:hover .x, .snip .x:focus-visible { opacity: 1; }
+.snip .x:hover { color: var(--danger); text-decoration: none; }

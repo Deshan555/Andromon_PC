@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'">
+<title>Droid Desk</title>
+<style>
+  /* Same look as Droid Desk Companion on the phone: soft grey home, pastel cards with dark ink,
+     colour-blocked tool pages with glass cards, black pill buttons and nav, Poppins type. */
+  @font-face { font-family: "Poppins"; font-weight: 300; font-style: normal; src: url(fonts/poppins_light.ttf) format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 300; font-style: italic; src: url(fonts/poppins_light_italic.ttf) format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 400; font-style: normal; src: url(fonts/poppins_regular.ttf) format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 500; font-style: normal; src: url(fonts/poppins_medium.ttf) format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 600 700; font-style: normal; src: url(fonts/poppins_semibold.ttf) format("truetype"); }
+  :root {
+    --bg: #f3f3f7; --surface: #ffffff; --text: #1b1b1f; --muted: #6e6e78; --faint: #a8a8b3; --border: #e6e6ec;
+    --ink: #17171b; --on-ink: #ffffff; --glass: rgba(255,255,255,.6); --glass-strong: rgba(255,255,255,.85); --chip: rgba(0,0,0,.07);
+    --nav-bg: #17171b; --nav-icon: #8e8e98; --nav-active-bg: #ffffff; --nav-active: #17171b;
+    --salmon: #f2b8b3; --peach: #fad9c2; --lavender: #cbc7f4; --mint: #c0e8e1; --coral: #f6a196; --yellow: #f7d86f;
+    --pink: #f3b6da; --olive: #aab56c; --sky: #bdd3f6; --cream: #fbf4e6; --magenta: #bf3485;
+    --good: #2f8f6e; --good-dot: #3fae8f; --good-soft: #d5efea;
+    /* Older names used across the page */
+    --panel: var(--surface); --panel-2: var(--bg); --accent: var(--ink); --accent-ink: var(--on-ink); --accent-soft: #e2dffa;
+    --danger: #d9443f; --danger-soft: #fbe1df; --warn-soft: #fcedb8; --warn-ink: #6b5200;
+    --page: var(--bg); --card: var(--surface);
+    --font: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121216; --surface: #1d1d23; --text: #f1f1f5; --muted: #a2a2ad; --faint: #62626c; --border: #2c2c34;
+      --ink: #f1f1f5; --on-ink: #121216; --glass: rgba(255,255,255,.08); --glass-strong: rgba(255,255,255,.12); --chip: rgba(255,255,255,.1);
+      --nav-bg: #2a2a31; --nav-icon: #8e8e98; --nav-active-bg: #f1f1f5; --nav-active: #121216;
+      --salmon: #4a2f2d; --peach: #473426; --lavender: #302d52; --mint: #1f3d38; --coral: #552f2a; --yellow: #433915;
+      --pink: #472640; --olive: #353a1e; --sky: #22314a; --cream: #26231d; --magenta: #f08bc7;
+      --good: #7fdcc0; --good-dot: #6fd3b5; --good-soft: #22403a;
+      --accent-soft: #3c3863; --danger: #f08a86; --danger-soft: #4a2f2d; --warn-soft: #52461c; --warn-ink: #f2cb5c;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: inherit; }
+  b, strong, th { font-weight: 500; }
+  ::selection { background: var(--lavender); }
+
+  /* ---------- frame: floating black nav + colour-blocked page ---------- */
+  .app { display: grid; grid-template-columns: 236px 1fr; gap: 12px; padding: 12px; min-height: 100vh; }
+  aside { background: var(--nav-bg); color: #fff; border-radius: 28px; padding: 20px 12px 16px; display: flex; flex-direction: column; gap: 2px;
+    position: sticky; top: 12px; height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: none; }
+  .brand { font-weight: 500; font-size: 17px; padding: 0 8px 14px; display: flex; align-items: center; gap: 10px; color: #fff; letter-spacing: -.01em; }
+  .brand::before { content: ""; width: 36px; height: 36px; border-radius: 50%; background: #cbc7f4 center / 20px no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%231b1b1f' d='M20,18c1.1,0 1.99,-0.9 1.99,-2L22,6c0,-1.1 -0.9,-2 -2,-2H4c-1.1,0 -2,0.9 -2,2v10c0,1.1 0.9,2 2,2H0v2h24v-2h-4zM4,6h16v10H4V6z'/%3E%3C/svg%3E"); flex: none; }
+  .brand .dot { order: 2; margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--nav-icon); }
+  .brand .dot.on { background: var(--good-dot); box-shadow: 0 0 0 4px rgba(63,174,143,.25); }
+  nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  nav::-webkit-scrollbar { display: none; }
+  nav button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; background: none; border: 0; padding: 5px 14px; border-radius: 999px; cursor: pointer; color: var(--nav-icon); flex: none; transition: background .15s, color .15s; }
+  nav button svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
+  nav button:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,.08); }
+  nav button.active, nav button.active:hover { background: var(--nav-active-bg); color: var(--nav-active); font-weight: 500; }
+  nav button:disabled { opacity: .4; cursor: not-allowed; }
+  /* Tools are grouped; a group folds when its heading is clicked. */
+  .ngroup { display: flex; flex-direction: column; gap: 2px; }
+  .nitems { display: flex; flex-direction: column; gap: 2px; }
+  .ngroup.closed .nitems { display: none; }
+  nav button.nhead { justify-content: space-between; padding: 10px 14px 4px; border-radius: 12px; font-size: 10.5px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--nav-icon); }
+  nav button.nhead:hover { background: none; color: #fff; }
+  .nhead::after { content: ""; width: 6px; height: 6px; margin-right: 4px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform .15s; flex: none; }
+  .ngroup.closed .nhead::after { transform: rotate(-45deg); }
+  .ngroup.closed:has(button.active) .nhead { color: #fff; }
+  .ngroup.closed:has(.nbadge:not([hidden])) .nhead span::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--magenta); }
+  .side-foot { margin-top: auto; font-size: 11px; line-height: 1.45; color: var(--nav-icon); padding: 12px 10px 0; }
+  main { background: var(--page); border-radius: 32px; padding: 26px 32px 32px; min-width: 0; transition: background .25s; }
+  /* Each tool gets its own pastel, like the companion's tool screens; cards turn to glass on it. */
+  .app[data-view="apps"]     { --page: var(--yellow); }
+  .app[data-view="messages"] { --page: var(--lavender); }
+  .app[data-view="contacts"] { --page: var(--peach); }
+  .app[data-view="calls"]    { --page: var(--mint); }
+  .app[data-view="controls"] { --page: var(--cream); }
+  .app[data-view="debloat"]  { --page: var(--coral); }
+  .app[data-view="files"]    { --page: var(--sky); }
+  .app[data-view="photos"]   { --page: var(--pink); }
+  .app[data-view="music"]    { --page: var(--salmon); }
+  .app[data-view="mirror"]   { --page: var(--olive); }
+  .app[data-view="tests"]    { --page: var(--mint); }
+  .app[data-view="screen"]   { --page: var(--lavender); }
+  .app[data-view="wifi"]     { --page: var(--sky); }
+  .app[data-view="dev"]      { --page: var(--lavender); }
+  .app[data-view="qa"]       { --page: var(--mint); }
+  .app[data-view="calendar"] { --page: var(--sky); }
+  .app:not([data-view="overview"]):not([data-view="shell"]) main { --card: var(--glass-strong); --panel-2: var(--glass); }
+  @media (prefers-color-scheme: light) { .app[data-view="controls"] main { --card: var(--surface); --panel-2: var(--bg); } }
+
+  header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+  header.top > div { display: flex; gap: 8px; flex-wrap: wrap; }
+  h1 { font-size: 38px; line-height: 1.05; font-weight: 300; letter-spacing: -.03em; margin: 0; }
+  h1 i { font-style: italic; font-weight: 300; }
+  h2 { font-size: 20px; font-weight: 300; letter-spacing: -.02em; margin: 0 0 14px; }
+
+  /* ---------- buttons, inputs ---------- */
+  .btn { background: var(--surface); border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer; white-space: nowrap; font-weight: 500; color: var(--text); transition: filter .15s, background .15s; box-shadow: inset 0 0 0 1px var(--border); }
+  .btn:hover:not(:disabled) { filter: brightness(.96); }
+  .btn.primary { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+  .btn.primary:hover:not(:disabled) { filter: none; opacity: .88; }
+  .btn.danger { color: var(--danger); }
+  .btn.danger.armed { background: var(--danger); color: #fff; box-shadow: none; }
+  .btn.sm { padding: 6px 14px; font-size: 13px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar input[type=search], .toolbar input[type=text] { flex: 1; min-width: 160px; padding: 9px 18px; border: 0; border-radius: 999px; background: var(--panel-2); outline: none; }
+  .toolbar input[type=search]:focus, .toolbar input[type=text]:focus { box-shadow: 0 0 0 2px var(--ink); }
+  input::placeholder, textarea::placeholder { color: var(--faint); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--chip); }
+  .seg button { border: 0; background: none; padding: 5px 14px; border-radius: 999px; cursor: pointer; color: var(--muted); font-size: 13px; }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--ink); color: var(--on-ink); font-weight: 500; }
+  select, .card input[type=text], .card input[type=number] { padding: 7px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
+  select { padding-right: 10px; }
+  input[type=checkbox], input[type=radio], input[type=range] { accent-color: var(--ink); }
+  .switch { flex: none; width: 52px; height: 30px; border-radius: 15px; border: 0; background: var(--chip); position: relative; cursor: pointer; transition: background .15s; padding: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: left .15s; }
+  .switch[aria-checked="true"] { background: var(--ink); }
+  .switch[aria-checked="true"]::after { left: 25px; background: var(--on-ink); }
+  .switch:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ---------- cards ---------- */
+  .card { background: var(--card); border-radius: 28px; padding: 22px 24px; margin-bottom: 16px; }
+  .notice { border-radius: 20px; padding: 14px 18px; margin-bottom: 16px; background: var(--warn-soft); color: var(--warn-ink); }
+  .notice.err { background: var(--danger-soft); color: var(--danger); }
+  .notice code, .card code { font-family: var(--mono); font-size: 12.5px; background: var(--chip); padding: 1px 6px; border-radius: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel-2); border-radius: 20px; padding: 14px 18px; }
+  .stat .k { font-size: 12.5px; color: var(--muted); }
+  .stat .v { font-size: 15px; font-weight: 500; margin-top: 2px; word-break: break-word; }
+  .bar { height: 6px; background: var(--chip); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+
+  /* Overview: pastel dashboard like the companion's home screen */
+  #overview .grid .stat { background: var(--tile, var(--lavender)); min-height: 92px; }
+  #overview .grid .stat:nth-child(10n+1) { --tile: var(--lavender); }
+  #overview .grid .stat:nth-child(10n+2) { --tile: var(--salmon); }
+  #overview .grid .stat:nth-child(10n+3) { --tile: var(--peach); }
+  #overview .grid .stat:nth-child(10n+4) { --tile: var(--mint); }
+  #overview .grid .stat:nth-child(10n+5) { --tile: var(--sky); }
+  #overview .grid .stat:nth-child(10n+6) { --tile: var(--yellow); }
+  #overview .grid .stat:nth-child(10n+7) { --tile: var(--coral); }
+  #overview .grid .stat:nth-child(10n+8) { --tile: var(--pink); }
+  #overview .grid .stat:nth-child(10n+9) { --tile: var(--olive); }
+  #overview .grid .stat:nth-child(10n+10) { --tile: var(--cream); }
+  #overview .grid .stat .k { color: var(--text); opacity: .7; }
+  #overview .grid .stat .bar { background: var(--glass); }
+  .hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .hero .card { margin: 0; display: flex; align-items: center; gap: 18px; background: var(--hero, var(--lavender)); }
+  .hero .card:nth-child(2) { --hero: var(--salmon); }
+  .hero .big { font-size: 52px; font-weight: 300; letter-spacing: -.03em; line-height: 1; }
+  .hero .big small { font-size: 20px; }
+  .hero .what { font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .hero .what svg { width: 34px; height: 34px; padding: 8px; border-radius: 50%; background: var(--glass-strong); fill: var(--text); }
+  .hero .sub { margin-top: 8px; color: var(--text); opacity: .75; font-size: 13px; }
+  .ring { --p: 0; flex: none; margin-left: auto; width: 136px; height: 136px; border-radius: 50%; display: grid; place-items: center; text-align: center;
+    background: radial-gradient(closest-side, var(--hero, var(--lavender)) 80%, transparent 81%), conic-gradient(var(--ink) calc(var(--p) * 1turn), var(--glass) 0); }
+  .ring b { font-size: 19px; font-weight: 400; display: block; line-height: 1.15; white-space: nowrap; }
+  .ring span { font-size: 11px; opacity: .7; }
+
+  /* Intro: numbered black circles, as in the companion's "How to connect" */
+  #intro { background: var(--lavender); padding: 28px 30px; }
+  #intro h2 { font-size: 26px; }
+  ol.steps { list-style: none; counter-reset: s; margin: 16px 0; padding: 0; display: grid; gap: 8px; }
+  ol.steps li { counter-increment: s; position: relative; background: var(--glass-strong); padding: 14px 16px 14px 60px; border-radius: 20px; margin: 0; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; font-weight: 500; font-size: 13px; }
+
+  /* ---------- tables, lists ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--chip); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--chip); }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  td.act { text-align: right; white-space: nowrap; }
+  td.act .btn { margin-left: 6px; }
+  .mono { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+  .link { background: none; border: 0; padding: 0; cursor: pointer; color: var(--text); text-align: left; }
+  .link:hover { text-decoration: underline; }
+  .crumbs { font-family: var(--mono); font-size: 13px; display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+  .crumbs button { background: none; border: 0; cursor: pointer; padding: 3px 8px; border-radius: 999px; color: var(--text); }
+  .crumbs button:hover { background: var(--chip); }
+  .drop { border: 2px dashed var(--faint); border-radius: 28px; padding: 26px; text-align: center; color: var(--text); margin-bottom: 16px; cursor: pointer; background: var(--glass); }
+  .drop.over { border-color: var(--ink); background: var(--glass-strong); }
+  .shot { max-width: 100%; max-height: 70vh; border-radius: 22px; display: block; }
+  pre.out { background: #121216; color: #e6e6ec; border-radius: 22px; padding: 16px 18px; min-height: 240px; max-height: 60vh; overflow: auto; font-family: var(--mono); font-size: 12.5px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .muted { color: var(--muted); }
+  .empty { padding: 30px; text-align: center; color: var(--muted); }
+  /* spinning circle: buttons and lists while they load, and the top bar while the phone is busy */
+  .spin { display: inline-block; box-sizing: border-box; width: 1em; height: 1em; flex: none; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -.15em; animation: spin .75s linear infinite; }
+  .btn .spin { margin-right: 7px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 1.6s; } }
+  .activity { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 13px; white-space: nowrap; }
+  /* app icon + name + package */
+  .appident { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .appicon { width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--chip); color: var(--muted); display: grid; place-items: center; font-weight: 600; font-size: 15px; overflow: hidden; }
+  .appicon.has-img { background: none; }
+  .appicon img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .appicon.lg { width: 52px; height: 52px; border-radius: 14px; font-size: 22px; }
+  .appwho { min-width: 0; }
+  .appline { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; }
+  .appline .badge { margin-left: 0; }
+  .appname:not(.mono) { font-weight: 500; }
+  .appident.lg .appname { font-size: 20px; }
+  .appsub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .iconhint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px; margin-bottom: 8px; border-radius: 12px; background: var(--chip); color: var(--muted); font-size: 13px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; background: var(--ink); color: var(--on-ink); padding: 12px 22px; border-radius: 999px; opacity: 0; transform: translate(-50%, 8px); transition: .2s; pointer-events: none; max-width: min(460px, calc(100vw - 32px)); z-index: 60; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .ctl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+  .ctl { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--panel-2); border-radius: 20px; min-height: 56px; }
+  .ctl > div:first-child { min-width: 0; }
+  .sub { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  .ctl input[type=range] { width: 130px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); margin-left: 8px; vertical-align: middle; }
+  .badge.neutral { background: var(--chip); color: var(--muted); }
+  .badge.on { background: var(--good-soft); color: var(--good); }
+  tr.sel td { background: var(--accent-soft); }
+  .small { font-size: 12px; }
+
+  /* ---------- messages ---------- */
+  .msg-layout { display: grid; grid-template-columns: 330px 1fr; gap: 16px; height: calc(100vh - 220px); min-height: 420px; }
+  .thread-list { overflow: auto; padding: 8px; margin: 0; }
+  .thread-item { display: block; width: 100%; text-align: left; border: 0; border-radius: 18px; background: none; padding: 11px 14px; cursor: pointer; color: var(--text); margin-bottom: 2px; }
+  .thread-item:hover { background: var(--chip); }
+  .thread-item.on { background: var(--ink); color: var(--on-ink); }
+  .thread-item.on .s, .thread-item.on .muted { color: inherit; opacity: .7; }
+  .thread-item .t { display: flex; justify-content: space-between; gap: 8px; font-weight: 500; }
+  .thread-item .t span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread-item .t span + span { font-weight: 400; font-size: 12px; opacity: .7; }
+  .thread-item .s { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .thread-view { display: flex; flex-direction: column; margin: 0; padding: 0; min-height: 0; overflow: hidden; }
+  .thread-head { padding: 16px 20px; border-bottom: 1px solid var(--chip); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .to-input { flex: 1; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; }
+  .bubbles { flex: 1; overflow: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }
+  .bubble { max-width: 72%; padding: 9px 14px; border-radius: 20px 20px 20px 6px; background: var(--surface); white-space: pre-wrap; word-break: break-word; align-self: flex-start; }
+  .bubble.out { align-self: flex-end; background: var(--ink); color: var(--on-ink); border-radius: 20px 20px 6px 20px; }
+  .bubble .when { display: block; font-size: 11px; opacity: .6; margin-top: 3px; }
+  .composer { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--chip); align-items: flex-end; }
+  .composer textarea { flex: 1; resize: vertical; min-height: 44px; max-height: 200px; padding: 10px 16px; border: 0; border-radius: 22px; background: var(--surface); color: var(--text); font: inherit; }
+  td.missed { color: var(--danger); }
+  .card ul { margin: 8px 0; padding-left: 20px; }
+
+  /* ---------- photos & music ---------- */
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+  .mtile { position: relative; aspect-ratio: 1; background: var(--glass); border-radius: 16px; overflow: hidden; cursor: pointer; outline: 3px solid transparent; outline-offset: -3px; }
+  .mtile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mtile.sel { outline-color: var(--ink); }
+  .mtile .mchk { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.25); box-shadow: 0 0 3px rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; }
+  .mtile:not(.sel):not(:hover) .mchk { opacity: .55; }
+  .mtile.sel .mchk { background: #17171b; }
+  .mtile .mbadge { position: absolute; right: 8px; bottom: 8px; font-size: 11px; background: rgba(0,0,0,.62); color: #fff; padding: 1px 8px; border-radius: 999px; }
+  .mtile .mkeep { left: 8px; right: auto; background: var(--good); }
+  .mgroup { margin-bottom: 18px; }
+  .mgroup .sub { margin-bottom: 6px; color: var(--text); opacity: .75; }
+  .selbar { position: sticky; top: 12px; z-index: 5; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 10px 8px 20px; background: var(--ink); color: var(--on-ink); border-radius: 999px; margin-bottom: 14px; }
+  .selbar .btn:not(.primary) { background: transparent; color: var(--on-ink); box-shadow: inset 0 0 0 1px rgba(127,127,127,.5); }
+  .selbar .btn.primary { background: var(--on-ink); color: var(--ink); }
+  .selbar .btn.danger { color: #ff8f8a; }
+  .viewer { position: fixed; inset: 0; background: rgba(10,10,12,.94); z-index: 50; display: flex; flex-direction: column; color: #eee; }
+  .viewer header { display: flex; gap: 8px; align-items: center; padding: 12px 16px; flex-wrap: wrap; }
+  .viewer header .vtitle { flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .viewer .btn:not(.primary):not(.danger) { background: rgba(255,255,255,.12); color: #fff; box-shadow: none; }
+  .viewer .btn.primary { background: #fff; color: #17171b; }
+  .viewer .vbody { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; padding: 0 12px 12px; }
+  .viewer .vbody img, .viewer .vbody video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+  .mplayer { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: var(--ink) !important; color: var(--on-ink); }
+  .mplayer .btn { background: transparent; color: var(--on-ink); box-shadow: inset 0 0 0 1px rgba(127,127,127,.5); }
+  .mplayer .sub { color: inherit; opacity: .7; }
+  .mplayer img { width: 56px; height: 56px; border-radius: 16px; object-fit: cover; background: var(--glass); }
+  .mplayer audio { flex: 1; min-width: 220px; }
+  .mcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .mcard { padding: 10px; background: var(--panel-2); border: 0; border-radius: 22px; cursor: pointer; text-align: left; color: var(--text); font: inherit; }
+  .mcard:hover { background: var(--surface); }
+  .mcard img, .mcard .ph { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 16px; background: var(--chip); display: block; margin-bottom: 8px; }
+  .mcard b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr.playing td { font-weight: 600; }
+  tr.playing td:first-child { box-shadow: inset 3px 0 0 var(--ink); }
+
+  /* ---------- connect over Wi‑Fi ---------- */
+  .modal { position: fixed; inset: 0; background: rgba(10,10,12,.45); backdrop-filter: blur(4px); z-index: 40; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; overflow: auto; }
+  .modal > .card { width: 100%; max-width: 640px; margin: 0; background: var(--surface); }
+  .qrbox { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .qrbox img { width: 200px; height: 200px; image-rendering: pixelated; background: #fff; border-radius: 20px; padding: 10px; }
+  .qrbox ol { margin: 0; padding-left: 18px; flex: 1; min-width: 220px; }
+  .wadb-row { display: flex; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--chip); }
+  .wadb-row:last-child { border-bottom: 0; }
+  .wadb-row .grow { flex: 1; min-width: 0; }
+  .wadb-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .wadb-form input { padding: 7px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
+  #wadbIntro, #wadbSetup { background: var(--mint); }
+  .card ul li { margin: 3px 0; }
+
+  /* ---------- call alerts ---------- */
+  .popstack { position: fixed; bottom: 20px; right: 20px; z-index: 45; width: min(370px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  .popstack > * { pointer-events: auto; }
+  .callpop { position: relative; order: 9; background: #17171b; color: #fff;
+    border-radius: 28px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.35); animation: popin .25s ease-out; }
+  @keyframes popin { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+  .callpop .kind { font-size: 12px; color: #a2a2ad; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .callpop .kind::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #3fae8f; }
+  .callpop.missed .kind::before { background: #e2504c; }
+  .callpop .who { display: flex; gap: 14px; align-items: center; }
+  .callpop .av { flex: none; width: 56px; height: 56px; border-radius: 50%; background: #cbc7f4; color: #1b1b1f; display: grid; place-items: center; font-size: 22px; font-weight: 500; }
+  .callpop.ringing .av { animation: ring 1.4s ease-out infinite; }
+  @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(203,199,244,.55); } 100% { box-shadow: 0 0 0 18px rgba(203,199,244,0); } }
+  .callpop .name { font-size: 22px; font-weight: 300; letter-spacing: -.02em; line-height: 1.2; overflow-wrap: anywhere; }
+  .callpop .num { font-size: 13px; color: #a2a2ad; font-family: var(--mono); }
+  .callpop .acts { display: flex; gap: 8px; margin-top: 18px; }
+  .callpop .acts .btn { flex: 1; padding: 10px 12px; box-shadow: none; background: rgba(255,255,255,.12); color: #fff; }
+  .callpop .acts .btn.answer { background: #3fae8f; }
+  .callpop .acts .btn.decline { background: #e2504c; }
+  .callpop .note { font-size: 12px; color: #a2a2ad; margin-top: 10px; }
+  .callpop .x { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; }
+  #callAlertCard { display: flex; align-items: center; gap: 16px; }
+
+  /* ---------- phone notifications ---------- */
+  .app[data-view="notifs"] { --page: var(--peach); }
+  .nbadge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--magenta); color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; }
+  nav button.active .nbadge { background: var(--nav-active); color: var(--nav-active-bg); }
+  .ntlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; align-items: start; }
+  .ncard { background: var(--card); border-radius: 24px; padding: 14px 16px 16px; min-width: 0; }
+  .ncard .nh { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); min-width: 0; }
+  .ncard .nh img, .ncard .nh .ph { width: 20px; height: 20px; border-radius: 6px; flex: none; background: var(--chip); }
+  .ncard .nh .an { font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncard .nh .sp { flex: 1; }
+  .ncard .nh button { border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+  .ncard .nh button:hover { background: var(--chip); color: var(--text); }
+  .ncard .nb { display: flex; gap: 12px; margin-top: 10px; min-width: 0; }
+  .ncard .nb .av { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; }
+  .ncard .nt { font-weight: 500; overflow-wrap: anywhere; }
+  .ncard .nx { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .ncard .msgs { display: grid; gap: 3px; font-size: 13.5px; }
+  .ncard .msgs div { overflow-wrap: anywhere; white-space: pre-wrap; }
+  .ncard .msgs b { font-weight: 500; }
+  .ncard .msgs .me { color: var(--muted); }
+  .ncard .na { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .ncard .rbox { margin-top: 10px; display: grid; gap: 8px; }
+  .ncard .rbox .chips { margin: 0; }
+  .ncard .rbox .chip { cursor: pointer; border: 0; font: inherit; font-size: 12px; }
+  .ncard .rbox .chip:hover { background: var(--ink); color: var(--on-ink); }
+  .ncard .rbox form { display: flex; gap: 6px; }
+  .ncard .rbox input { flex: 1; min-width: 0; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); color: var(--text); }
+  .popstack .ncard { background: var(--surface); box-shadow: 0 16px 44px rgba(0,0,0,.22); animation: popin .25s ease-out; --panel-2: var(--bg); }
+  #ntCard .rows { display: grid; gap: 10px; }
+  #ntCard textarea { width: 100%; min-height: 96px; padding: 10px 14px; border: 0; border-radius: 18px; background: var(--panel-2); color: var(--text); font: inherit; resize: vertical; }
+  #callAlertCard .grow { flex: 1; min-width: 0; }
+
+  /* ---------- phone links (src/links.js): Overview cards and the Call buttons ---------- */
+  .lk-head { margin: 26px 4px 14px; }
+  #lkGate { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--warn-soft); color: var(--warn-ink); }
+  #lkGate .grow { flex: 1; min-width: 200px; }
+  .lk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .lk-grid > .card { margin: 0; min-width: 0; background: var(--lk, var(--mint)); --panel-2: var(--glass-strong); }
+  #lkClipCard { --lk: var(--sky); }
+  #lkRingCard { --lk: var(--peach); }
+  #lkMediaHint { --lk: var(--cream); grid-column: 1 / -1; }
+  .lk-grid h3 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
+  .lk-grid p.sub { margin: 0 0 14px; font-size: 13px; color: var(--text); opacity: .75; }
+  .lk-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .lk-row input[type=text] { flex: 1; min-width: 140px; padding: 9px 16px; }
+  .lk-row input[type=text]:focus { outline: none; box-shadow: 0 0 0 2px var(--ink); }
+  #lkSendCard.over { box-shadow: inset 0 0 0 2px var(--ink); }
+  .lk-recent { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .lk-recent:empty { display: none; }
+  .lk-recent .sub { color: var(--text); opacity: .7; margin-right: 2px; }
+  .lk-chip { border: 0; font: inherit; font-size: 12px; padding: 4px 11px; border-radius: 999px; background: var(--glass-strong); color: var(--text); cursor: pointer; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lk-chip:hover { background: var(--ink); color: var(--on-ink); }
+  .lk-chip.clear { background: none; text-decoration: underline; opacity: .7; }
+  .lk-chip.clear:hover { background: none; color: var(--text); opacity: 1; }
+  #lkRingCard.ringing { animation: lkring 1.2s ease-in-out infinite; }
+  @keyframes lkring { 50% { box-shadow: 0 0 0 6px var(--coral); } }
+  @media (prefers-reduced-motion: reduce) { #lkRingCard.ringing { animation: none; box-shadow: 0 0 0 4px var(--coral); } }
+  .lk-grid > .lk-media { grid-column: 1 / -1; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--ink); color: var(--on-ink); }
+  .lk-media .art { flex: none; width: 64px; height: 64px; border-radius: 18px; object-fit: cover; background: rgba(127,127,127,.3); display: grid; place-items: center; font-size: 26px; }
+  .lk-media .info { flex: 1; min-width: 160px; }
+  .lk-media .title { font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+  .lk-media .sub { color: inherit; opacity: .7; }
+  .lk-media .keys { display: flex; gap: 8px; }
+  .lk-media .btn { background: transparent; color: var(--on-ink); box-shadow: inset 0 0 0 1px rgba(127,127,127,.5); min-width: 46px; padding: 9px 12px; }
+  .lk-media .prog { flex-basis: 100%; display: flex; gap: 12px; align-items: center; }
+  .lk-media .prog input[type=range] { flex: 1; min-width: 0; accent-color: var(--on-ink); }
+  .lk-media .prog .sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lk-tel { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+  .btn.sm.lk-call { padding: 3px 12px; font-size: 12px; font-family: var(--font, inherit); }
+  td.num .lk-call { margin-left: 10px; }
+  .lk-call.armed { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+
+  /* ---------- test automation ---------- */
+  .at-grid { display: grid; grid-template-columns: minmax(250px, 34%) 1fr; gap: 16px; align-items: start; }
+  .at-phone { position: sticky; top: 12px; }
+  .at-phone .toolbar { margin-bottom: 10px; }
+  .at-phone .mirror-stage { position: relative; padding: 8px; }
+  .at-phone .mirror-stage canvas { max-height: calc(100vh - 250px); }
+  .mirror-stage.at-pick canvas { cursor: crosshair; }
+  .at-box { position: absolute; pointer-events: none; border: 2px solid #ff4fa3; background: rgba(255,79,163,.18); border-radius: 4px; }
+  .at-grow { flex: 1; }
+  .at-add { margin-bottom: 10px; }
+  .at-hint { margin: 0 0 12px; padding: 10px 16px; font-size: 13px; }
+  .at-hint > div + div { margin-top: 6px; }
+  .at-badge .btn { margin-left: 4px; color: var(--text); }
+  .at-empty p { margin: 4px 0 6px; }
+  .at-name { cursor: pointer; }
+  .at-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-radius: 20px; padding: 10px 16px; margin-bottom: 12px; }
+  .at-summary.ok { background: var(--good-soft); color: var(--good); }
+  .at-summary.bad { background: var(--danger-soft); color: var(--danger); }
+  .at-summary .btn { color: var(--text); }
+  .chip.at-pass { background: var(--good-soft); color: var(--good); }
+  .chip.at-fail { background: var(--danger-soft); color: var(--danger); }
+  .chip.at-rec { background: var(--danger); color: #fff; }
+  .at-fail { margin-bottom: 12px; }
+  .at-shot { display: block; max-height: 360px; margin-top: 8px; border-radius: 12px; }
+  .at-steps { list-style: none; margin: 0; padding: 0; }
+  .at-step { border-bottom: 1px solid var(--chip); }
+  .at-step:last-child { border-bottom: 0; }
+  .at-none { padding: 22px 4px; }
+  .at-head { display: flex; align-items: center; gap: 10px; padding: 8px 4px; cursor: pointer; border-radius: 12px; }
+  .at-head:hover { background: var(--chip); }
+  .at-n { flex: none; width: 22px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .at-ic { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--chip); display: grid; place-items: center; font-size: 12px; }
+  .at-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .at-st { flex: none; color: var(--muted); white-space: nowrap; }
+  .at-tools { flex: none; display: flex; gap: 4px; opacity: 0; }
+  .at-head:hover .at-tools, .at-tools:focus-within { opacity: 1; }
+  .at-tools .btn { padding: 3px 10px; }
+  .at-step[data-status="run"] .at-head { background: var(--warn-soft); }
+  .at-step[data-status="pass"] .at-ic { background: var(--good-soft); color: var(--good); }
+  .at-step[data-status="pass"] .at-st { color: var(--good); }
+  .at-step[data-status="fail"] .at-ic { background: var(--danger); color: #fff; }
+  .at-step[data-status="fail"] .at-st, .at-err { color: var(--danger); }
+  .at-err { padding: 0 4px 8px 68px; white-space: pre-wrap; }
+  .at-edit { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; padding: 6px 4px 14px 68px; }
+  .at-f { display: flex; flex-direction: column; gap: 3px; }
+  .at-f input[type=text] { min-width: 190px; }
+  .at-f input.at-wide { min-width: 320px; }
+  .at-f input[type=number] { width: 110px; }
+  .at-c { flex-basis: 100%; }
+  @media (max-width: 900px) { .at-grid { grid-template-columns: 1fr; } .at-phone { position: static; } }
+
+  /* ---------- mirror ---------- */
+  .mirror-idle { padding: 8px 4px; }
+  .mirror-idle p { margin: 0 0 6px; }
+  .mirror-stage { display: flex; justify-content: center; align-items: center; background: #000; border-radius: 24px; padding: 10px; }
+  .mirror-stage canvas { display: block; max-width: 100%; max-height: calc(100vh - 290px); width: auto; height: auto; border-radius: 14px; touch-action: none; cursor: default; outline: none; }
+  .mirror-stage canvas:focus-visible { box-shadow: 0 0 0 2px #fff; }
+  .mirror-stage:fullscreen { border-radius: 0; padding: 0; }
+  .mirror-stage:fullscreen canvas { max-height: 100vh; border-radius: 0; }
+
+  /* ---------- apps, debloat, misc ---------- */
+  .app-icon { width: 56px; height: 56px; border-radius: 18px; background: var(--lavender); color: var(--text); display: grid; place-items: center; font-size: 24px; font-weight: 500; flex: none; overflow: hidden; }
+  .app-icon img { width: 100%; height: 100%; object-fit: cover; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--text); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn-ink); }
+  details summary { cursor: pointer; color: var(--muted); }
+  .desc { font-size: 12px; color: var(--muted); white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; margin-top: 2px; max-width: 70ch; }
+  .desc.open { display: block; }
+  .badge.safety-recommended { background: var(--good-soft); color: var(--good); }
+  .badge.safety-advanced { background: var(--chip); color: var(--text); }
+  .badge.safety-expert { background: var(--warn-soft); color: var(--warn-ink); }
+  .badge.safety-unsafe { background: var(--danger-soft); color: var(--danger); }
+  .badge.safety-unlisted { background: var(--chip); color: var(--muted); }
+  td .badge { margin-left: 0; }
+  .wifi-list { display: grid; gap: 8px; }
+  .wifi-dev.over { box-shadow: 0 0 0 2px var(--ink); background: var(--surface); }
+  .btn.rec-on { background: var(--danger); color: #fff; box-shadow: none; }
+  .card .bar { height: 8px; }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  nav button:focus-visible { outline-color: #fff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--chip); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
+  @media (max-width: 760px) { .msg-layout { grid-template-columns: 1fr; height: auto; } .thread-list { max-height: 300px; } .thread-view { min-height: 420px; } }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
+    aside { position: static; height: auto; flex-direction: row; flex-wrap: wrap; padding: 12px; border-radius: 24px; }
+    .brand { width: 100%; padding: 0 4px 10px; }
+    nav { flex-direction: row; flex-wrap: wrap; gap: 4px; flex: none; overflow: visible; }
+    nav button { width: auto; padding: 7px 12px; }
+    nav button span { display: none; }
+    nav button.active span { display: inline; }
+    .ngroup, .nitems, .ngroup.closed .nitems { display: contents; }
+    nav button.nhead { display: none; }
+    .side-foot { display: none; }
+    main { padding: 18px 16px; border-radius: 24px; }
+    h1 { font-size: 30px; }
+    .hide-sm { display: none; }
+  }
+  /* ---------- developer tab (parts add their own styles in renderer/dev/*.css) ---------- */
+  .dev-tabs { margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+  .dev-tabs .seg { background: var(--glass-strong); }
+  .dev-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .dev-head h2 { margin: 0; }
+  .dev-head > :not(h2) { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .dev-picker { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .dev-picker input { flex: 1; min-width: 220px; }
+  .dev-lbl { font-size: 12px; color: var(--muted); }
+  .dev-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .dev-row > input[type=text], .dev-row > input[type=number] { min-width: 0; }
+  .dev-note { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+  .dev-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13px; }
+  .dev-kv > :nth-child(odd) { color: var(--muted); }
+  .dev-kv > :nth-child(even) { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+</style>
+<link rel="stylesheet" href="dev/logcat.css">
+<link rel="stylesheet" href="dev/settings.css">
+<link rel="stylesheet" href="dev/apptools.css">
+<link rel="stylesheet" href="dev/capture.css">
+<link rel="stylesheet" href="dev/perf.css">
+<link rel="stylesheet" href="dev/network.css">
+<link rel="stylesheet" href="dev/input.css">
+<link rel="stylesheet" href="dev/phones.css">
+<link rel="stylesheet" href="dev/shell.css">
+<link rel="stylesheet" href="qa/perftest.css">
+<link rel="stylesheet" href="qa/security.css">
+<link rel="stylesheet" href="qa/traffic.css">
+<link rel="stylesheet" href="qa/apitest.css">
+<link rel="stylesheet" href="qa/trace.css">
+<link rel="stylesheet" href="pdata.css">
+</head>
+<body>
+<div class="app" data-view="overview">
+  <aside>
+    <div class="brand"><span class="dot" id="statusDot"></span>Droid Desk</div>
+    <nav id="nav">
+      <button data-view="overview" class="active"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></svg><span>Overview</span></button>
+      <div class="ngroup" data-group="comm">
+        <button type="button" class="nhead" aria-expanded="true" aria-controls="ng-comm"><span>Communication</span></button>
+        <div class="nitems" id="ng-comm">
+          <button data-view="messages" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20,2H4c-1.1,0 -1.99,0.9 -1.99,2L2,22l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2z"/></svg><span>Messages</span></button>
+          <button data-view="contacts" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,12c2.21,0 4,-1.79 4,-4s-1.79,-4 -4,-4 -4,1.79 -4,4 1.79,4 4,4zM12,14c-2.67,0 -8,1.34 -8,4v2h16v-2c0,-2.66 -5.33,-4 -8,-4z"/></svg><span>Contacts</span></button>
+          <button data-view="calls" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62,10.79c1.44,2.83 3.76,5.14 6.59,6.59l2.2,-2.2c0.27,-0.27 0.67,-0.36 1.02,-0.24 1.12,0.37 2.33,0.57 3.57,0.57 0.55,0 1,0.45 1,1V20c0,0.55 -0.45,1 -1,1 -9.39,0 -17,-7.61 -17,-17 0,-0.55 0.45,-1 1,-1h3.5c0.55,0 1,0.45 1,1 0,1.25 0.2,2.45 0.57,3.57 0.11,0.35 0.03,0.74 -0.25,1.02l-2.2,2.2z"/></svg><span>Call log</span></button>
+          <button data-view="calendar" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19,4h-1V2h-2v2H8V2H6v2H5C3.89,4 3.01,4.9 3.01,6L3,20c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V6C21,4.9 20.1,4 19,4zM19,20H5V9h14V20zM7,11h5v5H7V11z"/></svg><span>Calendar</span></button>
+          <button data-view="notifs" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.89,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z"/></svg><span>Notifications</span><b class="nbadge" id="ntBadge" hidden></b></button>
+        </div>
+      </div>
+      <div class="ngroup" data-group="media">
+        <button type="button" class="nhead" aria-expanded="true" aria-controls="ng-media"><span>Files &amp; media</span></button>
+        <div class="nitems" id="ng-media">
+          <button data-view="files" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2h-8l-2,-2z"/></svg><span>Files</span></button>
+          <button data-view="photos" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21,19V5c0,-1.1 -0.9,-2 -2,-2H5c-1.1,0 -2,0.9 -2,2v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2zM8.5,13.5l2.5,3.01L14.5,12l4.5,6H5l3.5,-4.5z"/></svg><span>Photos</span></button>
+          <button data-view="music" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z"/></svg><span>Music</span></button>
+          <button data-view="wifi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,17.01V10h-2v7.01h-3L15,21l4,-3.99h-3zM9,3L5,6.99h3V14h2V6.99h3L9,3z"/></svg><span>Wi‑Fi transfer</span></button>
+        </div>
+      </div>
+      <div class="ngroup" data-group="device">
+        <button type="button" class="nhead" aria-expanded="true" aria-controls="ng-device"><span>Device</span></button>
+        <div class="nitems" id="ng-device">
+          <button data-view="apps" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6,4h3a2,2 0,0 1,2 2v3a2,2 0,0 1,-2 2h-3a2,2 0,0 1,-2 -2v-3a2,2 0,0 1,2 -2zM15,4h3a2,2 0,0 1,2 2v3a2,2 0,0 1,-2 2h-3a2,2 0,0 1,-2 -2v-3a2,2 0,0 1,2 -2zM6,13h3a2,2 0,0 1,2 2v3a2,2 0,0 1,-2 2h-3a2,2 0,0 1,-2 -2v-3a2,2 0,0 1,2 -2zM15,13h3a2,2 0,0 1,2 2v3a2,2 0,0 1,-2 2h-3a2,2 0,0 1,-2 -2v-3a2,2 0,0 1,2 -2z"/></svg><span>Apps</span></button>
+          <button data-view="debloat" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,11h-1V3c0,-1.1 -0.9,-2 -2,-2h-2C9.9,1 9,1.9 9,3v8H8c-2.76,0 -5,2.24 -5,5v7h18v-7C21,13.24 18.76,11 16,11zM19,21h-2v-3c0,-0.55 -0.45,-1 -1,-1s-1,0.45 -1,1v3h-2v-3c0,-0.55 -0.45,-1 -1,-1s-1,0.45 -1,1v3H9v-3c0,-0.55 -0.45,-1 -1,-1s-1,0.45 -1,1v3H5v-5c0,-1.65 1.35,-3 3,-3h8c1.65,0 3,1.35 3,3V21z"/></svg><span>Debloat</span></button>
+          <button data-view="controls" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3,17v2h6v-2H3zM3,5v2h10V5H3zM13,21v-2h8v-2h-8v-2h-2v6h2zM7,9v2H3v2h4v2h2V9H7zM21,13v-2H11v2h10zM15,9h2V7h4V5h-4V3h-2v6z"/></svg><span>Controls</span></button>
+          <button data-view="mirror" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17,1.01L7,1C5.9,1 5,1.9 5,3v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2V3c0,-1.1 -0.9,-1.99 -2,-1.99zM17,19H7V5h10v14z"/></svg><span>Screen mirror</span></button>
+          <button data-view="screen" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,12m-3.2,0a3.2,3.2 0,1 1,6.4 0a3.2,3.2 0,1 1,-6.4 0"/><path d="M9,2L7.17,4H4c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2h-3.17L15,2H9zM12,17c-2.76,0 -5,-2.24 -5,-5s2.24,-5 5,-5 5,2.24 5,5 -2.24,5 -5,5z"/></svg><span>Screenshot</span></button>
+        </div>
+      </div>
+      <div class="ngroup" data-group="dev">
+        <button type="button" class="nhead" aria-expanded="true" aria-controls="ng-dev"><span>Developer</span></button>
+        <div class="nitems" id="ng-dev">
+          <button data-view="tests" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19,3h-4.18C14.4,1.84 13.3,1 12,1s-2.4,0.84 -2.82,2H5C3.9,3 3,3.9 3,5v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V5C21,3.9 20.1,3 19,3zM12,3c0.55,0 1,0.45 1,1s-0.45,1 -1,1 -1,-0.45 -1,-1 0.45,-1 1,-1zM10,17l-4,-4 1.41,-1.41L10,14.17l6.59,-6.59L18,9l-8,8z"/></svg><span>Test automation</span></button>
+          <button data-view="qa" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.8,18.4L14,10.67V6.5l1.35,-1.69C15.61,4.48 15.38,4 14.96,4H9.04C8.62,4 8.39,4.48 8.65,4.81L10,6.5v4.17L4.2,18.4C3.71,19.06 4.18,20 5,20h14C19.82,20 20.29,19.06 19.8,18.4z"/></svg><span>App testing</span></button>
+          <button data-view="dev" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4,16.6L4.8,12l4.6,-4.6L8,6l-6,6 6,6 1.4,-1.4zM14.6,16.6l4.6,-4.6 -4.6,-4.6L16,6l6,6 -6,6 -1.4,-1.4z"/></svg><span>Developer</span></button>
+          <button data-view="shell" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20,4H4C2.89,4 2,4.9 2,6v12c0,1.1 0.89,2 2,2h16c1.1,0 2,-0.9 2,-2V6C22,4.9 21.11,4 20,4zM20,18H4V8h16V18zM18,16h-6v-2h6V16zM7.5,16l-1.41,-1.41L8.67,12L6.08,9.41L7.5,8l4,4L7.5,16z"/></svg><span>Shell</span></button>
+        </div>
+      </div>
+    </nav>
+    <div class="side-foot">ADB over USB · companion app only for messages, contacts &amp; calls · mirroring by scrcpy · Wi‑Fi transfer via LocalSend</div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <h1 id="title">Connect <i>your phone</i></h1>
+      <div>
+        <span class="activity" id="activity" role="status" hidden><span class="spin" aria-hidden="true"></span>Working…</span>
+        <button class="btn" id="wifiConnectBtn" hidden title="Wireless debugging (Android 11+)">Connect over Wi‑Fi</button>
+        <button class="btn primary" id="connectBtn">Connect phone</button>
+        <button class="btn" id="disconnectBtn" hidden>Disconnect</button>
+      </div>
+    </header>
+
+    <div class="notice err" id="errBox" hidden></div>
+    <div class="viewer" id="viewer" hidden></div>
+    <div class="modal" id="wadbBox" hidden><div class="card" id="wadbCard"></div></div>
+    <div class="popstack" id="popStack">
+      <div class="callpop" id="callPop" role="alertdialog" aria-live="assertive" hidden></div>
+    </div>
+    <div class="notice" id="authBox" hidden>Check your phone and tap <b>Allow</b> on the “Allow USB debugging?” prompt.</div>
+    <div class="card" id="wifiIncoming" hidden></div>
+    <div class="card" id="wifiProgress" hidden></div>
+
+    <!-- OVERVIEW -->
+    <section data-panel="overview">
+      <div class="card" id="wadbIntro" hidden></div>
+      <div class="card" id="wadbSetup" hidden></div>
+      <div class="card" id="intro">
+        <h2>Connect an Android phone</h2>
+        <div class="muted">This page talks to the phone directly over USB using the ADB protocol (via WebUSB), the same channel the old PC suites used — without installing anything on the phone.</div>
+        <ol class="steps">
+          <li>On the phone: <b>Settings → About phone</b>, tap <b>Build number</b> 7 times.</li>
+          <li><b>Settings → System → Developer options</b> → turn on <b>USB debugging</b>.</li>
+          <li>Plug in the USB cable, click <b>Connect phone</b>, pick the device, then tap <b>Allow</b> on the phone.</li>
+        </ol>
+        <p class="muted">No cable? On Android 11 and later, click <b>Connect over Wi‑Fi</b>, then scan the QR code in <b>Developer options → Wireless debugging → Pair device with QR code</b>. You only pair once; after that it connects with one click.</p>
+        <p class="muted" style="margin-bottom:0">Needs Chrome or Edge on desktop. If you have Android SDK tools installed, run <code>adb kill-server</code> first — only one program can hold the USB connection.</p>
+      </div>
+      <div id="overview" hidden>
+        <div class="hero" id="ovHero"></div>
+        <div class="card">
+          <div class="toolbar" style="justify-content:space-between;margin-bottom:14px">
+            <h2 style="margin:0" id="devName">Device</h2>
+            <button class="btn sm" id="refreshInfo">Refresh</button>
+          </div>
+          <div class="grid" id="infoGrid"></div>
+        </div>
+        <div class="card" id="ramCard" hidden></div>
+        <!-- Back up this phone / Restore from a backup / automatic photo copy (src/backup.js) -->
+        <div class="card" id="backupCard" hidden></div>
+
+        <!-- ===== Phone links (src/links.js): send to phone, shared clipboard, find my phone, now playing ===== -->
+        <h2 class="lk-head">Phone links</h2>
+        <div class="card" id="lkGate" hidden></div>
+        <div class="lk-grid">
+          <div class="card lk-media" id="lkMedia" hidden></div>
+          <div class="card" id="lkMediaHint" hidden></div>
+          <div class="card" id="lkSendCard">
+            <h3>Send to phone</h3>
+            <p class="sub">A link opens in the phone's browser, or waits as a notification while the phone is locked. Text arrives as a notification with a Copy button. You can also drop a link here.</p>
+            <form class="lk-row" id="lkSendForm">
+              <input type="text" id="lkSendText" placeholder="Paste a link or type some text" aria-label="Link or text to send to the phone" autocomplete="off" spellcheck="false" maxlength="20000">
+              <button class="btn primary" id="lkSendBtn" type="submit">Send</button>
+            </form>
+            <div class="lk-recent" id="lkRecent"></div>
+          </div>
+          <div class="card" id="lkClipCard">
+            <h3>Shared clipboard</h3>
+            <p class="sub">Copy here, paste on the phone, and the other way round. On the phone, “Send clipboard to PC” is on the Droid Desk notification and in a quick-settings tile.</p>
+            <div class="lk-row">
+              <button class="btn" id="lkClipTo" type="button">Copy to phone's clipboard</button>
+              <button class="btn" id="lkClipFrom" type="button">Get phone's clipboard</button>
+            </div>
+          </div>
+          <div class="card" id="lkRingCard">
+            <h3>Find my phone</h3>
+            <p class="sub">Rings at full volume, even on silent, until someone taps “Found it” on the phone, or for two minutes.</p>
+            <div class="lk-row"><button class="btn" id="lkRingBtn" type="button">Ring my phone</button></div>
+          </div>
+        </div>
+        <!-- ===== end of Phone links ===== -->
+      </div>
+    </section>
+
+    <!-- APPS -->
+    <section data-panel="apps" hidden>
+      <div class="drop" id="apkDrop">Drop an <b>.apk</b> here, or click to choose one to install</div>
+      <input type="file" id="apkInput" accept=".apk,.apks,.xapk,.apkm" multiple hidden>
+      <div class="card" id="installPreview" hidden></div>
+      <div class="card" id="appDetail" hidden></div>
+      <div class="card">
+        <div class="toolbar">
+          <input type="search" id="appSearch" placeholder="Search apps…">
+          <div class="seg" id="appScope">
+            <button data-scope="-3" class="on">User</button>
+            <button data-scope="-s">System</button>
+            <button data-scope="">All</button>
+          </div>
+          <button class="btn sm" id="refreshApps">Refresh</button>
+          <button class="btn sm" id="trimCaches" title="Empties every app's cache, including the private caches apps can't clear on the phone. Apps rebuild them as needed.">Clear app caches</button>
+        </div>
+        <div class="muted" id="appCount" style="margin-bottom:6px"></div>
+        <div class="iconhint" id="appIconHint" hidden></div>
+        <table><thead><tr><th>App</th><th class="hide-sm">Version</th><th></th></tr></thead><tbody id="appRows"></tbody></table>
+      </div>
+    </section>
+
+    <!-- FILES -->
+    <section data-panel="files" hidden>
+      <div class="card">
+        <div class="toolbar">
+          <div class="crumbs" id="crumbs" style="flex:1"></div>
+          <button class="btn sm" id="upBtn">Up</button>
+          <button class="btn sm" id="uploadBtn">Upload here</button>
+          <input type="file" id="uploadInput" multiple hidden>
+        </div>
+        <table><thead><tr><th>Name</th><th class="num hide-sm">Size</th><th class="hide-sm">Modified</th><th></th></tr></thead><tbody id="fileRows"></tbody></table>
+      </div>
+    </section>
+
+    <!-- PHOTOS -->
+    <section data-panel="photos" hidden>
+      <div class="card" id="phGate" hidden></div>
+      <div id="phMain" hidden>
+        <div class="card">
+          <div class="toolbar">
+            <div class="seg" id="phType"><button data-t="all" class="on" type="button">All</button><button data-t="image" type="button">Photos</button><button data-t="video" type="button">Videos</button></div>
+            <select id="phAlbum" title="Album"></select>
+            <select id="phSort" title="Sort">
+              <option value="new">Newest first</option><option value="old">Oldest first</option><option value="big">Largest first</option>
+            </select>
+            <input type="search" id="phSearch" placeholder="Search names…">
+          </div>
+          <div class="toolbar" style="margin:0">
+            <span class="muted small" id="phSummary" style="flex:1"></span>
+            <button class="btn sm" id="phAdd" type="button">Add to phone…</button>
+            <input type="file" id="phAddInput" accept="image/*,video/*" multiple hidden>
+            <button class="btn sm" id="phDups" type="button">Find duplicates</button>
+            <button class="btn sm" id="phReload" type="button">Reload</button>
+          </div>
+          <div class="sub" id="phProgress" hidden style="margin-top:10px"></div>
+        </div>
+        <div class="selbar" id="phSelBar" hidden></div>
+        <div class="card" id="phDupHead" hidden></div>
+        <div id="phGrid"></div>
+      </div>
+    </section>
+
+    <!-- MUSIC -->
+    <section data-panel="music" hidden>
+      <div class="card" id="muGate" hidden></div>
+      <div id="muMain" hidden>
+        <div class="card mplayer" id="muPlayer" hidden></div>
+        <div class="card">
+          <div class="toolbar">
+            <div class="seg" id="muView"><button data-v="songs" class="on" type="button">Songs</button><button data-v="artist" type="button">Artists</button><button data-v="album" type="button">Albums</button><button data-v="folder" type="button">Folders</button></div>
+            <input type="search" id="muSearch" placeholder="Search songs, artists, albums…">
+          </div>
+          <div class="toolbar" style="margin:0">
+            <span class="muted small" id="muSummary" style="flex:1"></span>
+            <label class="small muted"><input type="checkbox" id="muAll"> Include recordings &amp; ringtones</label>
+            <button class="btn sm" id="muAdd" type="button">Add music…</button>
+            <input type="file" id="muAddInput" accept="audio/*,.mp3,.m4a,.flac,.ogg,.opus,.wav,.aac" multiple hidden>
+            <button class="btn sm" id="muDups" type="button">Find duplicates</button>
+            <button class="btn sm" id="muReload" type="button">Reload</button>
+          </div>
+          <div class="sub" id="muProgress" hidden style="margin-top:10px"></div>
+        </div>
+        <div class="selbar" id="muSelBar" hidden></div>
+        <div class="card" id="muBody"></div>
+      </div>
+    </section>
+
+    <!-- MESSAGES -->
+    <section data-panel="messages" hidden>
+      <div class="card" id="msgGate" hidden></div>
+      <div id="msgMain" hidden>
+        <div class="toolbar">
+          <input type="search" id="msgSearch" placeholder="Search messages, names or numbers…">
+          <button class="btn sm primary" id="msgNew">New message</button>
+          <button class="btn sm" id="msgExportXml" title="Compatible with the SMS Backup &amp; Restore app">Export XML</button>
+          <button class="btn sm" id="msgExportCsv">Export CSV</button>
+          <button class="btn sm" id="msgRestore" title="Put text messages from an exported XML file back on the phone">Restore…</button>
+          <input type="file" id="msgRestoreInput" accept=".xml,text/xml,application/xml" hidden>
+          <button class="btn sm" id="msgReload">Reload</button>
+        </div>
+        <div class="card" id="msgRestoreBox" hidden></div>
+        <div class="muted small" id="msgCount" style="margin-bottom:8px"></div>
+        <div class="msg-layout">
+          <div class="card thread-list" id="threadList"></div>
+          <div class="card thread-view" id="threadView"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACTS -->
+    <section data-panel="contacts" hidden>
+      <div class="card" id="ctGate" hidden></div>
+      <div id="ctMain" hidden>
+        <div class="card" id="ctImport" hidden></div>
+        <div class="card">
+          <div class="toolbar">
+            <input type="search" id="ctSearch" placeholder="Search name, number or email…">
+            <button class="btn sm primary" id="ctNew">New contact</button>
+            <button class="btn sm" id="ctDups" title="Contacts with the same phone number, e‑mail address or name">Find duplicates</button>
+            <button class="btn sm" id="ctImportBtn">Import vCard</button>
+            <input type="file" id="ctImportInput" accept=".vcf,text/vcard,text/x-vcard" hidden>
+            <button class="btn sm" id="ctExport">Export vCard</button>
+            <button class="btn sm" id="ctReload">Reload</button>
+          </div>
+          <div class="muted" id="ctCount" style="margin-bottom:6px"></div>
+          <div class="selbar" id="ctSelBar" hidden></div>
+          <table><thead><tr><th>Name</th><th>Phone</th><th class="hide-sm">Email</th></tr></thead><tbody id="ctRows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALL LOG -->
+    <section data-panel="calls" hidden>
+      <div class="card" id="callAlertCard"></div>
+      <div class="card" id="callGate" hidden></div>
+      <div class="card" id="callRestoreBox" hidden></div>
+      <div id="callMain" hidden>
+        <div class="card">
+          <div class="toolbar">
+            <input type="search" id="callSearch" placeholder="Search number or name…">
+            <div class="seg" id="callFilter">
+              <button data-f="" class="on">All</button><button data-f="1">Incoming</button><button data-f="2">Outgoing</button><button data-f="3">Missed</button>
+            </div>
+            <button class="btn sm" id="callExport">Export CSV</button>
+            <button class="btn sm" id="callRestore" title="Put calls from an exported CSV (or calls XML) file back in the phone's call log">Restore…</button>
+            <input type="file" id="callRestoreInput" accept=".csv,.xml,text/csv,text/xml" hidden>
+            <button class="btn sm" id="callReload">Reload</button>
+          </div>
+          <div class="muted" id="callCount" style="margin-bottom:6px"></div>
+          <table><thead><tr><th>Type</th><th>Contact</th><th class="hide-sm">Date</th><th class="num">Duration</th></tr></thead><tbody id="callRows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALENDAR (src/calendar.js builds the rest) -->
+    <section data-panel="calendar" hidden>
+      <div class="card" id="calGate" hidden></div>
+      <div id="calMain" hidden></div>
+    </section>
+
+    <!-- NOTIFICATIONS -->
+    <section data-panel="notifs" hidden>
+      <div class="card" id="ntGate" hidden></div>
+      <div class="card" id="ntCard"></div>
+      <div class="toolbar" id="ntBar" hidden>
+        <input type="search" id="ntSearch" placeholder="Search notifications…">
+        <select id="ntApp" title="App"><option value="">All apps</option></select>
+        <button class="btn sm" id="ntReload" type="button">Reload</button>
+        <button class="btn sm danger" id="ntClear" type="button">Clear all</button>
+      </div>
+      <div class="ntlist" id="ntList"></div>
+    </section>
+
+    <!-- CONTROLS -->
+    <section data-panel="controls" hidden>
+      <div class="toolbar" style="justify-content:space-between">
+        <span class="muted">Changes apply to the phone immediately.</span>
+        <button class="btn sm" id="refreshControls">Refresh</button>
+      </div>
+      <div id="controlsRoot"></div>
+    </section>
+
+    <!-- SCREEN MIRROR -->
+    <section data-panel="mirror" hidden>
+      <div class="card">
+        <div class="toolbar">
+          <button class="btn primary" id="mirrorStart">Start mirroring</button>
+          <button class="btn" id="mirrorStop" hidden>Stop</button>
+          <label class="muted small">Quality
+            <select id="mirrorQuality">
+              <option value="fast">Fast (720p · 4 Mbps)</option>
+              <option value="balanced" selected>Balanced (1080p · 8 Mbps)</option>
+              <option value="sharp">Sharp (full resolution · 16 Mbps)</option>
+            </select>
+          </label>
+          <label class="muted small">Show
+            <select id="mirrorSource">
+              <option value="screen" selected>Phone screen</option>
+              <option value="back">Back camera (Android 12+)</option>
+              <option value="front">Front camera (Android 12+)</option>
+            </select>
+          </label>
+          <label class="muted small" title="Plays the phone's sound on this computer. Android 11+; with a camera, the microphone is used."><input type="checkbox" id="mirrorAudio" checked> Sound</label>
+          <label class="muted small"><input type="checkbox" id="mirrorScreenOff"> Turn phone screen off while mirroring</label>
+          <span class="muted small" id="mirrorInfo"></span>
+        </div>
+        <div class="toolbar" id="mirrorKeys">
+          <button class="btn sm" data-k="back" title="Back (Esc or right-click)">◁ Back</button>
+          <button class="btn sm" data-k="home">○ Home</button>
+          <button class="btn sm" data-k="recents">▢ Recents</button>
+          <button class="btn sm" data-k="voldown" title="Volume down">Vol −</button>
+          <button class="btn sm" data-k="volup" title="Volume up">Vol +</button>
+          <button class="btn sm" data-k="power">Power</button>
+          <button class="btn sm" data-k="notif">Notifications</button>
+          <button class="btn sm" data-k="rotate">Rotate</button>
+          <button class="btn sm" data-k="screen" id="mirrorScreenToggle">Phone screen off</button>
+          <button class="btn sm" data-k="shot">Save frame</button>
+          <button class="btn sm" data-k="record" id="mirrorRecord" title="Record the mirrored screen (and sound) to an MP4 file">● Record</button>
+          <button class="btn sm" data-k="audio" hidden>🔊 Mute</button>
+          <button class="btn sm" data-k="full">Full screen</button>
+        </div>
+        <div class="mirror-idle" id="mirrorIdle">
+          <p><b>See and control your phone from this computer.</b></p>
+          <ul class="muted">
+            <li>Click = tap, drag = swipe, scroll wheel = scroll, right-click or Esc = Back.</li>
+            <li>Type on your keyboard to type on the phone. Cmd/Ctrl+V pastes your computer's clipboard; text copied on the phone is copied here too.</li>
+            <li>Sound plays on this computer (Android 11+). ● Record saves the picture and sound as an MP4 file.</li>
+            <li>Nothing is installed: a small screen-capture helper (scrcpy) runs only while mirroring.</li>
+          </ul>
+        </div>
+        <div class="mirror-stage" id="mirrorStage" hidden>
+          <canvas id="mirrorCanvas" tabindex="0" aria-label="Phone screen. Click to tap, type to send keys."></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEST AUTOMATION -->
+    <section data-panel="tests" hidden>
+      <div class="at-grid">
+        <div class="card at-phone">
+          <div class="toolbar">
+            <b>Phone screen</b>
+            <span class="chip" id="atState" hidden></span>
+          </div>
+          <div id="atIdle">
+            <p class="muted small" style="margin-top:0">Recording happens on a live picture of the phone. Tests can run without it.</p>
+            <button class="btn primary" id="atStart">Show the phone screen</button>
+          </div>
+          <div class="toolbar" id="atNav" hidden>
+            <button class="btn sm" data-k="back" title="Back (Esc or right-click)">◁ Back</button>
+            <button class="btn sm" data-k="home">○ Home</button>
+            <button class="btn sm" data-k="recents">▢ Recents</button>
+            <button class="btn sm" data-k="stop" title="Stop showing the phone screen">Hide</button>
+          </div>
+          <div id="atSlot"></div>
+        </div>
+        <div id="atRoot"></div>
+      </div>
+    </section>
+
+    <!-- DEBLOAT -->
+    <section data-panel="debloat" hidden>
+      <div class="card" id="dbIntro" hidden></div>
+      <div id="dbMain" hidden>
+        <div class="card">
+          <div class="toolbar">
+            <input type="search" id="dbSearch" placeholder="Search package or description…">
+            <select id="dbGroup"><option value="">All sources</option></select>
+            <button class="btn sm" id="dbUpdate" title="Download the latest list from UAD-ng on GitHub">Update list</button>
+          </div>
+          <div class="toolbar">
+            <div class="seg" id="dbSafety">
+              <button data-s="Recommended" class="on">Recommended</button><button data-s="Advanced">Advanced</button><button data-s="Expert">Expert</button><button data-s="Unsafe">Unsafe</button><button data-s="all">All</button>
+            </div>
+            <div class="seg" id="dbStatus">
+              <button data-s="present" class="on">On phone</button><button data-s="removed">Removed</button><button data-s="all">Both</button>
+            </div>
+            <span class="muted small" id="dbSafetyHint"></span>
+          </div>
+          <div class="notice" id="dbWarn" hidden></div>
+          <div class="toolbar">
+            <button class="btn sm" id="dbSelectAll">Select all shown</button>
+            <button class="btn sm danger" id="dbRemove" disabled title="Uninstall for this user (pm uninstall -k --user 0). Can be restored.">Remove selected</button>
+            <button class="btn sm" id="dbDisable" disabled title="Keep installed but stop it from running">Disable selected</button>
+            <button class="btn sm" id="dbRestore" disabled>Restore selected</button>
+            <span class="muted small" id="dbSelCount"></span>
+          </div>
+          <div class="muted small" id="dbCount" style="margin-bottom:6px"></div>
+          <table><thead><tr><th></th><th>App</th><th class="hide-sm">Source</th><th>Safety</th><th>Status</th></tr></thead><tbody id="dbRows"></tbody></table>
+          <p class="muted small" style="margin-bottom:0">Package descriptions and ratings: <a href="https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation" target="_blank" rel="noopener">Universal Android Debloater Next Generation</a> (GPL-3.0), downloaded on request.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- WI-FI TRANSFER -->
+    <section data-panel="wifi" hidden>
+      <div class="card" id="wifiUnavailable" hidden>Wi‑Fi transfer is only available in the Droid Desk desktop app.</div>
+      <div id="wifiMain">
+        <div class="card">
+          <div class="ctl" style="margin-bottom:12px">
+            <div><div><b>Wi‑Fi transfer</b></div><div class="sub" id="wifiStatus"></div></div>
+            <button class="switch" id="wifiSwitch" type="button"></button>
+          </div>
+          <div class="ctl" style="margin-bottom:12px;align-items:flex-start">
+            <div><div><b>Transfer method</b></div><div class="sub" id="wifiMethodNote"></div></div>
+            <div class="seg" id="wifiMethod">
+              <button data-m="auto" type="button">Auto</button>
+              <button data-m="lan" type="button">Same Wi‑Fi</button>
+              <button data-m="direct" type="button">Direct link</button>
+            </div>
+          </div>
+          <div class="sub" id="wifiLink" style="margin-bottom:12px" hidden></div>
+          <div class="toolbar" style="margin:0">
+            <span class="muted small">Received files go to</span>
+            <span class="mono small" id="wifiFolder" style="flex:1"></span>
+            <button class="btn sm" id="wifiChange">Change…</button>
+            <button class="btn sm" id="wifiOpen">Open folder</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="toolbar" style="justify-content:space-between">
+            <h2 style="margin:0">Nearby devices</h2>
+            <button class="btn sm" id="wifiScan" disabled>Scan again</button>
+          </div>
+          <div class="wifi-list" id="wifiDevices"></div>
+        </div>
+        <div class="card muted small">
+          <b>How it works:</b> on your phone, turn on <b>Receive</b> in Droid Desk Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>
+          <b>Methods:</b> <i>Same Wi‑Fi</i> goes through your router and works with both apps. <i>Direct link</i> (Droid Desk Companion only) has this computer join a private Wi‑Fi from the phone for the transfer: one hop instead of two, so much faster on 2.4 GHz or busy networks, but this computer has no internet until it reconnects (automatically, right after). <i>Auto</i> picks Direct link only for big transfers on slow Wi‑Fi.<br>
+          Everything is encrypted, nothing goes through the internet, and you're asked before any file is received. Droid Desk only listens on the network while this is on.
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREENSHOT -->
+    <section data-panel="screen" hidden>
+      <div class="card">
+        <div class="toolbar">
+          <button class="btn primary" id="shotBtn">Take screenshot</button>
+          <button class="btn" id="shotSave" disabled>Save PNG</button>
+          <span class="muted" id="shotInfo"></span>
+        </div>
+        <img class="shot" id="shotImg" alt="Phone screenshot" hidden>
+      </div>
+    </section>
+
+    <!-- SHELL -->
+    <!-- DEVELOPER (src/devtools.js, src/dev/*.js) -->
+    <section data-panel="dev" hidden>
+      <div class="dev-tabs"><div class="seg" id="devTabs" role="tablist"></div></div>
+      <div id="devRoot"></div>
+    </section>
+
+    <!-- APP TESTING (src/devtools.js › initAppTesting, src/qa/*.js) -->
+    <section data-panel="qa" hidden>
+      <div class="dev-tabs"><div class="seg" id="qaTabs" role="tablist"></div></div>
+      <div id="qaRoot"></div>
+    </section>
+
+    <section data-panel="shell" hidden>
+      <div class="card">
+        <form class="toolbar" id="shellForm">
+          <input type="text" id="shellCmd" class="mono" placeholder="e.g. dumpsys battery" autocomplete="off" spellcheck="false">
+          <button class="btn primary">Run</button>
+          <button class="btn" type="button" id="shellClear">Clear</button>
+        </form>
+        <pre class="out" id="shellOut"></pre>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+/* App testing › Traces (src/qa/trace.js) */
+[data-dev="trace"] .tr-w { min-width: 110px; }
+[data-dev="trace"] .seg { flex-wrap: wrap; }
+[data-dev="trace"] .tr-progress { margin-top: 10px; display: grid; gap: 6px; }
+[data-dev="trace"] .tr-progress .bar { margin-top: 0; }
+[data-dev="trace"] .tr-progress .bar > i { width: 0; transition: width .25s linear; }
+[data-dev="trace"] .tr-intro { margin: -4px 0 12px; font-size: 13px; }
+[data-dev="trace"] .tr-list { display: grid; gap: 8px; }
+[data-dev="trace"] .tr-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 20px; background: var(--panel-2); flex-wrap: wrap; }
+[data-dev="trace"] .tr-txt { flex: 1; min-width: 200px; }
+[data-dev="trace"] .tr-name { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+[data-dev="trace"] .tr-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+[data-dev="trace"] .tr-foot { margin: 0 6px 16px; }
