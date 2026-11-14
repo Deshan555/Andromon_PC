@@ -95,6 +95,34 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("inspector:event", h);
     },
   },
+  // ReVanced page: download ReVanced's tools, patch an APK on this computer (revanced.js).
+  // The page never names a path: an APK from the phone is streamed in, a dropped file crosses as its path only.
+  revanced: {
+    status: () => call("rv:status"),
+    recheckJava: () => call("rv:recheckJava"),
+    setup: () => call("rv:setup"),
+    patches: () => call("rv:patches"),
+    inputOpen: (name) => call("rv:inputOpen", String(name || "")),
+    inputWrite: (data) => call("rv:inputWrite", new Uint8Array(data)),
+    inputClose: (ok) => call("rv:inputClose", !!ok),
+    inputFile: (file) => call("rv:inputFile", webUtils.getPathForFile(file)),
+    patch: (opts) => call("rv:patch", {
+      patches: Array.isArray(opts?.patches) ? opts.patches.map(String) : [], force: !!opts?.force,
+      // { "<patch>": { "<setting>": "<value>" } }
+      options: Object.fromEntries(Object.entries(opts?.options || {}).map(([p, o]) => [String(p), Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [String(k), String(v)]))])),
+    }),
+    cancel: () => call("rv:cancel"),
+    toolInfo: () => call("rv:toolInfo"),
+    fetchTool: (which, huawei) => call("rv:fetchTool", String(which), !!huawei),
+    read: (which, offset, length) => call("rv:read", String(which), Number(offset) || 0, Number(length) || 0),
+    saveOutput: () => call("rv:saveOutput"),
+    clear: () => call("rv:clear"),
+    onEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on("rv:event", h);
+      return () => ipcRenderer.removeListener("rv:event", h);
+    },
+  },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),
     unlisten: (ruleId) => call("devnet:unlisten", String(ruleId)),

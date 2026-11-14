@@ -15,6 +15,7 @@ import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initShizuku } from "./shizuku.js";
+import { initRevanced } from "./revanced.js";
 import { initPeople } from "./people.js";
 import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
@@ -36,6 +37,7 @@ let apptesting = null; // App testing tab (./devtools.js › initAppTesting, ./q
 let people = null; // Contacts: photos, edit, delete, duplicates (./people.js), set up at the end of this file
 let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
+let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
 let shizukuCard = null; // "Start Shizuku" on the Overview (./shizuku.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
 const credentialStore = new AdbWebCredentialStore("DroidDesk");
@@ -122,7 +124,7 @@ function armedClick(btn, action) {
 
 // ---------- navigation ----------
 let current = "overview";
-const loaders = { overview: loadOverview, apps: loadApps, controls: loadControls, debloat: () => loadDebloat(),
+const loaders = { overview: loadOverview, apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
   messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => loadDir(cwd), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
 const offlineViews = { wifi: () => loadWifi() };
@@ -150,7 +152,7 @@ $("nav").addEventListener("click", (e) => {
 // Big light headings with an italic part, like the companion app's screens.
 const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
-  calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], files: ["Your ", "files"],
+  calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
   shell: ["ADB ", "shell"], wifi: ["Wi‑Fi ", "transfer"], calendar: ["Your ", "calendar"],
 };
@@ -4427,6 +4429,10 @@ apptesting = initAppTesting({
 
 // ---------- Shizuku on the Overview (see ./shizuku.js) ----------
 shizukuCard = initShizuku({ $, el, toast, sh, shQuote, actionBtn, getAdb: () => adb });
+
+// ---------- ReVanced page (see ./revanced.js) ----------
+revancedTab = initRevanced({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, appIdent, getAdb: () => adb });
+try { if (localStorage.getItem("dd.debug")) window.ddRevanced = revancedTab._debug; } catch {}
 
 // ---------- phone links (see ./links.js) ----------
 links = initLinks({

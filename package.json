@@ -41,6 +41,7 @@
       "apiclient.js",
       "traceview.js",
       "backupfs.js",
+      "revanced.js",
       "renderer/**/*",
       "!renderer/*.map"
     ],
