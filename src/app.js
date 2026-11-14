@@ -14,6 +14,7 @@ import { openPackageFiles, selectSplits, SENSITIVE_PERMISSIONS } from "./apk.js"
 import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
+import { initShizuku } from "./shizuku.js";
 import { initPeople } from "./people.js";
 import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
@@ -35,6 +36,7 @@ let apptesting = null; // App testing tab (./devtools.js › initAppTesting, ./q
 let people = null; // Contacts: photos, edit, delete, duplicates (./people.js), set up at the end of this file
 let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
+let shizukuCard = null; // "Start Shizuku" on the Overview (./shizuku.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
 const credentialStore = new AdbWebCredentialStore("DroidDesk");
 
@@ -700,6 +702,7 @@ async function loadOverview() {
       total ? fmtSize(total - used) : "—", "free"),
   );
   renderRamCard().catch((e) => console.warn("RAM manager card:", e));
+  shizukuCard?.render().catch((e) => console.warn("Shizuku card:", e));
   backup?.renderCard();
   // Chips under the name: what people check first.
   const via = phoneVia.get(adb) === "wifi" ? "Wi‑Fi" : "USB";
@@ -4421,6 +4424,9 @@ apptesting = initAppTesting({
   $, el, toast, showError, clearError, sh, shBytes, shQuote, withSync, download, armedClick, busy, makeSwitch, fmtSize,
   spinner, readAll, track, getAdb: () => adb,
 });
+
+// ---------- Shizuku on the Overview (see ./shizuku.js) ----------
+shizukuCard = initShizuku({ $, el, toast, sh, shQuote, actionBtn, getAdb: () => adb });
 
 // ---------- phone links (see ./links.js) ----------
 links = initLinks({
