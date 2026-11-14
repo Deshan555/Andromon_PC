@@ -42,6 +42,7 @@
       "traceview.js",
       "backupfs.js",
       "revanced.js",
+      "fdroid.js",
       "renderer/**/*",
       "!renderer/*.map"
     ],

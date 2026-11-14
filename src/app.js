@@ -16,6 +16,7 @@ import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initShizuku } from "./shizuku.js";
 import { initRevanced } from "./revanced.js";
+import { initFdroid } from "./fdroid.js";
 import { initPeople } from "./people.js";
 import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
@@ -38,6 +39,7 @@ let people = null; // Contacts: photos, edit, delete, duplicates (./people.js), 
 let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
 let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
+let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
 let shizukuCard = null; // "Start Shizuku" on the Overview (./shizuku.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
 const credentialStore = new AdbWebCredentialStore("DroidDesk");
@@ -127,7 +129,7 @@ let current = "overview";
 const loaders = { overview: loadOverview, apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
   messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => loadDir(cwd), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
-const offlineViews = { wifi: () => loadWifi() };
+const offlineViews = { wifi: () => loadWifi(), fdroid: () => fdroidTab.load() };
 // The sidebar's tools are in groups. A group folds when its heading is clicked; which ones are folded is remembered.
 const NAV_FOLD_KEY = "dd.navClosed";
 function setNavGroup(g, open) {
@@ -152,7 +154,7 @@ $("nav").addEventListener("click", (e) => {
 // Big light headings with an italic part, like the companion app's screens.
 const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
-  calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], files: ["Your ", "files"],
+  calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
   shell: ["ADB ", "shell"], wifi: ["Wi‑Fi ", "transfer"], calendar: ["Your ", "calendar"],
 };
@@ -634,7 +636,7 @@ function onDisconnected() {
   connectedVia = null;
   setTimeout(() => { renderWadbIntro(); renderWadbSetup(); }, 0);
   resetSessionState();
-  setConnected(false); toast("Phone disconnected"); if (!offlineViews[current]) show("overview");
+  setConnected(false); toast("Phone disconnected"); if (!offlineViews[current]) show("overview"); else if (current === "fdroid") show("fdroid");
 }
 // Forgets everything that belongs to the phone in use (on disconnect, and when switching phones).
 function resetSessionState() {
@@ -4433,6 +4435,9 @@ shizukuCard = initShizuku({ $, el, toast, sh, shQuote, actionBtn, getAdb: () => 
 // ---------- ReVanced page (see ./revanced.js) ----------
 revancedTab = initRevanced({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, appIdent, getAdb: () => adb });
 try { if (localStorage.getItem("dd.debug")) window.ddRevanced = revancedTab._debug; } catch {}
+
+// ---------- F-Droid page (see ./fdroid.js) ----------
+fdroidTab = initFdroid({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, getAdb: () => adb });
 
 // ---------- phone links (see ./links.js) ----------
 links = initLinks({

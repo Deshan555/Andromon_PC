@@ -7,6 +7,9 @@ const call = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch((e
   throw new Error(String(e?.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ""));
 });
 
+// The phone's Android level and CPU types, for choosing an app version that fits (F-Droid page).
+const fdPhone = (p) => (p && Number(p.sdk) > 0 ? { sdk: Number(p.sdk), abis: Array.from(p.abis || [], String) } : null);
+
 contextBridge.exposeInMainWorld("droidDesk", {
   // Stops any adb server on this PC so WebUSB can claim the phone.
   adb: { release: () => call("adb:release") },
@@ -121,6 +124,30 @@ contextBridge.exposeInMainWorld("droidDesk", {
       const h = (_e, ev) => cb(ev);
       ipcRenderer.on("rv:event", h);
       return () => ipcRenderer.removeListener("rv:event", h);
+    },
+  },
+  // F-Droid page: F-Droid's catalogue of free apps, and an app's APK to install (fdroid.js).
+  // The page never names a path or an address: an app is asked for by package name and version code.
+  fdroid: {
+    status: () => call("fd:status"),
+    update: () => call("fd:update"),
+    // { q, category, sort, offset, limit, phone: { sdk, abis } }
+    search: (o) => call("fd:search", {
+      q: String(o?.q || ""), category: String(o?.category || ""), sort: String(o?.sort || ""),
+      offset: Number(o?.offset) || 0, limit: Number(o?.limit) || 0, phone: fdPhone(o?.phone),
+    }),
+    lookup: (pkgs, phone) => call("fd:lookup", Array.from(pkgs || [], String), fdPhone(phone)),
+    app: (pkg, phone) => call("fd:app", String(pkg), fdPhone(phone)),
+    icon: (pkg) => call("fd:icon", String(pkg)),
+    fetch: (pkg, code) => call("fd:fetch", String(pkg), Number(code)),
+    read: (offset, length) => call("fd:read", Number(offset) || 0, Number(length) || 0),
+    save: () => call("fd:save"),
+    cancel: () => call("fd:cancel"),
+    clear: () => call("fd:clear"),
+    onEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on("fd:event", h);
+      return () => ipcRenderer.removeListener("fd:event", h);
     },
   },
   devnet: {

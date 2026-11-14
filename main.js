@@ -15,6 +15,7 @@ const { setupTraceView } = require("./traceview.js");
 const { setupInspector } = require("./inspector.js");
 const { setupBackupFs } = require("./backupfs.js");
 const { setupRevanced } = require("./revanced.js");
+const { setupFdroid } = require("./fdroid.js");
 
 const RENDERER_DIR = path.join(__dirname, "renderer");
 const ORIGIN = "app://droiddesk";
@@ -152,6 +153,7 @@ function setupWifi() {
   inspector = setupInspector(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // App testing › API calls
   setupBackupFs(handle, { userData: app.getPath("userData"), readSettings, writeSettings }); // Phone backup, restore, automatic photo copy
   revanced = setupRevanced(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // ReVanced page
+  fdroid = setupFdroid(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // F-Droid page
   const method = (m) => (["auto", "lan", "direct"].includes(m) ? m : readSettings().wifiMethod || "auto");
   handle("wifi:status", () => ({ ...wifi.status(), method: method() }));
   handle("wifi:setMethod", (_e, m) => { if (["auto", "lan", "direct"].includes(m)) writeSettings({ wifiMethod: m }); return method(); });
@@ -193,6 +195,7 @@ function setupWifi() {
 // Only loopback, only our own UI, at most MAX_LINKS connections at a time.
 let inspector = null; // App testing › API calls proxy (inspector.js)
 let revanced = null; // ReVanced page: the patcher process (revanced.js)
+let fdroid = null; // F-Droid page: catalogue and app downloads (fdroid.js)
 let devnetStopAll = () => {};
 function setupDevnet(handle) {
   const nodeNet = require("node:net");
@@ -500,7 +503,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("before-quit", () => { wifi?.stop(); devnetStopAll(); inspector?.stop().catch(() => {}); revanced?.stop(); });
+app.on("before-quit", () => { wifi?.stop(); devnetStopAll(); inspector?.stop().catch(() => {}); revanced?.stop(); fdroid?.stop(); });
 
 app.on("window-all-closed", () => {
   wifi?.stop(); // never leave a network listener running without a window to ask for consent
