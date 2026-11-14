@@ -47,7 +47,8 @@
       "!renderer/*.map"
     ],
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "mac": {
       "target": [
@@ -62,7 +63,8 @@
       "category": "public.app-category.utilities",
       "extendInfo": {
         "NSUserNotificationAlertStyle": "alert"
-      }
+      },
+      "icon": "build/icon.png"
     },
     "win": {
       "target": [
@@ -73,12 +75,48 @@
             "arm64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
+      "include": "build/installer.nsh",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Droid Desk",
+      "uninstallDisplayName": "Droid Desk",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "copyright": "Droid Desk",
+    "dmg": {
+      "title": "Install ${productName}",
+      "background": "build/background.png",
+      "iconSize": 96,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 200
+        },
+        {
+          "x": 390,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
   }
 }

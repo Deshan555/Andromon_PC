@@ -165,8 +165,10 @@ npm run build:uihelper    # rebuild uihelper/ into renderer/ui-helper.jar (needs
 
 ```sh
 npm run dist:mac   # -> dist/Droid Desk-0.1.0-arm64.dmg and -x64.dmg   (run on a Mac)
-npm run dist:win   # -> dist/Droid Desk-0.1.0-*.exe (x64 + ARM64)      (best run on Windows)
+npm run dist:win   # -> dist/Droid Desk-Setup-0.1.0-*.exe (x64 + ARM64) (best run on Windows)
 ```
+The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icns` / `.ico` by electron-builder), the Windows setup wizard's pictures (`installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`) and its welcome texts (`installer.nsh`), and the macOS disk image's background (`background.png`, `@2x`). The Windows wizard's pages: Welcome › install for me or for everyone › folder › installing › Finish (with "Run Droid Desk"), plus desktop and Start menu shortcuts and an uninstaller that keeps settings. Add `build/license.txt` to get a licence page.
+
 
 Or push the repo to GitHub and run **Actions → Build desktop app**. The workflow is `.github/workflows/desktop.yml`. It builds both installers and attaches them to the run.
 
