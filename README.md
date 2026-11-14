@@ -6,7 +6,7 @@ This is the "Phase 1 – ADB-only" design.
 
 ## Features
 
-The window uses the same design as Droid Desk Companion on the phone: Poppins type, big light headings with an italic part, a black navigation rail with a white pill for the open tool, pastel cards on a soft grey home page, a pastel colour for each tool page with glass cards on top, and black pill buttons. It follows the system's light or dark mode.
+The window uses the same design as the companion app on the phone: brand colours lime `#E3F786`, green `#9CD237`, ink `#292A2C` and white; a light grey page with off-white cards, one lime-to-green gradient hero card on the Overview, big light headings, dark pill buttons, and a dark navigation rail whose open tool sits on white. It follows the system's light or dark mode unless **Settings** says otherwise.
 
 The sidebar groups the tools: **Communication** (Messages, Contacts, Call log, Calendar, Notifications), **Files & media** (Files, Photos, Music, Wi‑Fi transfer), **Device** (Apps, Debloat, Controls, Screen mirror, Screenshot) and **Developer** (Test automation, App testing, Developer, Shell). Click a group's heading to fold it; Developer starts folded, and the choice is remembered.
 
@@ -228,7 +228,7 @@ pc/
 | UAD-ng package list | GPL-3.0 | **Not bundled.** Downloaded from GitHub only when the user clicks "Download the list", then cached |
 | qrcode-generator (QR code for pairing) | MIT | Bundled into the renderer |
 | Poppins font, subset to Latin (same files as the companion) | SIL OFL 1.1 | `renderer/fonts/`, licence in `renderer/fonts/OFL.txt` |
-| Icon path data based on Material Icons (Google LLC) | Apache-2.0 | Inline SVGs in the sidebar and overview (same icons as the companion) |
+| [Lucide](https://lucide.dev) icons | ISC (parts derived from Feather, MIT) | Inline SVGs in the sidebar and overview (same icon set as the companion) |
 | LocalSend protocol | Apache-2.0 (spec) | Implemented from the spec; no LocalSend code is included |
 
 ## Security

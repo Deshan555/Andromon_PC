@@ -701,14 +701,36 @@ async function loadOverview() {
   );
   renderRamCard().catch((e) => console.warn("RAM manager card:", e));
   backup?.renderCard();
+  // Chips under the name: what people check first.
+  const via = phoneVia.get(adb) === "wifi" ? "Wi‑Fi" : "USB";
+  $("devChips").replaceChildren(...[
+    `Android ${props["ro.build.version.release"] || "?"}`, via,
+    isFinite(up) ? `On for ${Math.floor(up / 86400)}d ${Math.floor(up % 86400 / 3600)}h` : "",
+  ].filter(Boolean).map((t) => el("span", { className: "chip", textContent: t })));
+  // The details as a compact list; click a row to copy its value.
   const grid = $("infoGrid"); grid.replaceChildren();
-  for (const [k, v, frac] of items.filter(([k]) => k !== "Battery" && k !== "Storage (/data)")) {
-    const card = el("div", { className: "stat" }, el("div", { className: "k", textContent: k }), el("div", { className: "v", textContent: v }));
-    if (frac != null && isFinite(frac)) {
-      const i = el("i"); i.style.width = Math.round(Math.min(1, frac) * 100) + "%";
-      card.append(el("div", { className: "bar" }, i));
-    }
-    grid.append(card);
+  for (const [k, v] of items.filter(([k]) => k !== "Battery" && k !== "Storage (/data)")) {
+    const row = el("button", { type: "button", title: "Click to copy" }, el("span", { className: "k", textContent: k }), el("span", { className: "v", textContent: v }));
+    row.onclick = () => navigator.clipboard.writeText(String(v)).then(() => toast(`${k} copied`), () => {});
+    grid.append(row);
+  }
+  renderQuick();
+}
+
+// Shortcuts on the Overview: the tools people open most, one click away. Icons are the sidebar's own.
+const QUICK = [
+  ["mirror", "Screen mirror", "See and use the phone here"], ["screen", "Screenshot", "Save what's on screen"],
+  ["files", "Files", "Copy to and from the phone"], ["photos", "Photos", "Browse and back up"],
+  ["apps", "Apps", "Install or remove"], ["messages", "Messages", "Read and reply"],
+];
+function renderQuick() {
+  const box = $("ovQuick");
+  if (box.childNodes.length) return;
+  for (const [view, label, sub] of QUICK) {
+    const icon = $("nav").querySelector(`[data-view="${view}"] svg`)?.cloneNode(true);
+    const b = el("button", { type: "button" }, ...(icon ? [icon] : []), el("span", {}, label, el("small", { textContent: sub })));
+    b.onclick = () => show(view);
+    box.append(b);
   }
 }
 
@@ -796,9 +818,10 @@ async function renderRamCard() {
   );
 }
 
-const svgIcon = (d) => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); const p = document.createElementNS(s.namespaceURI, "path"); p.setAttribute("d", d); s.append(p); return s; };
-const ICON_BOLT = "M7,2v11h3v9l7,-12h-4l4,-8z";
-const ICON_SD = "M18,2h-8L4.02,8 4,20c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM12,8h-2V4h2v4zM15,8h-2V4h2v4zM18,8h-2V4h2v4z";
+// Icons are Lucide (lucide.dev, ISC License): outlines, stroked by the stylesheet. An icon is a list of path strings.
+const svgIcon = (paths) => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); for (const d of paths) { const p = document.createElementNS(s.namespaceURI, "path"); p.setAttribute("d", d); s.append(p); } return s; };
+const ICON_BOLT = ["M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"];
+const ICON_SD = ["M10 16h.01", "M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z", "M21.946 12.013H2.054", "M6 16h.01"];
 /** Pastel card with a big number and a ring, as on the companion's home screen. */
 function heroCard(label, icon, value, unit, sub, frac, ringValue, ringLabel) {
   const ring = el("div", { className: "ring" }, el("div", {}, el("b", { textContent: ringValue }), el("span", { textContent: ringLabel })));
@@ -2859,6 +2882,37 @@ const MIRROR_QUALITY = {
 };
 let mirror = null; // { client, decoder, canvas, controller, screenOff, stopping }
 
+// The options on the mirror page, remembered between launches; Settings edits the same ones.
+const mirrorPrefs = {
+  QUALITY: [["fast", "Fast (720p · 4 Mbps)"], ["balanced", "Balanced (1080p · 8 Mbps)"], ["sharp", "Sharp (full resolution · 16 Mbps)"]],
+  SOURCE: [["screen", "Phone screen"], ["back", "Back camera"], ["front", "Front camera"]],
+  FPS: [["60", "Up to 60 a second"], ["30", "Up to 30 a second"], ["15", "Up to 15 a second"]],
+  get() {
+    let p = {}; try { p = JSON.parse(localStorage.getItem("dd.mirror")) || {}; } catch {}
+    const one = (list, v, d) => (list.some(([id]) => id === String(v)) ? v : d);
+    return {
+      quality: one(this.QUALITY, p.quality, "balanced"), source: one(this.SOURCE, p.source, "screen"),
+      audio: p.audio !== false, screenOff: p.screenOff === true, fps: Number(one(this.FPS, p.fps, 60)),
+    };
+  },
+  set(patch) {
+    try { localStorage.setItem("dd.mirror", JSON.stringify({ ...this.get(), ...patch })); } catch {}
+    this.show();
+  },
+  show() {
+    const p = this.get();
+    $("mirrorQuality").value = p.quality; $("mirrorSource").value = p.source;
+    $("mirrorAudio").checked = p.audio; $("mirrorScreenOff").checked = p.screenOff;
+  },
+};
+mirrorPrefs.show();
+$("mirrorQuality").addEventListener("change", (e) => mirrorPrefs.set({ quality: e.target.value }));
+$("mirrorSource").addEventListener("change", (e) => mirrorPrefs.set({ source: e.target.value }));
+$("mirrorAudio").addEventListener("change", (e) => mirrorPrefs.set({ audio: e.target.checked }));
+$("mirrorScreenOff").addEventListener("change", (e) => mirrorPrefs.set({ screenOff: e.target.checked }));
+// A control's label sits in a <span> beside its icon.
+const keyLabel = (btn, text) => { btn.querySelector("span").textContent = text; };
+
 function mirrorUi(on) {
   $("mirrorStart").hidden = on; $("mirrorStop").hidden = !on;
   $("mirrorQuality").disabled = on; $("mirrorSource").disabled = on; $("mirrorAudio").disabled = on;
@@ -2866,6 +2920,8 @@ function mirrorUi(on) {
   recUi(null);
   for (const b of $("mirrorKeys").querySelectorAll("button")) b.disabled = !on;
   $("mirrorIdle").hidden = on; $("mirrorStage").hidden = !on;
+  $("mirrorRoot").classList.toggle("on", on);
+  if (!on) { $("mirrorInfo").textContent = "Not mirroring"; keyLabel($("mirrorScreenToggle"), "Screen off"); $("mirrorScreenToggle").classList.remove("on"); }
   autotest?.onMirror(on);
 }
 mirrorUi(false);
@@ -2887,7 +2943,7 @@ async function startMirror() {
     const source = $("mirrorSource").value; // screen | back | front
     const options = new AdbScrcpyOptions3_3_3({
       ...q,
-      maxFps: 60,
+      maxFps: mirrorPrefs.get().fps,
       videoCodec: "h264",
       // Camera mirroring needs Android 12+. The phone's audio needs Android 11+ (with a camera
       // source, scrcpy records the microphone instead).
@@ -2902,7 +2958,7 @@ async function startMirror() {
     }, { version: SCRCPY_VERSION });
     client = await AdbScrcpyClient.start(adb, DefaultServerPath, options);
   } catch (e) {
-    busy(btn, false); info.textContent = "";
+    busy(btn, false); info.textContent = "Not mirroring";
     if (e instanceof AdbScrcpyExitedError) {
       const tail = e.output.filter(Boolean).slice(-6).join("\n");
       throw new Error("The phone refused to start screen capture:\n" + (tail || "no output"));
@@ -2959,7 +3015,7 @@ async function stopMirror(message) {
   try { await m.client.close(); } catch {}
   try { m.decoder.dispose(); } catch {}
   stopAudio(m);
-  mirrorUi(false); $("mirrorInfo").textContent = "";
+  mirrorUi(false);
   if (message) toast(message);
 }
 
@@ -3011,7 +3067,8 @@ function stopAudio(m) {
 function setMuted(on) {
   audioMuted = on;
   if (mirror?.audio) mirror.audio.gain.gain.value = on ? 0 : 1;
-  $("mirrorKeys").querySelector('[data-k="audio"]').textContent = on ? "🔇 Unmute" : "🔊 Mute";
+  const mute = $("mirrorKeys").querySelector('[data-k="audio"]');
+  keyLabel(mute, on ? "Unmute" : "Mute"); mute.classList.toggle("on", on);
 }
 
 // --- recording to MP4 (Mediabunny muxes the phone's own H.264 + Opus packets; nothing is re-encoded) ---
@@ -3101,17 +3158,17 @@ function recUi(m) {
   const b = $("mirrorRecord");
   const rec = m === mirror ? m?.rec : null;
   b.classList.toggle("rec-on", !!rec);
-  if (!rec) { b.textContent = "● Record"; return; }
-  if (rec.t0 == null) { b.textContent = "■ Waiting for picture…"; return; }
+  if (!rec) { keyLabel(b, "Record"); return; }
+  if (rec.t0 == null) { keyLabel(b, "Waiting for picture…"); return; }
   const s = Math.floor((Date.now() - rec.started) / 1000);
-  b.textContent = `■ Stop ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · ${fmtSize(rec.bytes)}`;
+  keyLabel(b, `Stop ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · ${fmtSize(rec.bytes)}`);
 }
 
 function setPhoneScreen(on) {
   if (!mirror?.controller) return;
   mirror.controller.setScreenPowerMode(on ? AndroidScreenPowerMode.Normal : AndroidScreenPowerMode.Off).catch(showError);
   mirror.screenOff = !on;
-  $("mirrorScreenToggle").textContent = on ? "Phone screen off" : "Phone screen on";
+  keyLabel($("mirrorScreenToggle"), on ? "Screen off" : "Screen on"); $("mirrorScreenToggle").classList.toggle("on", !on);
 }
 
 // --- input: mouse / touch / pen -> Android touches ---
@@ -4386,3 +4443,6 @@ backup = initBackup({
   contactsChanged: () => { contactsCache = null; },
   installApk: (parts, label, pkgName, progress) => runInstall({ pkg: { info: { label, package: pkgName }, obb: [] }, pick: { chosen: parts } }, progress),
 });
+
+// The header stays in place while a page scrolls; its height tells sticky parts of a page where to stop.
+new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));

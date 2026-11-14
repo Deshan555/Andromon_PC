@@ -86,7 +86,7 @@ function allowWebUsb() {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1180,
-    height: 780,
+    height: 820,
     minWidth: 760,
     minHeight: 520,
     title: "Droid Desk",
