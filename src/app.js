@@ -1622,7 +1622,7 @@ async function refreshControls() {
 // It only accepts connections from adbd (shell uid), so other apps on the phone can't use it.
 const COMPANION_PKG = "dev.droiddesk.companion";
 const COMPANION_SOCKET = "droiddesk_companion";
-const COMPANION_VERSION = 24; // keep in sync with versionCode in android/app/build.gradle.kts
+const COMPANION_VERSION = 29; // keep in sync with versionCode in android/app/build.gradle.kts
 let companionInfo = null;
 
 class CompanionUnavailable extends Error {
