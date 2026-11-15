@@ -6,6 +6,14 @@ This is the "Phase 1 – ADB-only" design.
 
 **New here?** The [user guide](docs/USER_GUIDE.md) shows every page with screenshots and explains each option.
 
+## Download
+
+- **Droid Desk for macOS, Windows and Linux:** [Releases](https://github.com/Deshan555/Andromon_PC/releases). Each release lists its installers (`.dmg`, `.exe`, `.AppImage` / `.deb`) under **Assets**; pick the one for your computer.
+- **Droid Desk Companion for Android (APK):** [Releases of the companion app](https://github.com/Deshan555/Andromon-android/releases). You normally don't need it: Droid Desk installs its bundled copy on the phone by itself.
+- **Builds that are not released yet:** open the newest green run under [Actions](https://github.com/Deshan555/Andromon_PC/actions/workflows/desktop.yml) and download its **Artifacts** (needs a GitHub sign-in; kept for 90 days).
+
+Releases are made by the build as **drafts**: a release shows on the Releases page once it has been published (see [Build installers](#build-installers)).
+
 ## Features
 
 The window uses the same design as the companion app on the phone: brand colours lime `#E3F786`, green `#9CD237`, ink `#292A2C` and white; a light grey page with off-white cards, one lime-to-green gradient hero card on the Overview, big light headings, dark pill buttons, and a dark navigation rail whose open tool sits on white. It follows the system's light or dark mode unless **Settings** says otherwise.
