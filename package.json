@@ -47,6 +47,7 @@
       "appsettings.js",
       "updater.js",
       "build-info.json",
+      "requirements.js",
       "renderer/**/*",
       "!renderer/*.map"
     ],
@@ -143,6 +144,12 @@
       "synopsis": "Android phone manager",
       "maintainer": "Deshan555 <Deshan555@users.noreply.github.com>",
       "syncDesktopName": true
+    },
+    "deb": {
+      "recommends": [
+        "default-jre",
+        "android-sdk-platform-tools-common"
+      ]
     }
   },
   "homepage": "https://github.com/Deshan555/Andromon_PC",

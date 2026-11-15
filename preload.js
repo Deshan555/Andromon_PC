@@ -178,6 +178,12 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("upd:event", h);
     },
   },
+  // Settings › This computer: the tools Droid Desk can use (Java, adb…) and whether they are installed (requirements.js).
+  system: {
+    requirements: (force) => call("sys:requirements", !!force),
+    openPage: (id) => call("sys:openPage", String(id)),
+    install: (id) => call("sys:install", String(id)),
+  },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),
     unlisten: (ruleId) => call("devnet:unlisten", String(ruleId)),

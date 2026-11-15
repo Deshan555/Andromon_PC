@@ -551,7 +551,7 @@ function setupRevanced(handle, { userData, getWindow }) {
   handle("rv:saveOutput", (event) => saveOutput(event));
   handle("rv:clear", () => clear());
 
-  return { stop: () => { if (child) { cancelled = true; child.kill(); } } };
+  return { stop: () => { if (child) { cancelled = true; child.kill(); } }, findJava, minJava: MIN_JAVA };
 }
 
 module.exports = { setupRevanced, parsePatchList, verifyDetached };

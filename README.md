@@ -197,6 +197,8 @@ The first time, create the branch with `git push origin main:release`.
 
 The workflow can also be started by hand from **Actions → Build desktop app → Run workflow**; that run only attaches the installers.
 
+**Optional tools:** Droid Desk needs nothing else to connect a phone. Java 17+ is needed only for ReVanced patching, and the Android platform tools (adb) only for people who use adb in a terminal. **Settings › This computer** shows what is installed, with its version and path (`requirements.js`), and offers Install (Windows, through winget) or the download page. The Windows setup wizard has an **Optional tools** page (`build/installer.nsh`): nothing is ticked by default, and a ticked tool is installed with winget before Droid Desk's files are copied. The `.deb` lists `default-jre` and `android-sdk-platform-tools-common` as recommended packages, so apt installs them alongside by default. The macOS disk image has no install step, so on a Mac use Settings.
+
 **Linux:** the AppImage runs after `chmod +x`; the `.deb` installs with `sudo apt install ./Droid-Desk-0.1.0-amd64.deb`. To let the app reach a phone over USB without root, the phone needs a udev rule (the `android-udev-rules` or `android-sdk-platform-tools-common` package provides them). The Linux build has not been run on a Linux computer yet.
 
 **Unsigned builds:**

@@ -195,6 +195,24 @@ export function initSettings(ctx) {
     ];
   }
 
+  // ---------- this computer: the tools Droid Desk can use, and whether they are installed ----------
+  function computerSection() {
+    const sys = data.sys;
+    const BADGE = { ok: ["Installed", "on"], old: ["Too old", "warn"], missing: ["Not installed", "warn"], optional: ["Optional", "neutral"], unknown: ["Can't tell", "neutral"] };
+    const rows = !sys ? [row("Checking this computer…", "", "")] : sys.items.map((it) => {
+      const [label, cls] = BADGE[it.state] || BADGE.unknown;
+      const buttons = [];
+      if (it.install) buttons.push(action("Install", "Installing…", async () => { data.sys = await api.system.install(it.id); toast(`${it.name} is installed`); }, "primary"));
+      if (it.page && it.state !== "ok") buttons.push(action(it.install ? "Download page" : "Get it", "Opening…", () => api.system.openPage(it.id)));
+      return el("div", { className: "set-row" },
+        el("div", { className: "set-text" }, el("b", {}, it.name, " ", el("span", { className: `badge ${cls}`, textContent: label })),
+          el("div", { className: "sub", textContent: it.why }), el("div", { className: "sub set-path", textContent: it.detail, title: it.detail })),
+        group(...buttons));
+    });
+    rows.push(row("Check again", "After installing something, look for it again", group(action("Check again", "Checking…", async () => { data.sys = await api.system.requirements(true); }))));
+    return section("This computer", ...rows);
+  }
+
   function downloadsSection() {
     const { rv, fd, uad, info } = data;
     const size = (n) => (n ? ` · ${fmtSize(n)} on this computer` : "");
@@ -253,6 +271,7 @@ export function initSettings(ctx) {
     parts.push(section("Phone link", ...link));
     parts.push(mirrorSection());
     if (api.app) parts.push(savingSection());
+    if (api.system) parts.push(computerSection());
     parts.push(downloadsSection());
     const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noreferrer" });
     parts.push(section("About",
