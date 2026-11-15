@@ -13,6 +13,8 @@ const fdPhone = (p) => (p && Number(p.sdk) > 0 ? { sdk: Number(p.sdk), abis: Arr
 contextBridge.exposeInMainWorld("droidDesk", {
   // Stops any adb server on this PC so WebUSB can claim the phone.
   adb: { release: () => call("adb:release") },
+  // Screen mirror › Keep on top: the window stays above other windows.
+  win: { setOnTop: (on) => call("win:setOnTop", !!on) },
   // Wireless debugging (wadb.js). The ADB byte stream itself arrives as a MessagePort, forwarded
   // below to the page with window.postMessage.
   wadb: {

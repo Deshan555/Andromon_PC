@@ -572,23 +572,9 @@ export function initBackup(h) {
       }
     };
 
-    // Automatic photo copy
-    const autoFolder = el("span", { className: "bk-path", textContent: photoFolder ? photoFolder.path + (photoFolder.exists ? "" : "  (not found)") : "No folder chosen yet" });
-    const autoChoose = el("button", { className: "btn sm", type: "button", textContent: photoFolder ? "Change…" : "Choose folder…" });
-    const autoSwitch = makeSwitch(lsGet(AUTO_KEY, false) && !!photoFolder, async (want) => {
-      if (want && !(await fsApi.get("photos"))?.exists) {
-        const f = await fsApi.choose("photos");
-        if (!f) return false;
-        autoFolder.textContent = f.path; autoChoose.textContent = "Change…";
-      }
-      lsSet(AUTO_KEY, !!want);
-      if (want) autoPhotos({ manual: true });
-      return !!want;
-    });
-    autoChoose.onclick = async () => { try { const f = await fsApi.choose("photos"); if (f) { autoFolder.textContent = f.path; autoChoose.textContent = "Change…"; } } catch (e) { showError(e); } };
     const autoNote = el("div", { className: "sub", id: "bkAutoNote", textContent: lastAuto });
 
-    // The page is three cards: back up, restore, and the automatic photo copy.
+    // The page is three cards: back up, restore, and what the automatic photo copy last did.
     card.replaceChildren(
       el("div", { className: "card" },
         el("h2", { textContent: "Back up this phone" }),
@@ -602,11 +588,12 @@ export function initBackup(h) {
         el("h2", { textContent: "Restore from a backup" }),
         el("p", { className: "muted", textContent: "Choose a backup folder, see what it holds and pick the parts to put back on this phone. Only what isn't on the phone yet is added; nothing is deleted or replaced." }),
         el("div", { className: "toolbar", style: "margin:0" }, restore)),
+      // The switch and its folder are in Settings › Phone link; this card says what the last copy did.
       el("div", { className: "card" },
         el("h2", { textContent: "Automatic photo copy" }),
-        el("div", { className: "bk-row" }, autoSwitch, el("span", { className: "pd-grow" }, el("b", { textContent: "Copy new photos to this computer when the phone connects" }),
-          el("span", { className: "sub", textContent: "Over USB or Wi‑Fi. Only photos and videos that aren't in the folder yet are copied; nothing is ever deleted, here or on the phone." }))),
-        el("div", { className: "bk-row" }, el("span", { className: "muted small", textContent: "Folder" }), autoFolder, autoChoose), autoNote));
+        el("p", { className: "muted", textContent: "Copies new photos and videos to this computer each time the phone connects." }),
+        el("div", { className: "bk-row" }, el("span", { className: "pd-grow" }, el("b", { textContent: lsGet(AUTO_KEY, false) && photoFolder ? "On" : "Off" }),
+          el("span", { className: "sub", textContent: photoFolder ? ` Folder: ${photoFolder.path}` : " Switch it on in Settings." })), settingsBtn()), autoNote));
     if (boxes.get("photos").checked) showEstimate();
   }
 
@@ -686,7 +673,20 @@ export function initBackup(h) {
     } finally { autoJob = null; }
   }
 
+  const settingsBtn = () => { const b = el("button", { className: "btn sm", type: "button", textContent: "Change in Settings" }); b.onclick = () => h.showSettings(); return b; };
   return {
+    // Settings › Phone link: copy new photos to this computer whenever the phone connects.
+    auto: {
+      folder: () => fsApi.get("photos").catch(() => null),
+      choose: () => fsApi.choose("photos"),
+      get: async () => lsGet(AUTO_KEY, false) && !!(await fsApi.get("photos").catch(() => null)),
+      async set(want) {
+        if (want && !(await fsApi.get("photos"))?.exists && !(await fsApi.choose("photos"))) return false;
+        lsSet(AUTO_KEY, !!want);
+        if (want && h.getAdb()) autoPhotos({ manual: true });
+        return !!want;
+      },
+    },
     renderCard: () => renderCard().catch((e) => console.warn("Backup card:", e)),
     onConnected() {
       estimate = null; lastAuto = "";

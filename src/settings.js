@@ -61,17 +61,19 @@ export function initSettings(ctx) {
 
 
   // ---------- what the sections below show; filled in by refresh() ----------
-  const data = { info: null, wifi: null, rv: null, fd: null, uad: undefined, upd: null };
+  const data = { info: null, wifi: null, rv: null, fd: null, uad: undefined, upd: null, photo: null, sys: null };
   let gen = 0;
   async function refresh() {
     const mine = ++gen;
-    const [info, wifi, rv, fd, uad, upd] = await Promise.all([
+    const [info, wifi, rv, fd, uad, upd, photo, sys] = await Promise.all([
       api.app?.info().catch(() => null), api.wifi?.status().catch(() => null),
       api.revanced?.status().catch(() => null), api.fdroid?.status().catch(() => null),
       ctx.uad.read().catch(() => null), api.updates?.status().catch(() => null),
+      (async () => { const p = ctx.photoCopy(); return p ? { on: await p.get(), folder: await p.folder() } : null; })().catch(() => null),
+      api.system?.requirements(false).catch(() => null),
     ]);
     if (mine !== gen) return;
-    Object.assign(data, { info, wifi, rv, fd, uad, upd });
+    Object.assign(data, { info, wifi, rv, fd, uad, upd, photo, sys });
     if (!panel.hidden) render();
   }
 
@@ -128,6 +130,76 @@ export function initSettings(ctx) {
     return b;
   };
 
+  function phoneLinkSection() {
+    const rows = [row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
+      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; }))];
+    if (ctx.wifiAuto) rows.push(row("Connect over Wi‑Fi automatically", "Connect to a phone you've paired as soon as it appears on the network",
+      makeSwitch(ctx.wifiAuto.get(), (on) => ctx.wifiAuto.set(on))));
+    rows.push(row("Turn on the phone RAM manager automatically", "Starts its helper on the phone each time a phone connects (see the Shizuku page)",
+      makeSwitch(ctx.ramAuto.get(), (on) => ctx.ramAuto.set(on))));
+    const copy = ctx.photoCopy(), ph = data.photo;
+    if (copy) {
+      rows.push(row("Copy new photos to this computer when the phone connects", "Over USB or Wi‑Fi. Only photos and videos that aren't in the folder yet are copied; nothing is ever deleted",
+        makeSwitch(!!ph?.on, async (on) => { const now = await copy.set(on); await refresh(); return now; })));
+      rows.push(el("div", { className: "set-row" },
+        el("div", { className: "set-text" }, el("b", { textContent: "Photo copy folder" }),
+          ph?.folder ? folder(ph.folder.path + (ph.folder.exists ? "" : "  (not found)")) : el("div", { className: "sub", textContent: "No folder chosen yet" })),
+        group(action(ph?.folder ? "Change…" : "Choose folder…", "Choosing…", () => copy.choose()))));
+    }
+    return section("Phone link", ...rows);
+  }
+
+  function notificationsSection() {
+    const n = ctx.notifs, muted = n.muted();
+    const rows = [
+      row("Phone notifications on this computer", "WhatsApp, SMS, email and the rest appear on the Notifications page, where you can answer them. Gives Droid Desk Companion “Notification access” on the phone",
+        makeSwitch(n.get(), (on) => { n.set(on); return on; })),
+      row("Notification pop-ups", "Show each new notification in the corner of this window, and as a system notification when Droid Desk is in the background",
+        makeSwitch(ctx.notifPopups.get(), (on) => { ctx.notifPopups.set(on); return on; })),
+    ];
+    if (muted.length) {
+      rows.push(row("Muted apps", "Still listed on the Notifications page, but they don't pop up. Click one to unmute it",
+        el("div", { className: "set-chips" }, ...muted.map((m) => {
+          const c = el("button", { className: "chip", type: "button", title: "Unmute", textContent: `${m.label} ✕` });
+          c.onclick = () => { n.unmute(m.pkg); render(); };
+          return c;
+        }))));
+    }
+    const ta = el("textarea", { value: n.quick().join("\n"), spellcheck: false });
+    ta.setAttribute("aria-label", "Quick replies, one per line");
+    ta.onchange = () => { ta.value = n.setQuick(ta.value.split("\n")).join("\n"); toast("Quick replies saved"); };
+    rows.push(row("Quick replies", "Ready-made answers offered under a notification. One per line, up to 12", ta));
+    return section("Notifications", ...rows);
+  }
+
+  function screenshotSection() {
+    const t = ctx.shot, p = t.get();
+    return section("Screenshot",
+      row("Picture format", "PNG keeps every pixel; JPEG and WebP make smaller files", select(t.FORMAT, p.format, (v) => t.set({ format: v }))),
+      row("Picture size", "A smaller picture is quicker to share", select(t.SCALE, String(p.scale), (v) => t.set({ scale: Number(v) }))),
+      row("Clean status bar", "For the capture only, the phone shows 12:00, a full battery and no notification icons", makeSwitch(p.clean, (on) => { t.set({ clean: on }); return on; })),
+      row("Copy each screenshot", "Puts the picture on this computer's clipboard as soon as it is taken", makeSwitch(p.copy, (on) => { t.set({ copy: on }); return on; })),
+      row("Save each screenshot", "Saves the file as soon as it is taken (see Saving files for where)", makeSwitch(p.save, (on) => { t.set({ save: on }); return on; })));
+  }
+
+  function shellSection() {
+    const t = ctx.shell, p = t.get();
+    return section("ADB shell",
+      row("Wrap long lines", "Off keeps each line on one row and scrolls sideways", makeSwitch(p.wrap, (on) => { t.set({ wrap: on }); return on; })),
+      row("Text size", "The size of the output text", select(t.SIZE, p.size, (v) => t.set({ size: v }))),
+      row("Show the time of each command", "Next to how long it took", makeSwitch(p.times, (on) => { t.set({ times: on }); return on; })),
+      row("Follow new output", "Scroll to the newest command's answer by itself", makeSwitch(p.follow, (on) => { t.set({ follow: on }); return on; })));
+  }
+
+  function wifiSection() {
+    const w = data.wifi, m = ctx.wifiMethod, method = w?.method || "auto";
+    return section("Wi‑Fi transfer",
+      row("Transfer method", m.NOTES[method] || "", select(m.NAMES, method, async (v) => { await api.wifi.setMethod(v); await refresh(); })),
+      el("div", { className: "set-row" },
+        el("div", { className: "set-text" }, el("b", { textContent: "Received files go to" }), folder(w?.saveDir)),
+        group(action("Open", "Opening…", () => api.wifi.openFolder()), action("Change…", "Choosing…", () => api.wifi.chooseFolder()))));
+  }
+
   function mirrorSection() {
     const m = ctx.mirror, p = m.get();
     return section("Screen mirror",
@@ -135,11 +207,16 @@ export function initSettings(ctx) {
       row("Show", "The phone's screen, or one of its cameras (Android 12 and newer)", select(m.SOURCE, p.source, (v) => m.set({ source: v }))),
       row("Play the phone's sound here", "Android 11 and newer. With a camera, the microphone is used", makeSwitch(p.audio, (on) => { m.set({ audio: on }); return on; })),
       row("Turn the phone's screen off while mirroring", "The phone keeps working; only its display goes dark", makeSwitch(p.screenOff, (on) => { m.set({ screenOff: on }); return on; })),
-      row("Frame rate", "A lower limit saves the phone's battery", select(m.FPS, String(p.fps), (v) => m.set({ fps: Number(v) }))));
+      row("Frame rate", "A lower limit saves the phone's battery", select(m.FPS, String(p.fps), (v) => m.set({ fps: Number(v) }))),
+      row("Video format", "H.265 needs a phone and a computer that both support it; otherwise H.264 is used", select(m.CODEC, p.codec, (v) => m.set({ codec: v }))),
+      row("Show touches on the phone", "Draws a dot on the phone's screen wherever it is touched while mirroring", makeSwitch(p.touches, (on) => { m.set({ touches: on }); return on; })),
+      row("Keep the phone awake", "The phone's screen doesn't time out while mirroring", makeSwitch(p.awake, (on) => { m.set({ awake: on }); return on; })),
+      row("Lock the phone when mirroring stops", "Turns the phone's screen off as soon as mirroring ends", makeSwitch(p.lockOnStop, (on) => { m.set({ lockOnStop: on }); return on; })),
+      row("Copy from the phone automatically", "Text copied on the phone lands in this computer's clipboard", makeSwitch(p.clipboard, (on) => { m.set({ clipboard: on }); return on; })));
   }
 
   function savingSection() {
-    const s = data.info?.save, w = data.wifi;
+    const s = data.info?.save;
     const rows = [
       row("Ask where to save each file", "Screenshots, recordings and exports. When off, they go straight into the folder below",
         makeSwitch(s ? s.ask : true, async (on) => { data.info.save = await api.app.saveAsk(on); render(); return data.info.save.ask; })),
@@ -147,9 +224,6 @@ export function initSettings(ctx) {
         el("div", { className: "set-text" }, el("b", { textContent: "Save folder" }), folder(s?.dir), s?.ask ? el("div", { className: "sub", textContent: "Used when asking is switched off" }) : ""),
         group(action("Open", "Opening…", () => api.app.saveOpen()), action("Change…", "Choosing…", () => api.app.saveChoose()))),
     ];
-    if (w && api.wifi) rows.push(el("div", { className: "set-row" },
-      el("div", { className: "set-text" }, el("b", { textContent: "Files received over Wi‑Fi" }), folder(w.saveDir)),
-      group(action("Open", "Opening…", () => api.wifi.openFolder()), action("Change…", "Choosing…", () => api.wifi.chooseFolder()))));
     return section("Saving files", ...rows);
   }
 
@@ -261,15 +335,11 @@ export function initSettings(ctx) {
         row("Colour theme", "The accent colour of cards, highlights and the logo", swatches),
         row("Collapse the sidebar", "Show only icons. Shortcut: Ctrl/⌘ + B", makeSwitch(isRail(), (on) => { setRail(on); return on; }))),
     ];
-    const link = [];
-    link.push(row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
-      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; })));
-    link.push(row("Notification pop-ups", "Show a pop-up for each new phone notification (when Notifications is switched on)",
-      makeSwitch(ctx.notifPopups.get(), (on) => { ctx.notifPopups.set(on); return on; })));
-    if (ctx.wifiAuto) link.push(row("Connect over Wi‑Fi automatically", "Connect to a phone you've paired as soon as it appears on the network",
-      makeSwitch(ctx.wifiAuto.get(), (on) => ctx.wifiAuto.set(on))));
-    parts.push(section("Phone link", ...link));
+    parts.push(phoneLinkSection(), notificationsSection());
     parts.push(mirrorSection());
+    parts.push(screenshotSection());
+    parts.push(shellSection());
+    if (api.wifi) parts.push(wifiSection());
     if (api.app) parts.push(savingSection());
     if (api.system) parts.push(computerSection());
     parts.push(downloadsSection());

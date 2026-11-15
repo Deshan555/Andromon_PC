@@ -148,6 +148,8 @@ function setupWifi() {
     return fn(event, ...args);
   });
   handle("adb:release", () => releaseAdb());
+  // Screen mirror › Keep on top
+  handle("win:setOnTop", (event, on) => { BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(!!on); return !!on; });
   setupWadb(handle);
   setupNotify(handle);
   setupDevnet(handle);
