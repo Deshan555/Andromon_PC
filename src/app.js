@@ -17,6 +17,7 @@ import { initLinks } from "./links.js";
 import { initSettings } from "./settings.js";
 import { initDownloads } from "./downloads.js";
 import { initShizuku } from "./shizuku.js";
+import { initWifiRadar } from "./wifiradar.js";
 import { initRevanced } from "./revanced.js";
 import { initFdroid } from "./fdroid.js";
 import { initPeople } from "./people.js";
@@ -4166,6 +4167,18 @@ const METHOD_NOTES = {
   direct: "This computer joins a private Wi‑Fi from the phone for each transfer (Droid Desk Companion only). Fastest on slow networks; no internet here until it reconnects right after.",
 };
 
+// The radar of nearby devices (./wifiradar.js). Clicking a device there is the same as its Send files… button.
+const wifiSendBtns = new Map(); // fingerprint -> the Send files… button of its row
+const wifiRadar = wifiApi ? initWifiRadar({
+  el, selfIsMac: isMac,
+  onPick: (d) => wifiSend(d, wifiSendBtns.get(d.fingerprint) || el("button"), null),
+  onDrop: (d, files) => wifiSend(d, wifiSendBtns.get(d.fingerprint) || el("button"), files),
+}) : null;
+if (wifiRadar) $("wifiRadar").replaceWith(wifiRadar.node);
+let wifiSendingTo = null; // the device files are being sent to right now
+/** The device an incoming transfer comes from, matched by address (the sender doesn't say more). */
+const wifiDeviceOf = (from) => wifiState.devices.find((d) => d.ip === from?.ip) || wifiState.devices.find((d) => d.alias === from?.alias) || null;
+
 async function loadWifi() {
   if (!wifiApi) { $("wifiUnavailable").hidden = false; $("wifiMain").hidden = true; return; }
   Object.assign(wifiState, await wifiApi.status());
@@ -4214,6 +4227,8 @@ function renderWifi() {
       slowLink(pc) ? el("span", { className: "chip warn", style: "margin-left:8px", textContent: pc.band === "2.4 GHz" ? "2.4 GHz is slow: use 5 GHz or Direct link" : "Slow Wi‑Fi link" }) : "");
   }
   const box = $("wifiDevices");
+  wifiRadar?.update(s);
+  wifiSendBtns.clear();
   if (!s.running) { box.replaceChildren(emptyBox("Turn on Wi‑Fi transfer to find nearby devices.")); return; }
   if (!s.devices.length) {
     box.replaceChildren(emptyBox("Looking for devices… On your phone (same Wi‑Fi), turn on Receive in Droid Desk Companion, or open LocalSend. It appears here within a few seconds."));
@@ -4222,6 +4237,7 @@ function renderWifi() {
   box.replaceChildren(...s.devices.map((d) => {
     const send = el("button", { className: "btn sm primary", textContent: "Send files…", type: "button" });
     send.onclick = () => wifiSend(d, send, null);
+    wifiSendBtns.set(d.fingerprint, send);
     const link = s.link?.devices?.[d.fingerprint];
     const est = link?.estimateMBps;
     const chips = [];
@@ -4248,16 +4264,21 @@ function renderWifi() {
 async function wifiSend(d, btn, files) {
   clearError();
   busy(btn, true, "Waiting…");
+  let sent = false;
+  wifiSendingTo = d.fingerprint;
   try {
     const m = wifiState.method;
     const r = files ? await wifiApi.sendFiles(d.fingerprint, files, m) : await wifiApi.pickAndSend(d.fingerprint, m);
     if (r) toast(r.sent ? `Sent ${r.sent} file${r.sent > 1 ? "s" : ""} to ${d.alias}${r.via ? ` via ${r.via}` : ""}` : `${d.alias} already had those files`);
+    sent = !!r?.sent;
     refreshWifiLink();
   } catch (e) {
     showError(e);
   } finally {
     busy(btn, false);
     $("wifiProgress").hidden = true;
+    wifiRadar?.end(d.fingerprint, sent);
+    wifiSendingTo = null;
   }
 }
 
@@ -4291,6 +4312,12 @@ function wifiProgress(ev) {
     const r = ((ev.received - speed.bytes) * 1000) / (now - speed.at);
     speed = { at: now, bytes: ev.received, rate: speed.rate ? speed.rate * 0.6 + r * 0.4 : r, dir: ev.dir };
   }
+  // The same on the radar: dots flowing between the two, and the ring round the device filling up.
+  const radarFp = ev.dir === "in" ? wifiDeviceOf(ev.from)?.fingerprint : wifiSendingTo;
+  if (radarFp) wifiRadar?.progress(radarFp, ev.dir, {
+    frac, waiting: ev.dir === "out" && (!!ev.waiting || !!ev.stage),
+    text: ev.dir === "in" ? `Receiving from ${ev.from?.alias || "device"} · ${Math.round(frac * 100)}%` : ev.waiting || ev.stage ? `Waiting for ${ev.to}…` : `Sending to ${ev.to} · ${Math.round(frac * 100)}%`,
+  });
   const cancel = el("button", { className: "btn sm", textContent: "Cancel", type: "button" });
   cancel.onclick = () => wifiApi.cancelSend().catch(() => {});
   if (ev.dir === "out" && ev.stage) {
@@ -4354,10 +4381,12 @@ if (wifiApi) {
       case "progress": wifiProgress(ev); break;
       case "done":
         $("wifiProgress").hidden = true;
+        wifiRadar?.end(wifiDeviceOf(ev.from)?.fingerprint, true);
         toast(`Received ${ev.files.length} file${ev.files.length > 1 ? "s" : ""} from ${ev.from.alias} (in ${ev.saveDir})`);
         break;
       case "cancelled":
         $("wifiProgress").hidden = true;
+        if (ev.dir === "in") wifiRadar?.end(null, false);
         toast(`${ev.message}${ev.files?.length ? ` · ${ev.files.length} file(s) were saved` : ""}`);
         break;
       case "warning": toast(ev.message); break;

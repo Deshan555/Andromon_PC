@@ -178,7 +178,7 @@ Sends and receives files over the local network, with no cable and no debugging.
 | **Wi‑Fi transfer** switch | Makes this computer visible to phones on the same Wi‑Fi. Nothing listens on the network while it is off. |
 | **Transfer method** | **Same Wi‑Fi** sends through your router. **Direct link** has the computer join a private Wi‑Fi the phone opens for the transfer (faster for big files; only with the companion). **Auto** picks Direct link for large transfers on slow Wi‑Fi. |
 | **Received files go to** | The folder for incoming files; **Change…** picks another, **Open folder** shows it. |
-| **Nearby devices** | Phones that are ready to receive. Click **Send files…** on one, or drop files on it. |
+| **Nearby devices** | A radar with this computer in the middle and every phone that is ready to receive around it, next to a list of the same devices with their details. Click a device on the radar (or **Send files…** in the list), or drop files on it. While files move, dots flow between the two and a ring round the device fills up. |
 
 On the phone, open the companion's **Receive** screen and turn receiving on. Every incoming transfer has to be accepted before anything is saved.
 

@@ -711,6 +711,7 @@
   .dev-kv > :nth-child(even) { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
 </style>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="wifiradar.css">
 <link rel="stylesheet" href="dev/logcat.css">
 <link rel="stylesheet" href="dev/settings.css">
 <link rel="stylesheet" href="dev/apptools.css">
@@ -1242,7 +1243,8 @@
             <h2 style="margin:0">Nearby devices</h2>
             <button class="btn sm" id="wifiScan" disabled>Scan again</button>
           </div>
-          <div class="wifi-list" id="wifiDevices"></div>
+          <!-- The radar (src/wifiradar.js) beside the list of the same devices with their details -->
+          <div class="wifi-near"><div id="wifiRadar"></div><div class="wifi-list" id="wifiDevices"></div></div>
         </div>
         <div class="card muted small">
           <b>How it works:</b> on your phone, turn on <b>Receive</b> in Droid Desk Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>

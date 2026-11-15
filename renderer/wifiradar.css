@@ -1,0 +1,78 @@
+/* The radar on the Wi‑Fi transfer page (src/wifiradar.js). */
+.wifi-near { display: grid; grid-template-columns: min(400px, 44%) minmax(0, 1fr); gap: 8px 28px; align-items: center; }
+@media (max-width: 980px) { .wifi-near { grid-template-columns: minmax(0, 1fr); } .wifi-near .wr { max-width: 400px; margin: 0 auto; } }
+
+.wr { --wr: var(--green, #9cd237); width: 100%; }
+.wr-stage { position: relative; aspect-ratio: 1; border-radius: 50%; overflow: visible; isolation: isolate; }
+.wr-cap { margin-top: 10px; min-height: 20px; text-align: center; font-size: 13px; color: var(--muted); }
+
+/* Rings and cross lines */
+.wr-rings { position: absolute; inset: 0; border-radius: 50%; z-index: 0;
+  background:
+    linear-gradient(var(--border), var(--border)) 50% 50% / 100% 1px no-repeat,
+    linear-gradient(var(--border), var(--border)) 50% 50% / 1px 100% no-repeat,
+    radial-gradient(circle, transparent 0 24.6%, var(--border) 24.6% 25%, transparent 25% 49.6%, var(--border) 49.6% 50%, transparent 50% 70.2%, var(--border) 70.2% 70.7%, transparent 70.7%),
+    radial-gradient(circle, color-mix(in srgb, var(--wr) 16%, transparent), color-mix(in srgb, var(--wr) 5%, transparent) 70%);
+  box-shadow: inset 0 0 0 1px var(--border); transition: opacity .4s, filter .4s; }
+
+/* The beam: a soft wedge that goes round */
+.wr-sweep { position: absolute; inset: 0; border-radius: 50%; z-index: 1; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 300deg, color-mix(in srgb, var(--wr) 6%, transparent) 318deg, color-mix(in srgb, var(--wr) 46%, transparent) 360deg);
+  animation: wr-spin 4.5s linear infinite; transition: opacity .5s; }
+.wr.searching .wr-sweep { animation-duration: 2.6s; }
+.wr.moving .wr-sweep { opacity: .35; }
+@keyframes wr-spin { to { transform: rotate(360deg); } }
+
+/* Rings that grow from the middle while nothing has been found yet */
+.wr-ping { position: absolute; inset: 0; border-radius: 50%; z-index: 1; pointer-events: none; border: 2px solid var(--wr); opacity: 0; transform: scale(.12); }
+.wr.searching .wr-ping { animation: wr-ping 2.6s ease-out infinite; }
+.wr.searching .wr-ping2 { animation-delay: 1.3s; }
+@keyframes wr-ping { 0% { opacity: .55; transform: scale(.12); } 100% { opacity: 0; transform: scale(1); } }
+
+/* Off: no beam, everything dimmed */
+.wr.off .wr-sweep { opacity: 0; animation-play-state: paused; }
+.wr.off .wr-rings { opacity: .55; filter: grayscale(1); }
+.wr.off .wr-me { opacity: .6; }
+
+/* This computer, and each device */
+.wr-me, .wr-dev { position: absolute; left: 50%; top: 50%; z-index: 3; width: 0; height: 0; display: block; padding: 0; border: 0; background: none; color: var(--text); font: inherit; }
+.wr-av { position: absolute; left: 0; top: 0; width: clamp(46px, 15cqw, 60px); aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center;
+  background: var(--card); box-shadow: 0 0 0 2px var(--border), 0 6px 18px rgba(0, 0, 0, .14); transition: transform .2s ease, box-shadow .2s ease, background .2s; }
+.wr-stage { container-type: inline-size; }
+.wr-av > svg:first-child { width: 46%; height: 46%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wr-me .wr-av { background: var(--ink); color: var(--on-ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wr) 45%, transparent), 0 6px 18px rgba(0, 0, 0, .18); }
+.wr-name { position: absolute; left: 0; top: calc(clamp(46px, 15cqw, 60px) / 2 + 6px); transform: translateX(-50%); max-width: 120px; padding: 1px 8px; border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 500; background: color-mix(in srgb, var(--card) 82%, transparent); }
+
+.wr-dev { cursor: pointer; animation: wr-in .45s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes wr-in { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: none; } }
+.wr-dev.gone { animation: wr-out .3s ease-in both; pointer-events: none; }
+@keyframes wr-out { to { opacity: 0; transform: scale(.2); } }
+.wr-dev:hover .wr-av, .wr-dev:focus-visible .wr-av, .wr-dev.over .wr-av { transform: translate(-50%, -50%) scale(1.1); box-shadow: 0 0 0 3px var(--ink), 0 10px 24px rgba(0, 0, 0, .2); }
+.wr-dev:focus-visible { outline: none; }
+.wr-dev.over .wr-av { background: var(--lime); }
+
+/* Progress round a device, the pulse while it is asked, the tick when done */
+.wr-ring { position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); transform: rotate(-90deg); fill: none; pointer-events: none; }
+.wr-ring { opacity: 0; transition: opacity .25s; }
+.wr-dev.busy .wr-ring, .wr-dev.done .wr-ring { opacity: 1; }
+.wr-ring circle { stroke: var(--wr); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 0 100; transition: stroke-dasharray .35s ease; }
+.wr-dev.busy .wr-av { box-shadow: 0 0 0 2px color-mix(in srgb, var(--wr) 30%, var(--border)), 0 6px 18px rgba(0, 0, 0, .14); }
+.wr-dev.waiting .wr-av { animation: wr-wait 1.4s ease-in-out infinite; }
+@keyframes wr-wait { 0%, 100% { box-shadow: 0 0 0 2px var(--wr), 0 0 0 2px color-mix(in srgb, var(--wr) 50%, transparent); } 50% { box-shadow: 0 0 0 2px var(--wr), 0 0 0 12px transparent; } }
+.wr-done { position: absolute; right: -4px; bottom: -4px; width: 42%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: var(--wr); color: #1b1c1d; transform: scale(0); transition: transform .3s cubic-bezier(.2, 1.6, .4, 1); }
+.wr-done svg { width: 62%; height: 62%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.wr-dev.done .wr-done { transform: scale(1); }
+
+/* The line between the two while files move: dots that flow towards whoever receives */
+.wr-links { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; overflow: visible; pointer-events: none; }
+.wr-link { stroke: var(--wr); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: .01 4; vector-effect: none; animation: wr-flow-out .7s linear infinite; }
+.wr-link.in { animation-name: wr-flow-in; }
+.wr-link.waiting { opacity: .45; animation-duration: 1.8s; }
+@keyframes wr-flow-out { to { stroke-dashoffset: -4.01; } }
+@keyframes wr-flow-in { to { stroke-dashoffset: 4.01; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wr-sweep, .wr-ping, .wr-dev, .wr-dev.waiting .wr-av, .wr-link { animation: none !important; }
+  .wr-sweep { opacity: .5; }
+}
