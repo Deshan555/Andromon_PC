@@ -58,6 +58,7 @@ export function initDownloads({ $, el, fmtSize, fmtDate, show }) {
   });
   listen("rv", api.revanced, () => api.revanced.cancel(), "revanced.app");
   listen("fd", api.fdroid, () => api.fdroid.cancel(), "f-droid.org");
+  listen("up", api.updates, () => api.updates.cancel(), "github.com"); // a new version of Droid Desk itself
 
   /** A download made by the page itself: fn(report) where report(done, total) moves the bar. */
   async function track(src, title, from, fn) {

@@ -546,6 +546,10 @@
   @media (prefers-reduced-motion: reduce) { .dl-wait > i { animation: none; width: 100%; opacity: .5; } .dl-bar > i { transition: none; } }
   .dl-inline { margin-top: 8px; }
   .set-dl:empty { display: none; }
+  .upd-pill { background: var(--brand, #e3f786); color: #292a2c; box-shadow: none; }
+  .set-changes { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .set-changes summary { cursor: pointer; }
+  .set-changes ul { margin: 6px 0 0; padding-left: 18px; }
   /* ---------- mirror ---------- */
   .mr { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
   .mr .card { margin: 0; }
@@ -774,6 +778,7 @@
       <h1 id="title">Connect <i>your phone</i></h1>
       <div>
         <span class="activity" id="activity" role="status" hidden><span class="spin" aria-hidden="true"></span>Working…</span>
+        <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Droid Desk is available. Opens Settings"></button>
         <button class="dl-btn" type="button" id="dlBtn" title="Downloads" aria-label="Downloads" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><b class="nbadge" id="dlBadge" hidden></b></button>
         <button class="btn" id="wifiConnectBtn" hidden title="Wireless debugging (Android 11+)">Connect over Wi‑Fi</button>
         <button class="btn primary" id="connectBtn">Connect phone</button>

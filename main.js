@@ -17,6 +17,7 @@ const { setupBackupFs } = require("./backupfs.js");
 const { setupRevanced } = require("./revanced.js");
 const { setupFdroid } = require("./fdroid.js");
 const { setupAppSettings } = require("./appsettings.js");
+const { setupUpdater } = require("./updater.js");
 
 const RENDERER_DIR = path.join(__dirname, "renderer");
 const ORIGIN = "app://droiddesk";
@@ -156,6 +157,7 @@ function setupWifi() {
   revanced = setupRevanced(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // ReVanced page
   fdroid = setupFdroid(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // F-Droid page
   setupAppSettings(handle, { userData: app.getPath("userData"), readSettings, writeSettings, origin: ORIGIN, getWindow: () => mainWindow }); // Settings page
+  setupUpdater(handle, { readSettings, writeSettings, getWindow: () => mainWindow }); // update check (Settings › About)
   const method = (m) => (["auto", "lan", "direct"].includes(m) ? m : readSettings().wifiMethod || "auto");
   handle("wifi:status", () => ({ ...wifi.status(), method: method() }));
   handle("wifi:setMethod", (_e, m) => { if (["auto", "lan", "direct"].includes(m)) writeSettings({ wifiMethod: m }); return method(); });
