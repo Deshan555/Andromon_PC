@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'">
 <title>Droid Desk</title>
 <style>
   /* Same look as the companion app on the phone: brand colours lime #E3F786, green #9CD237, ink
@@ -82,14 +82,9 @@
   .app { display: grid; grid-template-columns: 236px 1fr; gap: 12px; padding: 12px; min-height: 100vh; }
   aside { background: var(--nav-bg); color: #fff; border-radius: 28px; padding: 20px 12px 16px; display: flex; flex-direction: column; gap: 2px;
     position: sticky; top: 12px; height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: none; }
-  .brand { font-weight: 500; font-size: 17px; padding: 0 8px 14px; display: flex; align-items: center; gap: 10px; color: #fff; letter-spacing: -.01em; }
-  .brand::before { content: ""; width: 36px; height: 36px; border-radius: 50%; background: var(--brand) center / 20px no-repeat;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23292a2c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z'/%3E%3Cpath d='M20.054 15.987H3.946'/%3E%3C/svg%3E"); flex: none; }
-  .brand .dot { order: 2; margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--nav-icon); }
-  .brand .dot.on { background: var(--good-dot); box-shadow: 0 0 0 4px rgba(156,210,55,.3); }
   nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
   nav::-webkit-scrollbar { display: none; }
-  nav button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; background: none; border: 0; padding: 4px 14px; border-radius: 12px; cursor: pointer; color: var(--nav-icon); flex: none; transition: background .15s, color .15s; }
+  nav button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; background: none; border: 0; padding: 8px 14px; font-size: 12.5px; border-radius: 12px; cursor: pointer; color: var(--nav-icon); flex: none; transition: background .15s, color .15s; }
   /* Icons are Lucide (lucide.dev, ISC): outlines drawn with a 2px round stroke. */
   nav button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
   nav button:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,.08); }
@@ -99,7 +94,8 @@
   .ngroup { display: flex; flex-direction: column; gap: 2px; }
   .nitems { display: flex; flex-direction: column; gap: 2px; }
   .ngroup.closed .nitems { display: none; }
-  nav button.nhead { justify-content: space-between; padding: 10px 14px 4px; border-radius: 12px; font-size: 10.5px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--nav-icon); }
+  /* Group headings use the same text size as the tools under them; weight and colour set them apart. */
+  nav button.nhead { justify-content: space-between; padding: 10px 14px 4px; border-radius: 12px; font-size: inherit; font-weight: 500; color: var(--nav-icon); }
   nav button.nhead:hover { background: none; color: #fff; }
   .nhead::after { content: ""; width: 6px; height: 6px; margin-right: 4px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform .15s; flex: none; }
   .ngroup.closed .nhead::after { transform: rotate(-45deg); }
@@ -111,8 +107,6 @@
   @media (min-width: 761px) {
     .app.rail { grid-template-columns: 64px 1fr; }
     .app.rail aside { padding: 16px 8px 12px; }
-    .app.rail .brand { padding: 0 0 12px; justify-content: center; font-size: 0; gap: 0; }
-    .app.rail .brand .dot { position: absolute; margin: 0; top: 14px; right: 12px; }
     .app.rail aside { position: sticky; }
     .app.rail nav button { justify-content: center; padding: 7px 0; position: relative; }
     .app.rail nav button > span { display: none; }
@@ -192,7 +186,43 @@
   .seg button.on { background: var(--ink); color: var(--on-ink); font-weight: 500; }
   select, .card input[type=text], .card input[type=number] { padding: 7px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
   select { padding-right: 10px; }
-  input[type=checkbox], input[type=radio], input[type=range] { accent-color: var(--ink); }
+  /* ---------- dropdown menus (src/dropdown.js): a button and a menu stand in for each <select> ---------- */
+  select.dd-native { display: none !important; }
+  .dd { display: inline-flex; min-width: 0; max-width: 100%; vertical-align: middle; }
+  .dd[hidden] { display: none; }
+  .dd-btn { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 7px 12px 7px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; text-align: left; cursor: pointer; box-shadow: inset 0 0 0 1px var(--border); }
+  .dd-btn::after { content: ""; flex: none; width: 6px; height: 6px; margin: -3px 2px 0 auto; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); opacity: .7; transition: transform .15s; }
+  .dd-btn[aria-expanded="true"]::after { transform: translateY(3px) rotate(-135deg); }
+  .dd-btn:hover:not(:disabled) { filter: brightness(.97); }
+  .dd-btn:focus-visible, .dd-btn[aria-expanded="true"] { outline: none; box-shadow: 0 0 0 2px var(--ink); }
+  .dd-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .dd-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-menu { position: fixed; z-index: 1000; box-sizing: border-box; max-width: min(420px, calc(100vw - 16px)); overflow-y: auto; padding: 6px; border-radius: 16px; background: var(--surface); color: var(--text); font-size: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.3), 0 0 0 1px var(--border); }
+  .dd-menu[hidden] { display: none; }
+  .dd-item { display: flex; align-items: center; gap: 10px; padding: 8px 34px 8px 12px; border-radius: 10px; cursor: pointer; position: relative; overflow-wrap: anywhere; }
+  .dd-item.act { background: var(--chip); }
+  .dd-item.sel { font-weight: 500; }
+  .dd-item.sel::after { content: ""; position: absolute; right: 13px; top: 50%; width: 5px; height: 9px; margin-top: -7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .dd-item.off { opacity: .45; cursor: not-allowed; }
+  .dd-group { padding: 8px 12px 4px; font-size: 12px; color: var(--muted); }
+  .toolbar label .dd, label.muted .dd { margin-left: 6px; }
+  input[type=range] { accent-color: var(--ink); }
+  /* Tick boxes and round option buttons, drawn in the app's own style: a soft rounded box that fills
+     with the ink colour when chosen. The tick is a mask, so it takes the right colour in every theme. */
+  input[type=checkbox], input[type=radio] { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 18px; height: 18px; margin: 0; vertical-align: -4px; cursor: pointer;
+    border-radius: 6px; background: var(--panel-2); box-shadow: inset 0 0 0 1.5px var(--faint); transition: background .12s, box-shadow .12s; }
+  input[type=radio] { border-radius: 50%; }
+  input[type=checkbox]:hover:not(:disabled), input[type=radio]:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--muted); }
+  input[type=checkbox]:checked, input[type=checkbox]:indeterminate, input[type=radio]:checked { background: var(--ink); box-shadow: none; }
+  input[type=checkbox]::after, input[type=radio]::after { content: ""; position: absolute; inset: 0; background: var(--on-ink); opacity: 0; transform: scale(.6); transition: opacity .12s, transform .12s;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 9.4 7.6 12.4 13.5 6'/%3E%3C/svg%3E") center / 100% no-repeat; }
+  input[type=checkbox]:indeterminate::after { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M5 9h8'/%3E%3C/svg%3E"); }
+  input[type=radio]::after { -webkit-mask: none; inset: 5px; border-radius: 50%; }
+  input[type=checkbox]:checked::after, input[type=checkbox]:indeterminate::after, input[type=radio]:checked::after { opacity: 1; transform: none; }
+  input[type=checkbox]:focus-visible, input[type=radio]:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  input[type=checkbox]:disabled, input[type=radio]:disabled { opacity: .45; cursor: not-allowed; }
+  label > input[type=checkbox], label > input[type=radio] { margin-right: 6px; }
+  @media (prefers-reduced-motion: reduce) { input[type=checkbox], input[type=radio], input[type=checkbox]::after, input[type=radio]::after { transition: none; } }
   .switch { flex: none; width: 52px; height: 30px; border-radius: 15px; border: 0; background: var(--chip); position: relative; cursor: pointer; transition: background .15s; padding: 0; }
   .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: left .15s; }
   .switch[aria-checked="true"] { background: var(--ink); }
@@ -289,6 +319,7 @@
   .badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); margin-left: 8px; vertical-align: middle; }
   .badge.neutral { background: var(--chip); color: var(--muted); }
   .badge.on { background: var(--good-soft); color: var(--good); }
+  .badge.warn { background: rgba(226, 150, 40, .18); color: #d98a1c; }
   tr.sel td { background: var(--accent-soft); }
   .small { font-size: 12px; }
 
@@ -456,9 +487,17 @@
   .lk-media .prog input[type=range] { flex: 1; min-width: 0; accent-color: var(--on-ink); }
   .lk-media .prog .sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .lk-tel { display: flex; align-items: center; gap: 10px; min-height: 30px; }
-  .btn.sm.lk-call { padding: 3px 12px; font-size: 12px; font-family: var(--font, inherit); }
+  /* Call and Text beside a number: round icon buttons at the right edge of the row. */
+  .lk-acts { margin-left: auto; padding-left: 14px; display: flex; gap: 10px; flex: none; }
+  .lk-tel + .lk-tel { margin-top: 8px; } /* a contact's numbers: their buttons don't touch */
+  .lk-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; min-width: 30px; padding: 0 7px; border: 0; border-radius: 999px; background: var(--surface); color: var(--text); cursor: pointer; font: 500 12px var(--font, inherit); box-shadow: inset 0 0 0 1px var(--border); vertical-align: middle; }
+  .lk-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .lk-icon span { display: none; }
+  .lk-icon:hover { background: var(--chip); }
+  .lk-icon:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   td.num .lk-call { margin-left: 10px; }
-  .lk-call.armed { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+  .lk-call.armed { background: var(--ink); color: var(--on-ink); box-shadow: none; padding: 0 11px; }
+  .lk-call.armed span { display: inline; }
 
   /* ---------- test automation ---------- */
   .at-grid { display: grid; grid-template-columns: minmax(250px, 34%) 1fr; gap: 16px; align-items: start; }
@@ -511,11 +550,229 @@
   .at-c { flex-basis: 100%; }
   @media (max-width: 900px) { .at-grid { grid-template-columns: 1fr; } .at-phone { position: static; } }
 
+  /* ---------- file-type icons (src/fileicons.js): a Lucide icon in a tinted tile, the same in every file list ---------- */
+  .ficon { --fk: 150, 150, 150; flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: rgba(var(--fk), .16); color: rgb(var(--fk)); vertical-align: middle; }
+  .ficon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .ficon.sm { width: 24px; height: 24px; border-radius: 8px; }
+  .ficon.sm svg { width: 14px; height: 14px; }
+  .fk-folder { --fk: 233, 168, 32; } .fk-image { --fk: 60, 170, 110; } .fk-video { --fk: 226, 92, 92; } .fk-audio { --fk: 180, 106, 230; }
+  .fk-archive { --fk: 196, 142, 62; } .fk-apk { --fk: 122, 184, 40; } .fk-pdf { --fk: 224, 78, 78; } .fk-doc { --fk: 76, 140, 240; }
+  .fk-sheet { --fk: 48, 164, 108; } .fk-slides { --fk: 236, 130, 60; } .fk-code { --fk: 96, 150, 236; } .fk-data { --fk: 110, 176, 196; }
+  .fk-text { --fk: 140, 146, 160; } .fk-script { --fk: 90, 190, 170; } .fk-font { --fk: 200, 120, 190; } .fk-db { --fk: 104, 132, 226; }
+  .fk-secure { --fk: 214, 160, 60; } .fk-system { --fk: 128, 132, 142; } .fk-link { --fk: 110, 160, 220; } .fk-file { --fk: 140, 146, 160; }
+  /* The action bar of Files, Photos and Music stays under the page header while the content scrolls.
+     It is painted in the page's colour, so what scrolls behind it doesn't show through. */
+  .stick-top { position: sticky; top: calc(var(--head-h, 96px) + 12px); z-index: 6; background: var(--page); padding-bottom: 4px; margin-bottom: 12px; }
+  .stick-top > .card { margin-bottom: 0; background: linear-gradient(var(--card), var(--card)), var(--page); }
+  .stick-top > .selbar { position: static; margin: 10px 0 0; }
+  .fx-top { position: sticky; top: calc(var(--head-h, 96px) + 12px); z-index: 4; margin: -16px -16px 0; padding: 16px 16px 0; border-radius: 28px 28px 0 0; background: linear-gradient(var(--card), var(--card)), var(--page); }
+  /* ---------- files page (src/files.js) ---------- */
+  .fx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+  .fx.with-side { grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); }
+  .fx .card { margin: 0; }
+  .fx-main { padding: 16px 16px 10px; }
+  .fx-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .fx-crumbs { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; font-size: 13.5px; }
+  .fx-crumbs button { background: none; border: 0; cursor: pointer; padding: 5px 10px; border-radius: 999px; color: var(--muted); font: inherit; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fx-crumbs button:hover { background: var(--chip); color: var(--text); }
+  .fx-crumbs button.on { color: var(--text); font-weight: 500; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); }
+  .fx-crumbs i { font-style: normal; color: var(--faint); }
+  .fx-search { flex: 0 1 220px; min-width: 120px; padding: 8px 16px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; outline: none; box-shadow: inset 0 0 0 1px var(--border); }
+  .fx-search:focus { box-shadow: 0 0 0 2px var(--ink); }
+  .fx-tools { display: flex; align-items: center; gap: 6px; }
+  .fx-ib { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--panel-2); color: var(--text); cursor: pointer; box-shadow: inset 0 0 0 1px var(--border); }
+  .fx-ib svg, .fx-tb svg, .fx-none svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .fx-ib:hover:not(:disabled) { background: var(--chip); }
+  .fx-ib:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .fx-ib:disabled { opacity: .45; cursor: progress; }
+  .fx-tb { display: inline-flex; align-items: center; gap: 7px; }
+  .fx-tb.armed { background: var(--danger); color: #fff; box-shadow: none; }
+  .fx-new, .fx-selbar, .fx-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 10px; border-radius: 18px; background: var(--panel-2); }
+  .fx-new[hidden], .fx-selbar[hidden], .fx-status[hidden] { display: none; }
+  .fx-new input { flex: 1; min-width: 140px; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
+  .fx-selbar { background: var(--ink); color: var(--on-ink); }
+  .fx-selbar b { margin-right: auto; font-weight: 500; padding-left: 6px; }
+  .fx-status span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fx-head, .fx-row { display: grid; grid-template-columns: 22px 34px minmax(0, 1fr) 90px 170px 38px; align-items: center; gap: 12px; padding: 0 10px; }
+  .fx-head { height: 34px; font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .fx-col { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+  .fx-col:hover { color: var(--text); }
+  .fx-head .num, .fx-row .num { text-align: right; }
+  .fx-row { min-height: 50px; border-radius: 14px; cursor: pointer; font-size: 14px; }
+  .fx-row:hover { background: var(--chip); }
+  .fx-row.sel { background: var(--accent-soft); }
+  .fx-row.open { box-shadow: inset 0 0 0 2px var(--ink); }
+  .fx-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .fx-row .muted { font-size: 13px; }
+  .fx-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fx-acts { display: flex; justify-content: flex-end; opacity: 0; }
+  .fx-row:hover .fx-acts, .fx-row:focus-within .fx-acts, .fx-row.open .fx-acts { opacity: 1; }
+  .fx-list .empty { padding: 28px 0; }
+  .fx.with-side .fx-head, .fx.with-side .fx-row { grid-template-columns: 22px 34px minmax(0, 1fr) 80px 38px; }
+  .fx.with-side .fx-head > :nth-child(5), .fx.with-side .fx-row > :nth-child(5) { display: none; }
+  .fx-side { position: sticky; top: calc(var(--head-h, 96px) + 12px); max-height: calc(100vh - var(--head-h, 96px) - 36px); overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .fx-side[hidden] { display: none; }
+  .fx-sidehead { display: flex; align-items: center; gap: 10px; }
+  .fx-sidename { flex: 1; min-width: 0; }
+  .fx-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .fx-rename { width: 100%; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: 0 0 0 2px var(--ink); outline: none; }
+  .fx-prev { border-radius: 18px; background: var(--panel-2); min-height: 160px; overflow: hidden; display: grid; }
+  .fx-prev > * { min-width: 0; }
+  .fx-wait, .fx-none { display: grid; place-items: center; align-content: center; gap: 8px; padding: 28px 18px; text-align: center; color: var(--muted); font-size: 13px; }
+  .fx-wait { display: flex; justify-content: center; }
+  .fx-none svg { width: 26px; height: 26px; stroke-width: 1.5; }
+  .fx-media { display: block; width: 100%; max-height: 52vh; object-fit: contain; background: #000; }
+  audio.fx-media { background: none; padding: 26px 12px; box-sizing: border-box; }
+  .fx-text { margin: 0; padding: 12px 14px; max-height: 52vh; overflow: auto; font: 12px/1.5 var(--mono, ui-monospace, Menlo, Consolas, monospace); white-space: pre; tab-size: 2; }
+  .fx-wraptext { white-space: pre-wrap; font: 13px/1.55 var(--font, inherit); }
+  .fx-hint { padding: 8px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .fx-zip { max-height: 48vh; overflow: auto; padding: 6px 8px; }
+  .fx-zrow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 6px; font-size: 12.5px; }
+  .fx-zrow .ficon { width: 24px; height: 24px; border-radius: 8px; }
+  .fx-zrow .ficon svg { width: 14px; height: 14px; }
+  .fx-zrow span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .fx-tablewrap { max-height: 52vh; overflow: auto; }
+  .fx-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  .fx-table th, .fx-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  .fx-table th { position: sticky; top: 0; background: var(--surface); font-weight: 500; }
+  .fx-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+  .fx-meta dt { color: var(--muted); }
+  .fx-meta dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fx-actions { display: flex; }
+  /* A button group: icon-only buttons joined into one pill, each named by its tooltip. */
+  .fx-group { display: inline-flex; border-radius: 999px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
+  .fx-gb { display: grid; place-items: center; width: 46px; height: 38px; border: 0; border-left: 1px solid var(--border); background: none; color: var(--text); cursor: pointer; }
+  .fx-gb:first-child { border-left: 0; }
+  .fx-gb svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .fx-gb:hover:not(:disabled) { background: var(--chip); }
+  .fx-gb:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .fx-gb:disabled { opacity: .45; cursor: progress; }
+  .fx-gb.danger { color: var(--danger); }
+  .fx-gb.armed, .fx-gb.armed:hover { background: var(--danger); color: #fff; }
+  .fx-selbar .fx-group { background: rgba(127,127,127,.22); box-shadow: none; }
+  .fx-selbar .fx-gb { color: inherit; border-color: rgba(127,127,127,.35); }
+  .fx-selbar .fx-gb.danger { color: inherit; }
+  @media (max-width: 1080px) { .fx.with-side { grid-template-columns: minmax(0, 1fr); } .fx-side { position: static; max-height: none; order: -1; } }
+  @media (max-width: 760px) { .fx-head, .fx-row { grid-template-columns: 22px 34px minmax(0, 1fr) 38px; } }
+  /* ---------- screenshot page (src/screenshot.js) ---------- */
+  .sh-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .sh-bar .sp { flex: 1; }
+  .sh-sub { margin-bottom: 14px; min-height: 30px; }
+  .sh-main { display: inline-flex; align-items: center; gap: 8px; }
+  .sh-main svg, .sh-empty svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sh-timers { display: flex; align-items: center; gap: 6px; }
+  .sh-stage { display: grid; place-items: center; min-height: min(480px, calc(100vh - 330px)); padding: 18px; border-radius: 22px; background: var(--panel-2); }
+  .sh-stage .shot { display: block; max-width: 100%; max-height: calc(100vh - 330px); border-radius: 12px; box-shadow: 0 0 0 1px var(--border), 0 14px 36px rgba(0,0,0,.25); }
+  .sh-empty, .sh-count { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 24px; max-width: 320px; }
+  .sh-empty svg { width: 54px; height: 54px; stroke: var(--faint); stroke-width: 1.2; }
+  .sh-count b { font-size: 84px; font-weight: 300; line-height: 1; }
+  .sh-strip { display: flex; gap: 10px; margin-top: 14px; overflow-x: auto; padding: 2px; }
+  .sh-strip[hidden] { display: none; }
+  .sh-thumb { flex: none; height: 84px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; cursor: pointer; background: var(--panel-2); box-shadow: 0 0 0 1px var(--border); }
+  .sh-thumb img { display: block; height: 100%; width: auto; }
+  .sh-thumb.on { box-shadow: 0 0 0 2px var(--ink); }
+  /* ---------- Backup & restore and Shizuku pages: a column of cards ---------- */
+  .pg-cards { display: grid; gap: 16px; }
+  .pg-cards > .card { margin: 0; }
+  .pg-cards h2 { margin-top: 0; }
+  .sz-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 18px; margin: 0 0 14px; font-size: 13.5px; }
+  .sz-kv dt { color: var(--muted); } .sz-kv dd { margin: 0; overflow-wrap: anywhere; }
+  .sz-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  /* ---------- ADB shell page (src/shell.js) ---------- */
+  .tm { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .tm .card { margin: 0; }
+  .tm-form { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 4px 4px 4px 16px; border-radius: 999px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); }
+  .tm-form:focus-within { box-shadow: 0 0 0 2px var(--ink); }
+  .tm-prompt { font-family: var(--mono); color: var(--muted); flex: none; }
+  .tm-cmd { flex: 1; min-width: 0; padding: 8px 0; border: 0; background: none; color: var(--text); outline: none; font-size: 13px; }
+  /* The command box is one pill: the field inside has no frame of its own, the pill shows the focus. */
+  .card .tm-form input.tm-cmd, .card .tm-form input.tm-cmd:focus, .card .tm-form input.tm-cmd:focus-visible { background: none; box-shadow: none; outline: none; border-radius: 0; padding: 8px 0; }
+  .tm-head code, .tm-row code { background: none; padding: 0; border-radius: 0; }
+  .tm-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tm-bar .sp { flex: 1; }
+  .tm-filter, .tm-gsearch { padding: 8px 16px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; outline: none; box-shadow: inset 0 0 0 1px var(--border); }
+  .tm-filter { flex: 0 1 220px; min-width: 130px; }
+  .tm-filter:focus, .tm-gsearch:focus { box-shadow: 0 0 0 2px var(--ink); }
+  .tm-out { background: #121216; color: #e6e6ec; border-radius: 22px; padding: 8px; min-height: 280px; max-height: calc(100vh - var(--head-h, 96px) - 230px); overflow: auto; font-family: var(--mono); font-size: 12.5px; }
+  .tm-out.tm-s { font-size: 11px; } .tm-out.tm-l { font-size: 14.5px; }
+  .tm-empty { display: grid; place-content: center; gap: 6px; min-height: 260px; text-align: center; color: #9a9aa6; font-family: var(--font, inherit); font-size: 13px; }
+  .tm-empty b { color: #e6e6ec; font-weight: 500; }
+  .tm-block { border-radius: 14px; padding: 8px 12px 10px; }
+  .tm-block + .tm-block { margin-top: 4px; }
+  .tm-block:hover { background: rgba(255,255,255,.04); }
+  .tm-head { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+  .tm-head .tm-prompt { color: #8fd14f; }
+  .tm-head code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font: inherit; font-weight: 600; }
+  .tm-meta { flex: none; color: #8a8a96; font-size: 11px; }
+  .tm-acts { flex: none; display: inline-flex; opacity: 0; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); }
+  .tm-block:hover .tm-acts, .tm-block:focus-within .tm-acts { opacity: 1; }
+  .tm-acts .fx-gb { width: 32px; height: 26px; color: #e6e6ec; border-color: rgba(255,255,255,.12); }
+  .tm-acts .fx-gb svg { width: 13px; height: 13px; }
+  .tm-block pre { margin: 2px 0 0; white-space: pre; font: inherit; line-height: 1.5; overflow-x: auto; }
+  .tm-wrap .tm-block pre { white-space: pre-wrap; word-break: break-word; }
+  .tm-err pre { color: #ff9c96; }
+  /* The command guide: a drawer that slides in from the right, over the page. */
+  /* The header's icon group: its buttons are joined into one pill. */
+  .hd-group { display: inline-flex; flex: none; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
+  .hd-group .dl-btn { width: 46px; height: 40px; border-radius: 0; background: none; box-shadow: none; }
+  .hd-group .dl-btn + .dl-btn { border-left: 1px solid var(--border); }
+  .hd-group .dl-btn[hidden] { display: none; }
+  .hd-group .dl-btn:hover { filter: none; background: var(--chip); }
+  .hd-group .dl-btn:focus-visible { outline-offset: -2px; }
+  .hd-group .dl-btn[aria-expanded="true"] { background: var(--ink); color: var(--on-ink); }
+  /* Downloading: the button fills from the left with the overall progress. */
+  .hd-group .dl-btn.dl-busy, .hd-group .dl-btn.dl-busy[aria-expanded="true"] { color: var(--text); background: linear-gradient(90deg, var(--chip) var(--dl, 0%), transparent var(--dl, 0%)); box-shadow: inset 0 -3px 0 var(--ink); }
+  .hd-group .dl-btn .nbadge { top: 3px; right: 4px; min-width: 15px; height: 15px; padding: 0 4px; font-size: 9.5px; }
+  #disconnectBtn { color: var(--danger); }
+  /* ---------- knowledge drawer and page tour (src/knowledge.js) ---------- */
+  .kb-shade { position: fixed; inset: 0; z-index: 68; background: rgba(10,10,12,.35); opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s; }
+  .kb-shade.open { opacity: 1; visibility: visible; }
+  .kb-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 69; width: min(420px, calc(100vw - 48px)); box-sizing: border-box; overflow-y: auto; padding: 22px 20px 28px; background: var(--surface); color: var(--text); border-radius: 28px 0 0 28px; box-shadow: -18px 0 48px rgba(0,0,0,.25); transform: translateX(105%); visibility: hidden; transition: transform .22s ease, visibility .22s; }
+  .kb-drawer.open { transform: none; visibility: visible; }
+  .kb-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .kb-head h2 { margin: 0; }
+  .kb-intro { margin: 0 0 14px; color: var(--muted); }
+  .kb-body h3 { margin: 20px 0 8px; font-size: 15px; font-weight: 500; }
+  .kb-list { margin: 0; padding-left: 20px; font-size: 13.5px; }
+  .kb-list li { margin: 7px 0; }
+  .kb-plain { margin: 14px 0 0; padding: 12px 14px; border-radius: 16px; background: var(--accent-soft); font-size: 14.5px; }
+  .kb-p { margin: 0 0 8px; font-size: 13.5px; }
+  .kb-dl { margin: 0; font-size: 13.5px; }
+  .kb-dl dt { font-weight: 500; margin-top: 10px; }
+  .kb-dl dt:first-child { margin-top: 0; }
+  .kb-dl dd { margin: 2px 0 0; color: var(--muted); }
+  .kb-tour { display: inline-flex; align-items: center; gap: 8px; margin: 0 8px 6px 0; }
+  .kb-tour svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .kb-spot { position: fixed; z-index: 80; border-radius: 16px; box-shadow: 0 0 0 3px var(--brand, #e3f786), 0 0 0 9999px rgba(8,8,10,.62); pointer-events: none; transition: left .2s, top .2s, width .2s, height .2s; }
+  .kb-spot[hidden], .kb-tip[hidden] { display: none; }
+  .kb-tip { position: fixed; z-index: 81; width: min(340px, calc(100vw - 24px)); box-sizing: border-box; padding: 14px 16px; border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 16px 44px rgba(0,0,0,.4), 0 0 0 1px var(--border); display: grid; gap: 6px; }
+  .kb-step { font-size: 12px; color: var(--muted); }
+  .kb-text { font-size: 13.5px; }
+  .kb-nav { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .kb-nav .sp { flex: 1; }
+  @media (prefers-reduced-motion: reduce) { .kb-drawer, .kb-shade, .kb-spot { transition: none; } }
+  .tm-gsearch { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+  .tm-grp { border-top: 1px solid var(--border); padding: 8px 0; }
+  .tm-grp:first-child { border-top: 0; }
+  .tm-grp > summary { cursor: pointer; font-weight: 500; padding: 4px 2px; }
+  .tm-row { display: grid; gap: 3px; width: 100%; text-align: left; margin-top: 4px; padding: 8px 10px; border: 0; border-radius: 12px; background: none; color: var(--text); font: inherit; cursor: pointer; }
+  .tm-row:hover { background: var(--chip); }
+  .tm-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .tm-what { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .tm-row code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .tm-chg { font-style: normal; font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: rgba(226, 130, 60, .2); color: #e08a3c; flex: none; }
+  .tm-tips { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+  .tm-tips li { margin: 5px 0; }
   /* ---------- download manager ---------- */
   header.top > div { align-items: center; }
   .dl-btn { position: relative; flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
   .dl-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .dl-btn:hover { filter: brightness(.96); }
+  /* The header's Connect phone button: the main action, so it is filled. */
+  .dl-btn.hd-connect { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+  .dl-btn.hd-connect:hover { filter: brightness(1.15); }
+  .dl-btn:disabled { cursor: default; opacity: .7; }
+  .dl-btn .spin { width: 18px; height: 18px; }
   .dl-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .dl-btn[aria-expanded="true"] { background: var(--ink); color: var(--on-ink); box-shadow: none; }
   /* While something downloads, a ring around the button fills with the overall progress. */
@@ -572,11 +829,6 @@
   .mirror-stage canvas:focus-visible { box-shadow: 0 0 0 6px #0d0d0e, 0 0 0 8px var(--ink), 0 18px 44px rgba(0,0,0,.28); }
   .mirror-stage:fullscreen { border-radius: 0; padding: 0; background: #000; }
   .mirror-stage:fullscreen canvas { max-height: 100vh; border-radius: 0; box-shadow: none; }
-  .mr-opt { display: grid; gap: 5px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
-  .mr-opt select { width: 100%; }
-  .mr-check { display: flex; gap: 9px; align-items: flex-start; margin-bottom: 9px; font-size: 13.5px; cursor: pointer; }
-  .mr-check input { margin-top: 3px; flex: none; }
-  .mr-note { margin: 10px 0 0; }
   .mr-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .mr-key { display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 62px; padding: 9px 4px; border: 0; border-radius: 16px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 11.5px; line-height: 1.2; cursor: pointer; box-shadow: inset 0 0 0 1px var(--border); }
   .mr-key svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -585,8 +837,21 @@
   .mr-key:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .mr-key:disabled { opacity: .45; cursor: not-allowed; }
   .mr-key.on { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+  .mr-grp { grid-column: 1 / -1; margin: 6px 2px -2px; font-size: 12px; color: var(--muted); }
+  .mr-grp:first-child { margin-top: 0; }
+  .mr-type { display: flex; gap: 8px; margin-top: 12px; }
+  .mr-type input { flex: 1; min-width: 0; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
+  .mr-type input:focus { outline: none; box-shadow: 0 0 0 2px var(--ink); }
+  .mirror-stage.actual { overflow: auto; justify-content: safe center; align-items: safe center; max-height: calc(100vh - 210px); }
+  .mirror-stage.actual canvas { max-width: none; max-height: none; }
+  .mr-controls { max-height: calc(100vh - var(--head-h, 96px) - 36px); overflow: auto; }
   .mr-rec { grid-column: 1 / -1; grid-auto-flow: column; justify-content: center; min-height: 44px; gap: 9px; font-size: 13px; font-weight: 500; }
   .mr-rec.rec-on { background: var(--danger); color: #fff; box-shadow: none; }
+  .mr-setup dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; font-size: 13px; }
+  .mr-setup dt { color: var(--muted); }
+  .mr-setup dd { margin: 0; }
+  .set-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 360px; }
+  .set-row textarea { width: min(360px, 100%); min-height: 96px; padding: 10px 14px; border: 0; border-radius: 16px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); resize: vertical; }
   .mr-tips dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 10px; font-size: 13px; }
   .mr-tips dt { color: var(--muted); }
   .mr-tips dd { margin: 0; }
@@ -674,7 +939,6 @@
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
     aside { position: static; height: auto; flex-direction: row; flex-wrap: wrap; padding: 12px; border-radius: 24px; }
-    .brand { width: 100%; padding: 0 4px 10px; }
     nav { flex-direction: row; flex-wrap: wrap; gap: 4px; flex: none; overflow: visible; }
     nav button { width: auto; padding: 7px 12px; }
     nav button span { display: none; }
@@ -704,6 +968,7 @@
   .dev-kv > :nth-child(even) { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
 </style>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="wifiradar.css">
 <link rel="stylesheet" href="dev/logcat.css">
 <link rel="stylesheet" href="dev/settings.css">
 <link rel="stylesheet" href="dev/apptools.css">
@@ -711,6 +976,8 @@
 <link rel="stylesheet" href="dev/perf.css">
 <link rel="stylesheet" href="dev/network.css">
 <link rel="stylesheet" href="dev/input.css">
+<link rel="stylesheet" href="dev/leaflet.css">
+<link rel="stylesheet" href="dev/location.css">
 <link rel="stylesheet" href="dev/phones.css">
 <link rel="stylesheet" href="dev/shell.css">
 <link rel="stylesheet" href="qa/perftest.css">
@@ -723,7 +990,6 @@
 <body>
 <div class="app" data-view="overview">
   <aside>
-    <div class="brand"><span class="dot" id="statusDot"></span>Droid Desk</div>
     <nav id="nav">
       <button data-view="overview" class="active"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Overview</span></button>
       <div class="ngroup" data-group="comm">
@@ -742,6 +1008,7 @@
           <button data-view="files" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Files</span></button>
           <button data-view="photos" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>Photos</span></button>
           <button data-view="music" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19"/><circle cx="18" cy="16" r="3"/><circle cx="6" cy="19" r="3"/></svg><span>Music</span></button>
+          <button data-view="backup" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h2"/><path d="M20 8v11a2 2 0 0 1-2 2h-2"/><path d="m9 15 3-3 3 3"/><path d="M12 12v9"/></svg><span>Backup &amp; restore</span></button>
           <button data-view="wifi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg><span>Wi‑Fi transfer</span></button>
         </div>
       </div>
@@ -753,6 +1020,7 @@
           <button data-view="revanced" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z"/></svg><span>ReVanced</span></button>
           <button data-view="fdroid"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/><path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/></svg><span>F-Droid</span></button>
           <button data-view="controls" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></svg><span>Controls</span></button>
+          <button data-view="shizuku" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg><span>Shizuku</span></button>
           <button data-view="mirror" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg><span>Screen mirror</span></button>
           <button data-view="screen" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg><span>Screenshot</span></button>
         </div>
@@ -779,10 +1047,14 @@
       <div>
         <span class="activity" id="activity" role="status" hidden><span class="spin" aria-hidden="true"></span>Working…</span>
         <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Droid Desk is available. Opens Settings"></button>
-        <button class="dl-btn" type="button" id="dlBtn" title="Downloads" aria-label="Downloads" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><b class="nbadge" id="dlBadge" hidden></b></button>
-        <button class="btn" id="wifiConnectBtn" hidden title="Wireless debugging (Android 11+)">Connect over Wi‑Fi</button>
-        <button class="btn primary" id="connectBtn">Connect phone</button>
-        <button class="btn" id="disconnectBtn" hidden>Disconnect</button>
+        <button class="dl-btn" type="button" id="wifiConnectBtn" hidden title="Connect over Wi‑Fi (Wireless debugging, Android 11+)" aria-label="Connect over Wi‑Fi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg></button>
+        <button class="dl-btn hd-connect" type="button" id="connectBtn" title="Connect phone (USB cable)" aria-label="Connect phone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></button>
+        <!-- One icon group: downloads, how this page works (the knowledge drawer), disconnect (while connected). -->
+        <div class="hd-group" role="group" aria-label="Quick actions">
+          <button class="dl-btn" type="button" id="dlBtn" title="Downloads" aria-label="Downloads" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><b class="nbadge" id="dlBadge" hidden></b></button>
+          <button class="dl-btn" type="button" id="guideBtn" title="How this page works" aria-label="How this page works" aria-expanded="false"></button>
+          <button class="dl-btn" type="button" id="disconnectBtn" title="Disconnect the phone" aria-label="Disconnect the phone" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 5 3-3"/><path d="m2 22 3-3"/><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/><path d="M7.5 13.5 10 11"/><path d="M10.5 16.5 13 14"/><path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z"/></svg></button>
+        </div>
       </div>
     </header>
 
@@ -806,9 +1078,9 @@
         <ol class="steps">
           <li>On the phone: <b>Settings → About phone</b>, tap <b>Build number</b> 7 times.</li>
           <li><b>Settings → System → Developer options</b> → turn on <b>USB debugging</b>.</li>
-          <li>Plug in the USB cable, click <b>Connect phone</b>, pick the device, then tap <b>Allow</b> on the phone.</li>
+          <li>Plug in the USB cable, click <b>Connect phone</b> (the plug button at the top right), pick the device, then tap <b>Allow</b> on the phone.</li>
         </ol>
-        <p class="muted">No cable? On Android 11 and later, click <b>Connect over Wi‑Fi</b>, then scan the QR code in <b>Developer options → Wireless debugging → Pair device with QR code</b>. You only pair once; after that it connects with one click.</p>
+        <p class="muted">No cable? On Android 11 and later, click <b>Connect over Wi‑Fi</b> (the Wi‑Fi button next to it), then scan the QR code in <b>Developer options → Wireless debugging → Pair device with QR code</b>. You only pair once; after that it connects with one click.</p>
         <p class="muted" style="margin-bottom:0">Needs Chrome or Edge on desktop. If you have Android SDK tools installed, run <code>adb kill-server</code> first — only one program can hold the USB connection.</p>
       </div>
       <div id="overview" hidden>
@@ -855,19 +1127,26 @@
               </div>
             </div>
             <!-- ===== end of Phone links ===== -->
-            <!-- Back up this phone / Restore from a backup / automatic photo copy (src/backup.js) -->
-            <div class="card" id="backupCard" hidden></div>
           </div>
           <div class="ov-side">
             <h2 class="ov-title">This phone</h2>
             <div class="card">
               <div class="ov-kv" id="infoGrid"></div>
             </div>
-            <div class="card" id="ramCard" hidden></div>
-            <!-- Shizuku (src/shizuku.js): "Start Shizuku" when the phone has it installed but not running, its status when it runs -->
-            <div class="card" id="szCard" hidden></div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- BACKUP & RESTORE (src/backup.js): back up this phone, restore from a backup, automatic photo copy -->
+    <section data-panel="backup" hidden><div class="pg-cards" id="backupCard" hidden></div></section>
+
+    <!-- SHIZUKU (src/shizuku.js): its state on the phone, start it over adb, open it.
+         Below it, the Phone RAM manager (src/app.js): Droid Desk's own helper for the same companion tools. -->
+    <section data-panel="shizuku" hidden>
+      <div class="pg-cards">
+        <div class="pg-cards" id="szCard"></div>
+        <div class="card" id="ramCard" hidden></div>
       </div>
     </section>
 
@@ -895,22 +1174,13 @@
     </section>
 
     <!-- FILES -->
-    <section data-panel="files" hidden>
-      <div class="card">
-        <div class="toolbar">
-          <div class="crumbs" id="crumbs" style="flex:1"></div>
-          <button class="btn sm" id="upBtn">Up</button>
-          <button class="btn sm" id="uploadBtn">Upload here</button>
-          <input type="file" id="uploadInput" multiple hidden>
-        </div>
-        <table><thead><tr><th>Name</th><th class="num hide-sm">Size</th><th class="hide-sm">Modified</th><th></th></tr></thead><tbody id="fileRows"></tbody></table>
-      </div>
-    </section>
+    <section data-panel="files" hidden><div id="filesRoot"></div></section>
 
     <!-- PHOTOS -->
     <section data-panel="photos" hidden>
       <div class="card" id="phGate" hidden></div>
       <div id="phMain" hidden>
+        <div class="stick-top">
         <div class="card">
           <div class="toolbar">
             <div class="seg" id="phType"><button data-t="all" class="on" type="button">All</button><button data-t="image" type="button">Photos</button><button data-t="video" type="button">Videos</button></div>
@@ -930,6 +1200,7 @@
           <div class="sub" id="phProgress" hidden style="margin-top:10px"></div>
         </div>
         <div class="selbar" id="phSelBar" hidden></div>
+        </div>
         <div class="card" id="phDupHead" hidden></div>
         <div id="phGrid"></div>
       </div>
@@ -940,6 +1211,7 @@
       <div class="card" id="muGate" hidden></div>
       <div id="muMain" hidden>
         <div class="card mplayer" id="muPlayer" hidden></div>
+        <div class="stick-top">
         <div class="card">
           <div class="toolbar">
             <div class="seg" id="muView"><button data-v="songs" class="on" type="button">Songs</button><button data-v="artist" type="button">Artists</button><button data-v="album" type="button">Albums</button><button data-v="folder" type="button">Folders</button></div>
@@ -956,6 +1228,7 @@
           <div class="sub" id="muProgress" hidden style="margin-top:10px"></div>
         </div>
         <div class="selbar" id="muSelBar" hidden></div>
+        </div>
         <div class="card" id="muBody"></div>
       </div>
     </section>
@@ -1080,41 +1353,16 @@
         <aside class="mr-side">
           <div class="card mr-setup">
             <h2>Options</h2>
-            <label class="mr-opt"><span>Quality</span>
-              <select id="mirrorQuality">
-                <option value="fast">Fast (720p · 4 Mbps)</option>
-                <option value="balanced" selected>Balanced (1080p · 8 Mbps)</option>
-                <option value="sharp">Sharp (full resolution · 16 Mbps)</option>
-              </select>
-            </label>
-            <label class="mr-opt"><span>Show</span>
-              <select id="mirrorSource">
-                <option value="screen" selected>Phone screen</option>
-                <option value="back">Back camera (Android 12+)</option>
-                <option value="front">Front camera (Android 12+)</option>
-              </select>
-            </label>
-            <label class="mr-check" title="Plays the phone's sound on this computer. Android 11+; with a camera, the microphone is used."><input type="checkbox" id="mirrorAudio" checked> <span>Play the phone's sound here</span></label>
-            <label class="mr-check"><input type="checkbox" id="mirrorScreenOff"> <span>Turn the phone's screen off while mirroring</span></label>
-            <p class="muted small mr-note">These are remembered. Change them when mirroring is stopped.</p>
+            <dl id="mirrorSummary"></dl>
+            <button class="btn sm" type="button" id="mirrorSettings">Change in Settings</button>
           </div>
           <div class="card mr-controls">
             <h2>Controls</h2>
-            <div class="mr-keys" id="mirrorKeys">
-            <button class="mr-key" type="button" data-k="back" title="Back (Esc or right-click)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 6 12l9 7z"/></svg><span>Back</span></button>
-            <button class="mr-key" type="button" data-k="home" title="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/></svg><span>Home</span></button>
-            <button class="mr-key" type="button" data-k="recents" title="Recent apps"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="2.5"/></svg><span>Recents</span></button>
-            <button class="mr-key" type="button" data-k="voldown" title="Volume down"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 12h5"/></svg><span>Vol −</span></button>
-            <button class="mr-key" type="button" data-k="volup" title="Volume up"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 12h6"/><path d="M19 9v6"/></svg><span>Vol +</span></button>
-            <button class="mr-key" type="button" data-k="power" title="Power button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg><span>Power</span></button>
-            <button class="mr-key" type="button" data-k="notif" title="Open the notification shade"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg><span>Notifications</span></button>
-            <button class="mr-key" type="button" data-k="rotate" title="Rotate the phone's screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg><span>Rotate</span></button>
-            <button class="mr-key" type="button" data-k="screen" title="Turn the phone's own display off or on; mirroring continues" id="mirrorScreenToggle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M3 4l18 16"/></svg><span>Screen off</span></button>
-            <button class="mr-key" type="button" data-k="shot" title="Save the current picture as a PNG file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Save frame</span></button>
-            <button class="mr-key" type="button" data-k="audio" title="Mute or unmute the phone's sound on this computer" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg><span>Mute</span></button>
-            <button class="mr-key" type="button" data-k="full" title="Fill this computer's screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg><span>Full screen</span></button>
-              <button class="mr-key mr-rec" type="button" data-k="record" id="mirrorRecord" title="Record the mirrored screen (and sound) to an MP4 file"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg><span>Record</span></button>
-            </div>
+            <div class="mr-keys" id="mirrorKeys"></div>
+            <form class="mr-type" id="mirrorType">
+              <input type="text" id="mirrorText" placeholder="Type here, send to the phone" autocomplete="off" aria-label="Text to type on the phone">
+              <button class="btn sm primary" type="submit">Send</button>
+            </form>
           </div>
           <div class="card mr-tips">
             <h2>How it works</h2>
@@ -1206,19 +1454,15 @@
             <button class="switch" id="wifiSwitch" type="button"></button>
           </div>
           <div class="ctl" style="margin-bottom:12px;align-items:flex-start">
-            <div><div><b>Transfer method</b></div><div class="sub" id="wifiMethodNote"></div></div>
-            <div class="seg" id="wifiMethod">
-              <button data-m="auto" type="button">Auto</button>
-              <button data-m="lan" type="button">Same Wi‑Fi</button>
-              <button data-m="direct" type="button">Direct link</button>
-            </div>
+            <div><div><b>Transfer method: <span id="wifiMethodName"></span></b></div><div class="sub" id="wifiMethodNote"></div></div>
+            <button class="btn sm to-settings" type="button">Change in Settings</button>
           </div>
           <div class="sub" id="wifiLink" style="margin-bottom:12px" hidden></div>
           <div class="toolbar" style="margin:0">
             <span class="muted small">Received files go to</span>
             <span class="mono small" id="wifiFolder" style="flex:1"></span>
-            <button class="btn sm" id="wifiChange">Change…</button>
             <button class="btn sm" id="wifiOpen">Open folder</button>
+            <button class="btn sm to-settings" type="button">Change in Settings</button>
           </div>
         </div>
         <div class="card">
@@ -1226,7 +1470,8 @@
             <h2 style="margin:0">Nearby devices</h2>
             <button class="btn sm" id="wifiScan" disabled>Scan again</button>
           </div>
-          <div class="wifi-list" id="wifiDevices"></div>
+          <!-- The radar (src/wifiradar.js) beside the list of the same devices with their details -->
+          <div class="wifi-near"><div id="wifiRadar"></div><div class="wifi-list" id="wifiDevices"></div></div>
         </div>
         <div class="card muted small">
           <b>How it works:</b> on your phone, turn on <b>Receive</b> in Droid Desk Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>
@@ -1237,16 +1482,7 @@
     </section>
 
     <!-- SCREENSHOT -->
-    <section data-panel="screen" hidden>
-      <div class="card">
-        <div class="toolbar">
-          <button class="btn primary" id="shotBtn">Take screenshot</button>
-          <button class="btn" id="shotSave" disabled>Save PNG</button>
-          <span class="muted" id="shotInfo"></span>
-        </div>
-        <img class="shot" id="shotImg" alt="Phone screenshot" hidden>
-      </div>
-    </section>
+    <section data-panel="screen" hidden><div id="shotRoot"></div></section>
 
     <!-- SHELL -->
     <!-- DEVELOPER (src/devtools.js, src/dev/*.js) -->
@@ -1263,16 +1499,7 @@
 
     <section data-panel="settings" hidden><div id="settingsRoot"></div></section>
 
-    <section data-panel="shell" hidden>
-      <div class="card">
-        <form class="toolbar" id="shellForm">
-          <input type="text" id="shellCmd" class="mono" placeholder="e.g. dumpsys battery" autocomplete="off" spellcheck="false">
-          <button class="btn primary">Run</button>
-          <button class="btn" type="button" id="shellClear">Clear</button>
-        </form>
-        <pre class="out" id="shellOut"></pre>
-      </div>
-    </section>
+    <section data-panel="shell" hidden><div id="shellRoot"></div></section>
   </main>
 </div>
 <div class="dl-panel" id="dlPanel" role="dialog" aria-label="Downloads" hidden>

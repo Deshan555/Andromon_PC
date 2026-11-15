@@ -16,7 +16,14 @@ import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initSettings } from "./settings.js";
 import { initDownloads } from "./downloads.js";
+import { initDropdowns } from "./dropdown.js";
+import { initFiles } from "./files.js";
+import { icon } from "./fileicons.js";
+import { initScreenshot, shotPrefs } from "./screenshot.js";
+import { initShell, shellPrefs } from "./shell.js";
+import { initKnowledge } from "./knowledge.js";
 import { initShizuku } from "./shizuku.js";
+import { initWifiRadar } from "./wifiradar.js";
 import { initRevanced } from "./revanced.js";
 import { initFdroid } from "./fdroid.js";
 import { initPeople } from "./people.js";
@@ -42,7 +49,7 @@ let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
 let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
-let shizukuCard = null; // "Start Shizuku" on the Overview (./shizuku.js), set up at the end of this file
+let shizukuCard = null; // The Shizuku page (./shizuku.js), set up at the end of this file
 let downloads = null; // the download manager (./downloads.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
 const credentialStore = new AdbWebCredentialStore("DroidDesk");
@@ -127,10 +134,17 @@ function armedClick(btn, action) {
   });
 }
 
+// Options live in Settings; a page that shows their state links there with this button.
+const settingsLink = (text = "Change in Settings") => {
+  const b = el("button", { className: "btn sm", type: "button", textContent: text });
+  b.onclick = () => show("settings");
+  return b;
+};
+
 // ---------- navigation ----------
 let current = "overview";
-const loaders = { overview: loadOverview, apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
-  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => loadDir(cwd), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
+const loaders = { overview: loadOverview, backup: () => backup?.renderCard(), shizuku: () => Promise.all([shizukuCard?.render(), renderRamCard()]), apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
+  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
 const offlineViews = { wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load() };
 let settingsUi = null;
@@ -160,7 +174,7 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], wifi: ["Wi‑Fi ", "transfer"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
@@ -193,14 +207,24 @@ if (!AdbDaemonWebUsbDeviceManager.BROWSER) {
   showError("WebUSB is not available here. Use the Droid Desk desktop app, or open this page in desktop Chrome/Edge from http://localhost.");
 }
 
+// The header's Connect phone button is an icon: while it works, a spinner takes the icon's place and
+// what it is doing ("Connecting…") goes in its tooltip and its name for screen readers.
+const connectBtnUi = (() => {
+  const btn = $("connectBtn"), icon = [...btn.childNodes], title = btn.title, name = btn.getAttribute("aria-label");
+  const say = (text) => { btn.title = text; btn.setAttribute("aria-label", text); };
+  return {
+    start(text) { btn.replaceChildren(spinner()); btn.disabled = true; btn.setAttribute("aria-busy", "true"); say(text); },
+    set textContent(text) { say(text); }, // connectUsb reports its steps this way
+    stop() { if (!btn.hasAttribute("aria-busy")) return; btn.replaceChildren(...icon); btn.disabled = false; btn.removeAttribute("aria-busy"); btn.title = title; btn.setAttribute("aria-label", name); },
+  };
+})();
 $("connectBtn").addEventListener("click", async () => {
   clearError();
-  const btn = $("connectBtn");
   try {
     const device = await AdbDaemonWebUsbDeviceManager.BROWSER.requestDevice();
     if (!device) return; // picker cancelled
-    busy(btn, true, "Connecting…");
-    const connection = await connectUsb(device, btn);
+    connectBtnUi.start("Connecting…");
+    const connection = await connectUsb(device, connectBtnUi);
     $("authBox").hidden = false;
     const transport = await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore });
     $("authBox").hidden = true;
@@ -209,7 +233,7 @@ $("connectBtn").addEventListener("click", async () => {
     $("authBox").hidden = true;
     showError(e);
   } finally {
-    if (btn.disabled && btn.dataset.label) busy(btn, false);
+    connectBtnUi.stop();
   }
 });
 let connectedVia = null; // "usb" | "wifi"
@@ -358,12 +382,9 @@ function renderWadbIntro() {
   const phones = wadbUi.phones.map((p) => ({ ...p, svc: onlineService(p.serial) }));
   box.hidden = !phones.length;
   if (!phones.length) return;
-  const auto = el("input", { type: "checkbox", checked: wadbUi.auto });
-  auto.onchange = async () => { wadbUi.auto = await wadbApi.setAuto(auto.checked); if (wadbUi.auto) maybeAutoConnect(); };
   box.replaceChildren(
     el("div", { className: "toolbar", style: "margin:0 0 6px;justify-content:space-between" },
-      el("h2", { style: "margin:0", textContent: "Your phones over Wi‑Fi" }),
-      el("label", { className: "small muted" }, auto, " Connect automatically")),
+      el("h2", { style: "margin:0", textContent: "Your phones over Wi‑Fi" })),
     ...phones.map((p) => {
       const go = el("button", { className: "btn sm primary", textContent: "Connect", type: "button" });
       go.onclick = () => wadbConnect({ serial: p.serial }, go);
@@ -645,6 +666,7 @@ function onDisconnected() {
 // Forgets everything that belongs to the phone in use (on disconnect, and when switching phones).
 function resetSessionState() {
   if (mirror) stopMirror();
+  filesTab?.reset(); shotTab?.reset();
   autotest?.onDisconnected();
   devtools?.onDisconnected();
   links?.onDisconnected();
@@ -658,7 +680,6 @@ function resetSessionState() {
   setCallAlertState("off");
 }
 function setConnected(on) {
-  $("statusDot").classList.toggle("on", on);
   $("connectBtn").hidden = on; $("disconnectBtn").hidden = !on;
   if (wadbApi) $("wifiConnectBtn").hidden = on;
   $("intro").hidden = on; $("overview").hidden = !on;
@@ -709,9 +730,6 @@ async function loadOverview() {
     heroCard("Storage", ICON_SD, total ? Math.round(used / total * 100) : null, "%", total ? `used of ${fmtSize(total)}` : "Unknown", total ? used / total : null,
       total ? fmtSize(total - used) : "—", "free"),
   );
-  renderRamCard().catch((e) => console.warn("RAM manager card:", e));
-  shizukuCard?.render().catch((e) => console.warn("Shizuku card:", e));
-  backup?.renderCard();
   // Chips under the name: what people check first.
   const via = phoneVia.get(adb) === "wifi" ? "Wi‑Fi" : "USB";
   $("devChips").replaceChildren(...[
@@ -787,7 +805,7 @@ async function autoStartRamHelper() {
     if ((await companionVersionOnPhone()).version < RAM_HELPER_MIN_COMPANION) return;
     await startRamHelper();
     toast("Phone RAM manager turned on");
-    if (current === "overview") renderRamCard().catch(() => {});
+    if (current === "shizuku") renderRamCard().catch(() => {});
   } catch (e) { console.warn("RAM manager auto-start:", e); }
 }
 
@@ -811,8 +829,6 @@ async function renderRamCard() {
     });
     main.classList.add("primary");
   }
-  const auto = el("input", { type: "checkbox", checked: ramAuto() });
-  auto.onchange = () => { try { localStorage.setItem(RAM_AUTO_KEY, auto.checked ? "1" : "0"); } catch {} };
   const state = version < RAM_HELPER_MIN_COMPANION ? ["Needs the companion app", "neutral"]
     : running ? ["On until the phone restarts", "on"] : ["Off", "neutral"];
   box.replaceChildren(
@@ -824,7 +840,7 @@ async function renderRamCard() {
       "Droid Desk starts a small helper on the phone with ADB rights. It can only list processes, stop apps and free memory, " +
       "only the companion app can use it, and it keeps working after you unplug, until the phone restarts." }),
     el("div", { className: "toolbar", style: "margin:0" }, main,
-      el("label", { className: "muted small", style: "display:flex;align-items:center;gap:6px" }, auto, "Turn on automatically when this phone connects"),
+      el("span", { className: "muted small", textContent: ramAuto() ? "Turns on by itself when a phone connects." : "" }),
       status),
   );
 }
@@ -1353,75 +1369,8 @@ async function runInstall({ pkg, pick }, progress) {
 }
 
 // ---------- files ----------
-let cwd = "/sdcard";
-$("upBtn").addEventListener("click", () => { if (cwd !== "/") loadDir(cwd.replace(/\/[^/]+\/?$/, "") || "/").catch(showError); });
-$("uploadBtn").addEventListener("click", () => $("uploadInput").click());
-$("uploadInput").addEventListener("change", async (e) => {
-  const files = [...e.target.files]; e.target.value = "";
-  const btn = $("uploadBtn");
-  busy(btn, true, "Uploading…");
-  try {
-    for (const f of files) {
-      await withSync((s) => s.write({ filename: joinPath(cwd, f.name), file: f.stream(), permission: 0o660, mtime: Math.floor(f.lastModified / 1000) }));
-    }
-    toast(`Uploaded ${files.length} file${files.length > 1 ? "s" : ""}`);
-    await loadDir(cwd);
-  } catch (err) { showError(err); } finally { busy(btn, false); }
-});
-const joinPath = (dir, name) => (dir.endsWith("/") ? dir : dir + "/") + name;
-
-async function loadDir(path) {
-  if (!adb) return;
-  clearError();
-  const entries = await withSync((s) => s.readdir(path));
-  cwd = path;
-  renderCrumbs();
-  const list = entries.filter((e) => e.name !== "." && e.name !== "..").sort((a, b) => {
-    const da = a.type === LinuxFileType.Directory, db = b.type === LinuxFileType.Directory;
-    return da !== db ? (da ? -1 : 1) : a.name.localeCompare(b.name);
-  });
-  const rows = list.map((e) => {
-    const isDir = e.type === LinuxFileType.Directory, isLink = e.type === LinuxFileType.Link;
-    const full = joinPath(cwd, e.name);
-    const name = el("button", { className: "link", textContent: (isDir ? "📁 " : isLink ? "🔗 " : "📄 ") + e.name });
-    name.onclick = () => (isDir || isLink ? loadDir(full) : pullFile(full, e.name, null)).catch(showError);
-    const when = new Date(Number(e.mtime) * 1000);
-    const act = el("td", { className: "act" });
-    if (!isDir && !isLink) {
-      const dl = el("button", { className: "btn sm", textContent: "Download" });
-      dl.onclick = () => pullFile(full, e.name, dl).catch(showError);
-      const rm = el("button", { className: "btn sm danger", textContent: "Delete" });
-      armedClick(rm, async () => {
-        const out = (await adb.rm(full)).trim();
-        if (out) return showError(`Delete failed: ${out}`);
-        toast(`Deleted ${e.name}`); loadDir(cwd).catch(showError);
-      });
-      act.append(dl, rm);
-    }
-    return el("tr", {},
-      el("td", {}, name),
-      el("td", { className: "num hide-sm", textContent: isDir ? "" : fmtSize(e.size) }),
-      el("td", { className: "muted hide-sm", textContent: isFinite(when) ? when.toLocaleString() : "" }),
-      act);
-  });
-  $("fileRows").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colSpan: 4, className: "empty", textContent: "Empty folder (or no permission to list it)" }))]));
-}
-function renderCrumbs() {
-  const c = $("crumbs"); c.replaceChildren();
-  const parts = cwd.split("/").filter(Boolean);
-  const root = el("button", { textContent: "/" }); root.onclick = () => loadDir("/").catch(showError); c.append(root);
-  parts.forEach((p, i) => {
-    const b = el("button", { textContent: p });
-    const target = "/" + parts.slice(0, i + 1).join("/");
-    b.onclick = () => loadDir(target).catch(showError);
-    c.append(b, i < parts.length - 1 ? "/" : "");
-  });
-}
-async function pullFile(path, name, btn) {
-  if (btn) busy(btn, true, "…");
-  try { download(await withSync((s) => readAll(s.read(path))), name); }
-  finally { if (btn) busy(btn, false); }
-}
+// The Files page lives in ./files.js (set up at the end of this file).
+let filesTab = null;
 
 // ---------- controls (quick toggles) ----------
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -2205,6 +2154,24 @@ async function loadContacts(force = false) {
   });
 }
 
+// Icon button beside a contact's number: opens Messages with a new message addressed to it.
+function textButton(number, name) {
+  const raw = String(number || "").trim();
+  if (!/^[+\d][\d\s().-]*$/.test(raw)) return "";
+  const title = `Text ${String(name || "").trim() || raw}`;
+  const b = el("button", { className: "lk-icon", type: "button", title },
+    document.querySelector('#nav button[data-view="messages"] svg')?.cloneNode(true) || "");
+  b.setAttribute("aria-label", title);
+  b.addEventListener("click", async () => {
+    show("messages");
+    await loadMessages().catch(() => {});
+    renderNewMessage();
+    const to = document.querySelector(".to-input"); if (to) to.value = raw;
+    document.querySelector(".composer textarea")?.focus();
+  });
+  return b;
+}
+
 function renderContacts() {
   if (!contactsCache) return;
   const q = $("ctSearch").value.trim().toLowerCase();
@@ -2215,7 +2182,8 @@ function renderContacts() {
   const lines = (arr, f) => el("div", {}, ...arr.map((x) => el("div", { textContent: f(x) })));
   const rows = list.slice(0, 1000).map((c) => el("tr", {},
     el("td", {}, people ? people.nameCell(c) : el("span", { textContent: (c.starred ? "★ " : "") + (c.name || "(no name)") })),
-    el("td", { className: "mono" }, el("div", {}, ...c.phones.map((p) => el("div", { className: "lk-tel" }, `${p.number}  ·  ${p.type}`, links?.callButton(p.number, c.name) || "")))),
+    el("td", { className: "mono" }, el("div", {}, ...c.phones.map((p) => el("div", { className: "lk-tel" }, el("span", { textContent: `${p.number}  ·  ${p.type}` }),
+      el("span", { className: "lk-acts" }, textButton(p.number, c.name), links?.callButton(p.number, c.name) || ""))))),
     el("td", { className: "hide-sm" }, lines(c.emails, (m) => m.address))));
   $("ctRows").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colSpan: 3, className: "empty", textContent: q ? "No matches" : "No contacts" }))]));
   people?.renderSelection();
@@ -2351,17 +2319,9 @@ function setCallAlertState(state, detail = "") {
 
 function renderCallAlertCard() {
   const card = $("callAlertCard"); if (!card) return;
-  const sw = el("button", { className: "switch", type: "button", title: "Call alerts" });
-  sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(callAlerts.on));
-  sw.onclick = () => {
-    callAlerts.on = !callAlerts.on;
-    try { localStorage.setItem("dd.callAlerts", callAlerts.on ? "on" : "off"); } catch {}
-    if (!callAlerts.on) hideCallPop();
-    startCallAlerts();
-  };
   const st = callAlerts.on ? callAlerts.state : "off";
   const text = {
-    off: callAlerts.on ? "Connect a phone to get call alerts here." : "Off. Turn on to see incoming calls on this computer.",
+    off: callAlerts.on ? "Connect a phone to get call alerts here." : "Off. Turn on in Settings to see incoming calls on this computer.",
     starting: "Starting…",
     on: "On. Incoming calls pop up here, and as a notification when Droid Desk is in the background.",
     reconnecting: "Lost the link to the phone. Reconnecting…",
@@ -2381,7 +2341,7 @@ function renderCallAlertCard() {
     };
     kids.push(btn);
   }
-  kids.push(sw);
+  kids.push(settingsLink());
   card.replaceChildren(...kids);
 }
 
@@ -2635,14 +2595,14 @@ function renderNotifCard() {
   };
   const st = notifs.status;
   let text;
-  if (!notifs.on) text = "Off. Turn on to see the phone's notifications here (WhatsApp, SMS, email…) and answer them from this computer. This gives Droid Desk Companion “Notification access” on the phone.";
+  if (!notifs.on) text = "Off. Turn on in Settings to see the phone's notifications here (WhatsApp, SMS, email…) and answer them from this computer. This gives Droid Desk Companion “Notification access” on the phone.";
   else if (!adb) text = "Connect a phone to see its notifications.";
   else if (callAlerts.state === "missing" || callAlerts.state === "outdated") text = callAlerts.state === "missing" ? "Needs the Droid Desk Companion app on the phone." : "Needs a newer Droid Desk Companion on the phone.";
   else if (!st) text = "Starting…";
   else if (!st.access) text = "The phone hasn't given Droid Desk Companion “Notification access” yet.";
   else text = "On. New notifications pop up here; reply, use their buttons or dismiss them on the phone.";
   const main = el("div", { className: "ctl" }, el("div", {}, el("div", {}, el("b", { textContent: "Phone notifications on this computer" })), el("div", { className: "sub", textContent: text })),
-    sw(notifs.on, "Phone notifications", () => { notifs.on = !notifs.on; lsSet("dd.notifs", notifs.on); if (!notifs.on) resetNotifs(); startCallAlerts(); }));
+    settingsLink());
   const rows = [main];
   if (adb && notifs.on && st && !st.access) {
     const allow = el("button", { className: "btn sm primary", type: "button", textContent: "Allow again" });
@@ -2659,22 +2619,6 @@ function renderNotifCard() {
       catch (e) { showError(e); if (btn.isConnected) busy(btn, false); }
     };
     rows.push(el("div", { className: "toolbar", style: "margin:0" }, btn));
-  }
-  if (notifs.on) {
-    rows.push(el("div", { className: "ctl" }, el("div", {}, el("div", {}, el("b", { textContent: "Pop-ups" })), el("div", { className: "sub", textContent: "Show new notifications in the corner of this window, and as system notifications when Droid Desk is in the background." })),
-      sw(notifs.popups, "Pop-ups", () => { notifs.popups = !notifs.popups; lsSet("dd.notifPopups", notifs.popups); renderNotifCard(); })));
-    if (notifs.muted.size) {
-      const chips = el("div", { className: "chips", style: "margin:4px 0 0" });
-      for (const pkg of notifs.muted) {
-        const c = el("button", { className: "chip", type: "button", title: "Unmute", textContent: `${notifs.icons.get(pkg)?.app || pkg} ✕` });
-        c.onclick = () => { notifs.muted.delete(pkg); lsSet("dd.notifMuted", [...notifs.muted]); renderNotifCard(); };
-        chips.append(c);
-      }
-      rows.push(el("div", { className: "ctl", style: "display:block" }, el("b", { textContent: "Muted apps" }), el("div", { className: "sub", textContent: "Still listed below, but they don't pop up. Click one to unmute it." }), chips));
-    }
-    const ta = el("textarea", { value: notifs.quick.join("\n"), spellcheck: false });
-    ta.onchange = () => { notifs.quick = ta.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 12); lsSet("dd.quickReplies", notifs.quick); toast("Quick replies saved"); };
-    rows.push(el("details", { className: "ctl", style: "display:block" }, el("summary", { textContent: "Quick replies (one per line)" }), ta));
   }
   card.replaceChildren(el("div", { className: "rows" }, ...rows));
 }
@@ -2898,35 +2842,70 @@ const mirrorPrefs = {
   QUALITY: [["fast", "Fast (720p · 4 Mbps)"], ["balanced", "Balanced (1080p · 8 Mbps)"], ["sharp", "Sharp (full resolution · 16 Mbps)"]],
   SOURCE: [["screen", "Phone screen"], ["back", "Back camera"], ["front", "Front camera"]],
   FPS: [["60", "Up to 60 a second"], ["30", "Up to 30 a second"], ["15", "Up to 15 a second"]],
+  CODEC: [["h264", "H.264 (works everywhere)"], ["h265", "H.265 (sharper at the same speed)"]],
   get() {
     let p = {}; try { p = JSON.parse(localStorage.getItem("dd.mirror")) || {}; } catch {}
     const one = (list, v, d) => (list.some(([id]) => id === String(v)) ? v : d);
     return {
       quality: one(this.QUALITY, p.quality, "balanced"), source: one(this.SOURCE, p.source, "screen"),
       audio: p.audio !== false, screenOff: p.screenOff === true, fps: Number(one(this.FPS, p.fps, 60)),
+      codec: one(this.CODEC, p.codec, "h264"), touches: p.touches === true, awake: p.awake !== false,
+      lockOnStop: p.lockOnStop === true, clipboard: p.clipboard !== false,
     };
   },
   set(patch) {
     try { localStorage.setItem("dd.mirror", JSON.stringify({ ...this.get(), ...patch })); } catch {}
     this.show();
   },
+  // The mirror page only says what is chosen; the options themselves are in Settings.
   show() {
-    const p = this.get();
-    $("mirrorQuality").value = p.quality; $("mirrorSource").value = p.source;
-    $("mirrorAudio").checked = p.audio; $("mirrorScreenOff").checked = p.screenOff;
+    const p = this.get(), label = (list, v) => list.find(([id]) => id === String(v))?.[1] || "";
+    $("mirrorSummary").replaceChildren(...[
+      ["Quality", label(this.QUALITY, p.quality)], ["Show", label(this.SOURCE, p.source)],
+      ["Sound", p.audio ? "Plays on this computer" : "Off"], ["Phone screen", p.screenOff ? "Turns off while mirroring" : "Stays on"],
+      ["Frame rate", label(this.FPS, p.fps)], ["Video", p.codec === "h265" ? "H.265" : "H.264"],
+    ].flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]));
   },
 };
 mirrorPrefs.show();
-$("mirrorQuality").addEventListener("change", (e) => mirrorPrefs.set({ quality: e.target.value }));
-$("mirrorSource").addEventListener("change", (e) => mirrorPrefs.set({ source: e.target.value }));
-$("mirrorAudio").addEventListener("change", (e) => mirrorPrefs.set({ audio: e.target.checked }));
-$("mirrorScreenOff").addEventListener("change", (e) => mirrorPrefs.set({ screenOff: e.target.checked }));
+$("mirrorSettings").addEventListener("click", () => show("settings"));
 // A control's label sits in a <span> beside its icon.
 const keyLabel = (btn, text) => { btn.querySelector("span").textContent = text; };
 
+// The control grid: [key, label, tooltip, icon] in named groups. What each does is in KEY_BUTTONS below.
+const MIRROR_KEYS = [
+  ["Navigation", [["back", "Back", "Back (Esc or right-click)", "arrow-left"], ["home", "Home", "Home", "circle"], ["recents", "Recents", "Recent apps", "square"],
+    ["menu", "Menu", "Menu key", "menu"], ["notif", "Notifications", "Open the notification shade", "bell"], ["quick", "Quick settings", "Open the quick settings", "sliders-horizontal"],
+    ["closepanels", "Close panels", "Close the notification shade and quick settings", "panel-top-close"]]],
+  ["Sound and power", [["voldown", "Vol −", "Volume down", "volume-1"], ["volup", "Vol +", "Volume up", "volume-2"], ["mutephone", "Mute phone", "Mute or unmute the phone's own sound", "volume-x"],
+    ["power", "Power", "Power button", "power"], ["lock", "Lock", "Lock the phone (screen off)", "lock"], ["screen", "Screen off", "Turn the phone's own display off or on; mirroring continues", "eye-off", "mirrorScreenToggle"]]],
+  ["Media and brightness", [["prev", "Previous", "Previous track", "skip-back"], ["play", "Play / pause", "Play or pause", "play"], ["next", "Next", "Next track", "skip-forward"],
+    ["bdown", "Dimmer", "Brightness down", "sun-dim"], ["bup", "Brighter", "Brightness up", "sun"], ["rotate", "Rotate", "Rotate the phone's screen", "rotate-ccw"]]],
+  ["View", [["full", "Full screen", "Fill this computer's screen", "maximize"], ["zoom", "Actual size", "Show the picture at its real size, or fit it to the window", "zoom-in"],
+    ["ontop", "Keep on top", "Keep this window above other windows while mirroring", "pin"]]],
+  ["Capture", [["shot", "Save frame", "Save the current picture as a PNG file", "camera"], ["copyframe", "Copy frame", "Copy the current picture to this computer's clipboard", "copy"],
+    ["paste", "Paste", "Paste this computer's clipboard text on the phone", "clipboard-paste"], ["audio", "Mute", "Mute or unmute the phone's sound on this computer", "headphones"]]],
+];
+$("mirrorKeys").replaceChildren(...MIRROR_KEYS.flatMap(([group, keys]) => [
+  el("div", { className: "mr-grp", textContent: group }),
+  ...keys.map(([k, label, title, ic, id]) => {
+    const b = el("button", { className: "mr-key", type: "button", title }, icon(ic), el("span", { textContent: label }));
+    b.dataset.k = k; if (id) b.id = id;
+    return b;
+  }),
+]), (() => {
+  const b = el("button", { className: "mr-key mr-rec", type: "button", id: "mirrorRecord", title: "Record the mirrored screen (and sound) to an MP4 file" }, icon("circle-dot"), el("span", { textContent: "Record" }));
+  b.dataset.k = "record"; return b;
+})());
+
 function mirrorUi(on) {
   $("mirrorStart").hidden = on; $("mirrorStop").hidden = !on;
-  $("mirrorQuality").disabled = on; $("mirrorSource").disabled = on; $("mirrorAudio").disabled = on;
+  $("mirrorText").disabled = !on; $("mirrorType").querySelector("button").disabled = !on;
+  if (!on) { // the view options end with the mirroring
+    $("mirrorStage").classList.remove("actual");
+    for (const k of ["zoom", "ontop"]) $("mirrorKeys").querySelector(`[data-k="${k}"]`).classList.remove("on");
+    globalThis.droidDesk?.win?.setOnTop(false).catch(() => {});
+  }
   $("mirrorKeys").querySelector('[data-k="audio"]').hidden = true;
   recUi(null);
   for (const b of $("mirrorKeys").querySelectorAll("button")) b.disabled = !on;
@@ -2950,24 +2929,36 @@ async function startMirror() {
     await AdbScrcpyClient.pushServer(adb, jar.stream(), DefaultServerPath);
 
     info.textContent = "Starting…";
-    const q = MIRROR_QUALITY[$("mirrorQuality").value] || MIRROR_QUALITY.balanced;
-    const source = $("mirrorSource").value; // screen | back | front
-    const options = new AdbScrcpyOptions3_3_3({
+    const prefs = mirrorPrefs.get(); // Settings › Screen mirror
+    const q = MIRROR_QUALITY[prefs.quality] || MIRROR_QUALITY.balanced;
+    const source = prefs.source; // screen | back | front
+    // H.265 only when this computer can decode it; a phone that can't encode it falls back below.
+    let codec = prefs.codec;
+    if (codec === "h265" && !(await VideoDecoder.isConfigSupported({ codec: "hev1.1.6.L120.B0" }).then((r) => r.supported, () => false))) {
+      codec = "h264"; toast("This computer can't play H.265; using H.264");
+    }
+    const options = (videoCodec) => new AdbScrcpyOptions3_3_3({
       ...q,
-      maxFps: mirrorPrefs.get().fps,
-      videoCodec: "h264",
+      maxFps: prefs.fps,
+      videoCodec,
       // Camera mirroring needs Android 12+. The phone's audio needs Android 11+ (with a camera
       // source, scrcpy records the microphone instead).
       ...(source === "screen" ? {} : { videoSource: "camera", cameraFacing: source }),
-      audio: $("mirrorAudio").checked,
+      audio: prefs.audio,
       audioCodec: "opus",
       control: true,
-      stayAwake: true,         // keep the screen on while mirroring (USB powered)
-      clipboardAutosync: true, // phone → PC copy
-      powerOffOnClose: false,
+      stayAwake: prefs.awake,            // keep the screen on while mirroring (USB powered)
+      clipboardAutosync: prefs.clipboard, // phone → PC copy
+      powerOffOnClose: prefs.lockOnStop,
+      showTouches: prefs.touches,
       logLevel: "info",
     }, { version: SCRCPY_VERSION });
-    client = await AdbScrcpyClient.start(adb, DefaultServerPath, options);
+    try { client = await AdbScrcpyClient.start(adb, DefaultServerPath, options(codec)); }
+    catch (e) {
+      if (codec === "h264" || !(e instanceof AdbScrcpyExitedError)) throw e;
+      toast("This phone can't send H.265; using H.264");
+      client = await AdbScrcpyClient.start(adb, DefaultServerPath, options("h264"));
+    }
   } catch (e) {
     busy(btn, false); info.textContent = "Not mirroring";
     if (e instanceof AdbScrcpyExitedError) {
@@ -3015,7 +3006,7 @@ async function startMirror() {
   busy(btn, false);
   mirrorUi(true); showSize();
   canvas.focus();
-  if ($("mirrorScreenOff").checked) setPhoneScreen(false);
+  if (mirrorPrefs.get().screenOff) setPhoneScreen(false);
 }
 
 async function stopMirror(message) {
@@ -3313,44 +3304,46 @@ const KEY_BUTTONS = {
   record: () => (mirror?.rec ? stopRecording(mirror) : startRecording()),
   audio: () => setMuted(!audioMuted),
   full: () => $("mirrorStage").requestFullscreen?.().catch(showError),
+  // Keys the phone understands by number (Android's KeyEvent codes), sent as a shell command.
+  menu: () => sh("input keyevent 82"), mutephone: () => sh("input keyevent 164"), lock: () => sh("input keyevent 223"),
+  prev: () => sh("input keyevent 88"), play: () => sh("input keyevent 85"), next: () => sh("input keyevent 87"),
+  bdown: () => sh("input keyevent 220"), bup: () => sh("input keyevent 221"),
+  quick: () => mirror?.controller?.expandSettingPanel(),
+  closepanels: () => mirror?.controller?.collapseNotificationPanel(),
+  zoom: () => { const on = $("mirrorStage").classList.toggle("actual"); mirrorKey("zoom").classList.toggle("on", on); keyLabel(mirrorKey("zoom"), on ? "Fit window" : "Actual size"); },
+  ontop: async () => {
+    const b = mirrorKey("ontop"), on = !b.classList.contains("on");
+    await globalThis.droidDesk?.win?.setOnTop(on);
+    b.classList.toggle("on", on);
+  },
+  copyframe: async () => {
+    const blob = await mirror?.decoder.snapshot(); if (!blob) return;
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    toast("Picture copied");
+  },
+  paste: async () => {
+    const text = await navigator.clipboard.readText();
+    if (!text) return toast("This computer's clipboard has no text");
+    await mirror?.controller?.setClipboard({ sequence: 0n, paste: true, content: text });
+  },
 };
+const mirrorKey = (k) => $("mirrorKeys").querySelector(`[data-k="${k}"]`);
+// The text box under the controls: whatever is typed there is pasted on the phone, in any language.
+$("mirrorType").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("mirrorText").value; if (!text || !mirror?.controller) return;
+  mirror.controller.setClipboard({ sequence: 0n, paste: true, content: text }).then(() => { $("mirrorText").value = ""; }, showError);
+});
 $("mirrorKeys").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-k]"); if (!b || !mirror) return;
   Promise.resolve(KEY_BUTTONS[b.dataset.k]?.()).catch(showError);
-  if (b.dataset.k !== "full") mc.focus();
+  if (b.dataset.k !== "full" && b.dataset.k !== "paste") mc.focus();
 });
 
-// ---------- screenshot ----------
-let shotBlob = null;
-$("shotBtn").addEventListener("click", async () => {
-  const btn = $("shotBtn"); busy(btn, true, "Capturing…");
-  try {
-    const t0 = performance.now();
-    const bytes = await shBytes("screencap -p");
-    shotBlob = new Blob([bytes], { type: "image/png" });
-    const img = $("shotImg");
-    if (img.src) URL.revokeObjectURL(img.src);
-    img.src = URL.createObjectURL(shotBlob); img.hidden = false;
-    $("shotSave").disabled = false;
-    $("shotInfo").textContent = `${fmtSize(shotBlob.size)} · ${Math.round(performance.now() - t0)} ms`;
-  } catch (e) { showError(e); } finally { busy(btn, false); }
-});
-$("shotSave").addEventListener("click", () => {
-  if (shotBlob) download(shotBlob, `screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
-});
+// The Screenshot page lives in ./screenshot.js (set up at the end of this file).
+let shotTab = null;
 
-// ---------- shell ----------
-$("shellForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const cmd = $("shellCmd").value.trim(); if (!cmd || !adb) return;
-  const out = $("shellOut");
-  out.textContent += `$ ${cmd}\n`;
-  try { out.textContent += (await sh(cmd)) || "(no output)\n"; }
-  catch (err) { out.textContent += `error: ${err.message}\n`; }
-  out.textContent += "\n"; out.scrollTop = out.scrollHeight;
-  $("shellCmd").select();
-});
-$("shellClear").addEventListener("click", () => { $("shellOut").textContent = ""; });
+// The ADB shell page lives in ./shell.js (set up at the end of this file).
 
 // ---------- debloat (community package list from Universal Android Debloater Next Generation) ----------
 // The list (GPL-3.0) is not bundled: it's downloaded from the UAD-ng GitHub repository when the user
@@ -4169,6 +4162,18 @@ const METHOD_NOTES = {
   direct: "This computer joins a private Wi‑Fi from the phone for each transfer (Droid Desk Companion only). Fastest on slow networks; no internet here until it reconnects right after.",
 };
 
+// The radar of nearby devices (./wifiradar.js). Clicking a device there is the same as its Send files… button.
+const wifiSendBtns = new Map(); // fingerprint -> the Send files… button of its row
+const wifiRadar = wifiApi ? initWifiRadar({
+  el, selfIsMac: isMac,
+  onPick: (d) => wifiSend(d, wifiSendBtns.get(d.fingerprint) || el("button"), null),
+  onDrop: (d, files) => wifiSend(d, wifiSendBtns.get(d.fingerprint) || el("button"), files),
+}) : null;
+if (wifiRadar) $("wifiRadar").replaceWith(wifiRadar.node);
+let wifiSendingTo = null; // the device files are being sent to right now
+/** The device an incoming transfer comes from, matched by address (the sender doesn't say more). */
+const wifiDeviceOf = (from) => wifiState.devices.find((d) => d.ip === from?.ip) || wifiState.devices.find((d) => d.alias === from?.alias) || null;
+
 async function loadWifi() {
   if (!wifiApi) { $("wifiUnavailable").hidden = false; $("wifiMain").hidden = true; return; }
   Object.assign(wifiState, await wifiApi.status());
@@ -4195,8 +4200,9 @@ function describeLink(l) {
 }
 const slowLink = (l) => l?.kind === "wifi" && (l.band === "2.4 GHz" || (l.rateMbps && l.rateMbps < 150) || (l.rssi != null && l.rssi < -70));
 
+const METHOD_NAMES = [["auto", "Auto"], ["lan", "Same Wi‑Fi"], ["direct", "Direct link"]];
 function renderMethod() {
-  for (const b of $("wifiMethod").children) b.classList.toggle("on", b.dataset.m === wifiState.method);
+  $("wifiMethodName").textContent = METHOD_NAMES.find(([id]) => id === wifiState.method)?.[1] || "Auto";
   $("wifiMethodNote").textContent = METHOD_NOTES[wifiState.method] || "";
 }
 
@@ -4217,6 +4223,8 @@ function renderWifi() {
       slowLink(pc) ? el("span", { className: "chip warn", style: "margin-left:8px", textContent: pc.band === "2.4 GHz" ? "2.4 GHz is slow: use 5 GHz or Direct link" : "Slow Wi‑Fi link" }) : "");
   }
   const box = $("wifiDevices");
+  wifiRadar?.update(s);
+  wifiSendBtns.clear();
   if (!s.running) { box.replaceChildren(emptyBox("Turn on Wi‑Fi transfer to find nearby devices.")); return; }
   if (!s.devices.length) {
     box.replaceChildren(emptyBox("Looking for devices… On your phone (same Wi‑Fi), turn on Receive in Droid Desk Companion, or open LocalSend. It appears here within a few seconds."));
@@ -4225,6 +4233,7 @@ function renderWifi() {
   box.replaceChildren(...s.devices.map((d) => {
     const send = el("button", { className: "btn sm primary", textContent: "Send files…", type: "button" });
     send.onclick = () => wifiSend(d, send, null);
+    wifiSendBtns.set(d.fingerprint, send);
     const link = s.link?.devices?.[d.fingerprint];
     const est = link?.estimateMBps;
     const chips = [];
@@ -4251,16 +4260,21 @@ function renderWifi() {
 async function wifiSend(d, btn, files) {
   clearError();
   busy(btn, true, "Waiting…");
+  let sent = false;
+  wifiSendingTo = d.fingerprint;
   try {
     const m = wifiState.method;
     const r = files ? await wifiApi.sendFiles(d.fingerprint, files, m) : await wifiApi.pickAndSend(d.fingerprint, m);
     if (r) toast(r.sent ? `Sent ${r.sent} file${r.sent > 1 ? "s" : ""} to ${d.alias}${r.via ? ` via ${r.via}` : ""}` : `${d.alias} already had those files`);
+    sent = !!r?.sent;
     refreshWifiLink();
   } catch (e) {
     showError(e);
   } finally {
     busy(btn, false);
     $("wifiProgress").hidden = true;
+    wifiRadar?.end(d.fingerprint, sent);
+    wifiSendingTo = null;
   }
 }
 
@@ -4294,6 +4308,12 @@ function wifiProgress(ev) {
     const r = ((ev.received - speed.bytes) * 1000) / (now - speed.at);
     speed = { at: now, bytes: ev.received, rate: speed.rate ? speed.rate * 0.6 + r * 0.4 : r, dir: ev.dir };
   }
+  // The same on the radar: dots flowing between the two, and the ring round the device filling up.
+  const radarFp = ev.dir === "in" ? wifiDeviceOf(ev.from)?.fingerprint : wifiSendingTo;
+  if (radarFp) wifiRadar?.progress(radarFp, ev.dir, {
+    frac, waiting: ev.dir === "out" && (!!ev.waiting || !!ev.stage),
+    text: ev.dir === "in" ? `Receiving from ${ev.from?.alias || "device"} · ${Math.round(frac * 100)}%` : ev.waiting || ev.stage ? `Waiting for ${ev.to}…` : `Sending to ${ev.to} · ${Math.round(frac * 100)}%`,
+  });
   const cancel = el("button", { className: "btn sm", textContent: "Cancel", type: "button" });
   cancel.onclick = () => wifiApi.cancelSend().catch(() => {});
   if (ev.dir === "out" && ev.stage) {
@@ -4337,13 +4357,8 @@ if (wifiApi) {
     return wifiState.running;
   }), { id: "wifiSwitch" }));
   $("wifiScan").addEventListener("click", () => { wifiApi.scan().catch(showError); toast("Looking for devices…"); setTimeout(refreshWifiLink, 3000); });
-  $("wifiMethod").addEventListener("click", async (e) => {
-    const b = e.target.closest("button[data-m]"); if (!b) return;
-    wifiState.method = await wifiApi.setMethod(b.dataset.m).catch(() => wifiState.method);
-    renderMethod();
-  });
+  for (const b of document.querySelectorAll('[data-panel="wifi"] .to-settings')) b.addEventListener("click", () => show("settings"));
   $("wifiOpen").addEventListener("click", () => wifiApi.openFolder().catch(showError));
-  $("wifiChange").addEventListener("click", async () => { Object.assign(wifiState, await wifiApi.chooseFolder()); renderWifi(); });
   wifiApi.onEvent((ev) => {
     switch (ev.type) {
       case "devices": {
@@ -4357,10 +4372,12 @@ if (wifiApi) {
       case "progress": wifiProgress(ev); break;
       case "done":
         $("wifiProgress").hidden = true;
+        wifiRadar?.end(wifiDeviceOf(ev.from)?.fingerprint, true);
         toast(`Received ${ev.files.length} file${ev.files.length > 1 ? "s" : ""} from ${ev.from.alias} (in ${ev.saveDir})`);
         break;
       case "cancelled":
         $("wifiProgress").hidden = true;
+        if (ev.dir === "in") wifiRadar?.end(null, false);
         toast(`${ev.message}${ev.files?.length ? ` · ${ev.files.length} file(s) were saved` : ""}`);
         break;
       case "warning": toast(ev.message); break;
@@ -4430,6 +4447,11 @@ autotest = initAutotest({
 try { if (localStorage.getItem("dd.debug")) window.ddAutotest = autotest._debug; } catch {}
 
 // ---------- developer tab (see ./devtools.js and ./dev/*.js) ----------
+// ---------- ADB shell page (see ./shell.js); before the developer tools, which add saved snippets and history to it ----------
+const shellTab = initShell({ $, el, toast, showError, sh, download, show, getAdb: () => adb });
+// ---------- knowledge drawer: how each page works, and a tour of it (see ./knowledge.js) ----------
+const knowledge = initKnowledge({ $, el, extras: { shell: () => ({ title: "Command guide", node: shellTab.guidePanel }) } });
+shellTab.setOnPick(() => knowledge.close());
 devtools = initDevtools({
   $, el, toast, showError, clearError, sh, shBytes, shQuote, withSync, download, armedClick, busy, makeSwitch, fmtSize,
   spinner, readAll, track, getAdb: () => adb,
@@ -4440,7 +4462,7 @@ apptesting = initAppTesting({
   spinner, readAll, track, getAdb: () => adb,
 });
 
-// ---------- Shizuku on the Overview (see ./shizuku.js) ----------
+// ---------- the Shizuku page (see ./shizuku.js) ----------
 shizukuCard = initShizuku({ $, el, toast, sh, shQuote, actionBtn, getAdb: () => adb });
 
 // ---------- ReVanced page (see ./revanced.js) ----------
@@ -4466,7 +4488,7 @@ calendarTab = initCalendar({
 });
 backup = initBackup({
   $, el, toast, showError, clearError, busy, armedClick, makeSwitch, cc, sh, shQuote, withSync, fmtSize, fmtDate, spinner, nameFor,
-  getAdb: () => adb, companionInfo: () => companionInfo, companionAvailable,
+  getAdb: () => adb, companionInfo: () => companionInfo, companionAvailable, showSettings: () => show("settings"),
   contactsVcf, addContacts, restoreSms, restoreCalls, calendar: () => calendarTab,
   contactsChanged: () => { contactsCache = null; },
   installApk: (parts, label, pkgName, progress) => runInstall({ pkg: { info: { label, package: pkgName }, obb: [] }, pick: { chosen: parts } }, progress),
@@ -4474,6 +4496,12 @@ backup = initBackup({
 
 // The header stays in place while a page scrolls; its height tells sticky parts of a page where to stop.
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
+// ---------- screenshot page (see ./screenshot.js) ----------
+shotTab = initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb: () => adb });
+// ---------- files page (see ./files.js) ----------
+filesTab = initFiles({ $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, getAdb: () => adb, LinuxFileType });
+// ---------- dropdown menus: every <select> gets the app's own menu (see ./dropdown.js) ----------
+initDropdowns();
 // ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------
 downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 // ---------- update check (updater.js): a pill in the header when a newer build is published ----------
@@ -4489,8 +4517,19 @@ downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 globalThis.droidDesk?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
 settingsUi = initSettings({
   $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick, companionVersion: COMPANION_VERSION, scrcpyVersion: SCRCPY_VERSION,
-  mirror: mirrorPrefs,
+  mirror: mirrorPrefs, shot: shotPrefs, shell: shellPrefs,
   downloads,
+  notifs: {
+    get: () => notifs.on,
+    set: (on) => { notifs.on = !!on; lsSet("dd.notifs", notifs.on); if (!notifs.on) resetNotifs(); startCallAlerts(); renderNotifCard(); },
+    muted: () => [...notifs.muted].map((pkg) => ({ pkg, label: notifs.icons.get(pkg)?.app || pkg })),
+    unmute: (pkg) => { notifs.muted.delete(pkg); lsSet("dd.notifMuted", [...notifs.muted]); renderNotifCard(); },
+    quick: () => notifs.quick,
+    setQuick: (lines) => { notifs.quick = lines.map((l) => l.trim()).filter(Boolean).slice(0, 12); lsSet("dd.quickReplies", notifs.quick); return notifs.quick; },
+  },
+  ramAuto: { get: ramAuto, set: (on) => { try { localStorage.setItem(RAM_AUTO_KEY, on ? "1" : "0"); } catch {} return !!on; } },
+  photoCopy: () => backup?.auto,
+  wifiMethod: { NAMES: METHOD_NAMES, NOTES: METHOD_NOTES },
   uad: { read: readUadCache, update: async () => { Object.assign(debloat, await downloadUadList()); } },
   callAlerts: {
     get: () => callAlerts.on,

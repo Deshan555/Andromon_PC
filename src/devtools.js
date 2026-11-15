@@ -11,6 +11,7 @@ import * as capture from "./dev/capture.js";
 import * as perf from "./dev/perf.js";
 import * as network from "./dev/network.js";
 import * as input from "./dev/input.js";
+import * as location from "./dev/location.js";
 import * as phones from "./dev/phones.js";
 import * as perftest from "./qa/perftest.js";
 import * as security from "./qa/security.js";
@@ -25,7 +26,8 @@ const PARTS = [
   { id: "capture", label: "Capture", mod: capture },
   { id: "perf", label: "Performance", mod: perf },
   { id: "network", label: "Network", mod: network, eager: true }, // restores port forwards on connect
-  { id: "input", label: "Input & GPS", mod: input, eager: true }, // clears a fake location left from last time
+  { id: "input", label: "Input", mod: input },
+  { id: "location", label: "Fake location", mod: location, eager: true }, // clears a fake location left from last time
   { id: "phones", label: "Phones", mod: phones },
 ];
 

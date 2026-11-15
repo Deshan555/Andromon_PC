@@ -1,5 +1,5 @@
 /* Shell tab: saved snippets (src/devtools.js › mountShellExtras) */
-.snips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 14px; align-items: center; }
+.snips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; align-items: center; }
 .snip { display: inline-flex; align-items: center; border-radius: 999px; background: var(--chip); font-size: 12.5px; }
 .snip button { border: 0; background: none; cursor: pointer; padding: 4px 4px 4px 12px; color: var(--text); font: inherit; }
 .snip button:hover { text-decoration: underline; }

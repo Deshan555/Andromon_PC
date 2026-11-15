@@ -13,6 +13,8 @@ const fdPhone = (p) => (p && Number(p.sdk) > 0 ? { sdk: Number(p.sdk), abis: Arr
 contextBridge.exposeInMainWorld("droidDesk", {
   // Stops any adb server on this PC so WebUSB can claim the phone.
   adb: { release: () => call("adb:release") },
+  // Screen mirror › Keep on top: the window stays above other windows.
+  win: { setOnTop: (on) => call("win:setOnTop", !!on) },
   // Wireless debugging (wadb.js). The ADB byte stream itself arrives as a MessagePort, forwarded
   // below to the page with window.postMessage.
   wadb: {
@@ -177,6 +179,12 @@ contextBridge.exposeInMainWorld("droidDesk", {
       ipcRenderer.on("upd:event", h);
       return () => ipcRenderer.removeListener("upd:event", h);
     },
+  },
+  // Settings › This computer: the tools Droid Desk can use (Java, adb…) and whether they are installed (requirements.js).
+  system: {
+    requirements: (force) => call("sys:requirements", !!force),
+    openPage: (id) => call("sys:openPage", String(id)),
+    install: (id) => call("sys:install", String(id)),
   },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),

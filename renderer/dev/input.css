@@ -5,8 +5,3 @@
 [data-dev="input"] .dev-type { resize: vertical; min-height: 70px; }
 [data-dev="input"] .dev-keys { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 [data-dev="input"] .dev-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-[data-dev="input"] .dev-coord { width: 190px; }
-[data-dev="input"] .dev-acc { width: 80px; }
-[data-dev="input"] .dev-chip { border: 0; cursor: pointer; font: inherit; font-size: 12px; }
-[data-dev="input"] .dev-chip:hover { background: var(--ink); color: var(--on-ink); }
-[data-dev="input"] .chip.dev-on { background: var(--warn-soft); color: var(--warn-ink); font-weight: 500; }

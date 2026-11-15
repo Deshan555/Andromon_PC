@@ -6,6 +6,7 @@
 // or the phone gives us goes into shell commands through shQuote, and package names are validated.
 
 import { LinuxFileType } from "@yume-chan/adb";
+import { fileIcon } from "../fileicons.js";
 import { zipSync } from "fflate";
 
 const PKG_RE = /^[A-Za-z0-9_.]+$/;
@@ -477,7 +478,8 @@ export function mount(root, ctx) {
     if (!entries.length) { listBox.replaceChildren(el("div", { className: "empty", textContent: "This folder is empty." })); return; }
     const tbody = el("tbody", {});
     for (const e of entries) {
-      const name = el("button", { type: "button", className: "link", textContent: (e.dir ? "📁 " : e.link ? "🔗 " : "📄 ") + e.name });
+      const tile = fileIcon(e.name, e.dir ? "dir" : e.link ? "link" : "file"); tile.classList.add("sm");
+      const name = el("button", { type: "button", className: "link", style: "display:inline-flex;align-items:center;gap:8px" }, tile, el("span", { textContent: e.name }));
       name.onclick = guard(async () => { if (e.dir || e.link) { cwd = [...cwd, e.name]; await loadDir(); } else await viewFile(e); });
       const act = el("td", { className: "act" });
       if (!e.dir) {

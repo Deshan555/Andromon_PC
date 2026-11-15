@@ -1,0 +1,44 @@
+/* Developer tab › Fake location (src/dev/location.js). The map itself is styled by dev/leaflet.css. */
+[data-dev="location"] .loc-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+[data-dev="location"] .loc-search { position: relative; flex: 1; min-width: 260px; display: flex; gap: 8px; align-items: center; }
+[data-dev="location"] .loc-q { flex: 1; min-width: 0; padding: 9px 18px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); outline: none; }
+[data-dev="location"] .loc-q:focus { box-shadow: 0 0 0 2px var(--ink); }
+
+/* Search results: a list that drops over the map */
+[data-dev="location"] .loc-results { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; right: 0; max-height: 320px; overflow: auto; padding: 6px; border-radius: 18px; background: var(--card); box-shadow: 0 0 0 1px var(--border), 0 14px 34px rgba(0, 0, 0, .18); }
+[data-dev="location"] .loc-result { display: block; width: 100%; padding: 8px 12px; border: 0; border-radius: 12px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+[data-dev="location"] .loc-result:hover, [data-dev="location"] .loc-result:focus-visible { background: var(--panel-2); outline: none; }
+[data-dev="location"] .loc-result strong { display: block; font-weight: 600; font-size: 13.5px; }
+[data-dev="location"] .loc-result span { display: block; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-dev="location"] .loc-none { padding: 10px 12px; font-size: 13px; color: var(--muted); }
+
+/* The map. "isolation" keeps Leaflet's high z-indexes inside the map, under the app's own layers. */
+[data-dev="location"] .loc-mapwrap { position: relative; margin-bottom: 10px; }
+[data-dev="location"] .loc-map { height: clamp(300px, 52vh, 560px); border-radius: 20px; overflow: hidden; isolation: isolate; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border); cursor: crosshair; }
+[data-dev="location"] .leaflet-container { font: inherit; font-size: 12px; background: var(--panel-2); }
+[data-dev="location"] .leaflet-grab { cursor: crosshair; }
+[data-dev="location"] .leaflet-dragging .leaflet-grab { cursor: grabbing; }
+[data-dev="location"] .leaflet-bar { border: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0, 0, 0, .22); }
+[data-dev="location"] .leaflet-bar a { color: #1b1c1d; }
+[data-dev="location"] .leaflet-control-attribution { border-radius: 10px 0 0 0; }
+[data-dev="location"] .loc-mapnote { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn-ink); font-size: 12.5px; pointer-events: none; }
+[data-dev="location"] .loc-mapnote[hidden] { display: none; }
+
+/* The pin: outlined until the phone is really faking that spot, then filled */
+.loc-pin { background: none; border: 0; }
+.loc-pin svg { width: 30px; height: 40px; overflow: visible; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); }
+.loc-pin path { fill: #1b1c1d; stroke: #fff; stroke-width: 1.5; }
+.loc-pin circle { fill: #fff; }
+.loc-pin.live path { fill: #6fa51b; }
+.loc-phone-dot { fill: #2f7de1; fill-opacity: 1; stroke: #fff; stroke-width: 3; }
+.loc-phone-ring { fill: #2f7de1; fill-opacity: .14; stroke: #2f7de1; stroke-opacity: .5; stroke-width: 1; }
+
+[data-dev="location"] .loc-under, [data-dev="location"] .loc-phonelabel { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+[data-dev="location"] .loc-phonelabel[hidden] { display: none; }
+[data-dev="location"] .loc-pinlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-dev="location"] .loc-dot { width: 12px; height: 12px; border-radius: 50%; background: #2f7de1; box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(0, 0, 0, .15); flex: none; }
+[data-dev="location"] .loc-coord { width: 190px; }
+[data-dev="location"] .loc-acc { width: 80px; }
+[data-dev="location"] .loc-chip { border: 0; cursor: pointer; font: inherit; font-size: 12px; }
+[data-dev="location"] .loc-chip:hover { background: var(--ink); color: var(--on-ink); }
+[data-dev="location"] .chip.loc-on { background: var(--warn-soft); color: var(--warn-ink); font-weight: 500; }

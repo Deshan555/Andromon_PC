@@ -18,6 +18,7 @@ const { setupRevanced } = require("./revanced.js");
 const { setupFdroid } = require("./fdroid.js");
 const { setupAppSettings } = require("./appsettings.js");
 const { setupUpdater } = require("./updater.js");
+const { setupRequirements } = require("./requirements.js");
 
 const RENDERER_DIR = path.join(__dirname, "renderer");
 const ORIGIN = "app://droiddesk";
@@ -147,6 +148,8 @@ function setupWifi() {
     return fn(event, ...args);
   });
   handle("adb:release", () => releaseAdb());
+  // Screen mirror › Keep on top
+  handle("win:setOnTop", (event, on) => { BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(!!on); return !!on; });
   setupWadb(handle);
   setupNotify(handle);
   setupDevnet(handle);
@@ -158,6 +161,7 @@ function setupWifi() {
   fdroid = setupFdroid(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // F-Droid page
   setupAppSettings(handle, { userData: app.getPath("userData"), readSettings, writeSettings, origin: ORIGIN, getWindow: () => mainWindow }); // Settings page
   setupUpdater(handle, { readSettings, writeSettings, getWindow: () => mainWindow }); // update check (Settings › About)
+  setupRequirements(handle, { findJava: revanced.findJava, adbCandidates, minJava: revanced.minJava }); // Settings › This computer
   const method = (m) => (["auto", "lan", "direct"].includes(m) ? m : readSettings().wifiMethod || "auto");
   handle("wifi:status", () => ({ ...wifi.status(), method: method() }));
   handle("wifi:setMethod", (_e, m) => { if (["auto", "lan", "direct"].includes(m)) writeSettings({ wifiMethod: m }); return method(); });

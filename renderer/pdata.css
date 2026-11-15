@@ -14,7 +14,7 @@
 .bubble.out .mms-file, .bubble.out .mms-img { background: rgba(127,127,127,.3); }
 .mms-file:hover { filter: brightness(.95); }
 .group-reply > .small { padding: 10px 18px 0; }
-.group-reply select { margin: 4px 2px; max-width: 260px; }
+.group-reply select, .group-reply .dd { margin: 4px 2px; max-width: 260px; }
 .modal > .card.mms-view { max-width: 900px; }
 .mms-full { display: block; max-width: 100%; max-height: 72vh; margin: 0 auto; border-radius: 16px; }
 
@@ -78,7 +78,6 @@
 }
 
 /* ---------- backup, restore, automatic photo copy ---------- */
-#backupCard { background: var(--mint); }
 .bk-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
 .bk-row .pd-grow { min-width: 220px; }
 .bk-path { flex: 1; min-width: 160px; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
@@ -87,7 +86,6 @@
 .bk-part.off { opacity: .5; cursor: default; }
 .bk-part > span { display: flex; flex-direction: column; min-width: 0; }
 .bk-part input { margin-top: 4px; flex: none; }
-#backupCard .sub, #backupCard .muted { color: var(--text); opacity: .72; }
 .bk-steps { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
 .bk-step { display: flex; align-items: baseline; gap: 10px; }
 .bk-step b { flex: none; min-width: 150px; font-weight: 500; }
