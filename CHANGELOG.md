@@ -2,6 +2,11 @@
 
 Every build of the `release` branch, newest first. Written by the build; don't edit by hand.
 
+## v0.1.0 (build 2) · 2026-11-15
+
+- Add an update check: find a newer build, download its installer and open it (`8c8adca`)
+- Use the changes since the previous build as the release's description (`6751db4`)
+
 ## v0.1.0 (build 1) · 2026-11-15
 
 - Build macOS, Windows and Linux installers on pushes to the release branch (`fd4d69c`)
