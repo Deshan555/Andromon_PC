@@ -13,8 +13,8 @@ The screenshots were taken with an Android 12 emulator and made-up sample data.
 3. [The window](#3-the-window)
 4. [Overview](#4-overview)
 5. [Communication](#5-communication): Messages, Contacts, Call log, Calendar, Notifications
-6. [Files & media](#6-files--media): Files, Photos, Music, Wi‑Fi transfer
-7. [Device](#7-device): Apps, Debloat, ReVanced, F-Droid, Controls, Screen mirror, Screenshot
+6. [Files & media](#6-files--media): Files, Photos, Music, Backup & restore, Wi‑Fi transfer
+7. [Device](#7-device): Apps, Debloat, ReVanced, F-Droid, Controls, Shizuku, Screen mirror, Screenshot
 8. [Developer](#8-developer): Test automation, App testing, Developer, Shell
 9. [Settings](#9-settings)
 10. [If something doesn't work](#10-if-something-doesnt-work)
@@ -81,10 +81,7 @@ The dot next to "Droid Desk" in the sidebar is green while a phone is connected.
 | Shortcuts | One click to Screen mirror, Screenshot, Files, Photos, Apps and Messages. |
 | **This phone** | Android version, security patch, device, processor type, serial number, screen size. Click a row to copy its value. |
 | **Phone links**\* | **Now playing on phone** (cover, play/pause, next/previous, seek), **Send to phone** (a link or text opens on the phone or arrives as a notification), **Shared clipboard** (copy to the phone's clipboard, or fetch the phone's), **Find my phone** (rings at full volume for up to 2 minutes, even on silent). |
-| **Phone backup**\* | **Back up this phone** writes a dated folder with contacts, messages, call log, calendar, a list of apps and, if ticked, app installers, photos and videos. **Restore from a backup…** puts chosen parts back. An option copies new photos to the computer each time the phone connects. |
 | **Use this phone without the cable** | The one-time Wi‑Fi setup described above. |
-| **Phone RAM manager** | Starts a small helper on the phone so the companion's Memory screen can list and stop apps. It lasts until the phone restarts. |
-| **Start Shizuku** | Only on phones that have the Shizuku app: starts it, so the companion's Freezer, RAM manager and Battery saver work later without the computer. |
 
 **Refresh** reads everything again.
 
@@ -159,6 +156,16 @@ Browse the phone's storage starting at `/sdcard`. Click a folder to open it, **U
 ![Music](screenshots/music.png)
 
 Tabs for **Songs, Artists, Albums** and **Folders**. Click a song to play it on the computer. Select songs to copy them to the computer or delete them. **Add music…** copies songs to the phone. **Include recordings & ringtones** widens the list. **Find duplicates** works as in Photos.
+
+### Backup & restore\*
+
+A page with three cards.
+
+| Card | What it does |
+|---|---|
+| **Back up this phone** | Tick what to save: contacts, messages, call log, calendar, the list of apps, app installers, photos and videos. **Back up now** writes them into a new dated folder on the computer. Nothing on the phone is changed. |
+| **Restore from a backup** | **Restore from a backup…** opens a backup folder, shows what it holds and lets you pick the parts to put back. Only what isn't on the phone yet is added; nothing is deleted or replaced. Apps come back without their data. |
+| **Automatic photo copy** | Shows whether new photos are copied to the computer each time the phone connects, and what the last copy did. The switch and its folder are in **Settings › Phone link**. |
 
 ### Wi‑Fi transfer
 
@@ -242,6 +249,21 @@ Switches for the phone's own settings. Every change applies to the phone at once
 | **Display** | Dark theme, auto-rotate, auto brightness, brightness, animations, show taps, screen timeout, font size, resolution and DPI override (with reset) |
 | **System** | Do Not Disturb, stay awake while charging, media volume |
 | **Power** | Wake, lock, restart (normal, recovery, bootloader), power off |
+
+### Shizuku
+
+[Shizuku](https://shizuku.rikka.app) is a free app that lends other apps on the phone the rights of adb. The companion uses it so its Freezer, Memory and Battery saver work later without the computer. This page shows whether Shizuku is installed and running.
+
+| Button | What it does |
+|---|---|
+| **Start Shizuku** | Starts Shizuku over the connection. It keeps running after you unplug, until the phone restarts; on a phone that isn't rooted, start it again after every restart. |
+| **Open Shizuku on the phone** | Opens the Shizuku app on the phone's screen. |
+| **Get Shizuku** | Shown when the phone doesn't have it: opens Shizuku's download page in your browser. |
+| **Check again** | Reads the state again. |
+
+After the first start, give the companion its permission: in the companion, **Settings › Privileged access › Grant permission**.
+
+Below it on the same page is **Phone RAM manager**, Droid Desk's own helper for phones without Shizuku: it starts a small helper on the phone so the companion's Memory screen can list and stop apps. It lasts until the phone restarts.
 
 ### Screen mirror
 

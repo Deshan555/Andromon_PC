@@ -78,7 +78,6 @@
 }
 
 /* ---------- backup, restore, automatic photo copy ---------- */
-#backupCard { background: var(--mint); }
 .bk-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
 .bk-row .pd-grow { min-width: 220px; }
 .bk-path { flex: 1; min-width: 160px; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
@@ -87,7 +86,6 @@
 .bk-part.off { opacity: .5; cursor: default; }
 .bk-part > span { display: flex; flex-direction: column; min-width: 0; }
 .bk-part input { margin-top: 4px; flex: none; }
-#backupCard .sub, #backupCard .muted { color: var(--text); opacity: .72; }
 .bk-steps { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
 .bk-step { display: flex; align-items: baseline; gap: 10px; }
 .bk-step b { flex: none; min-width: 150px; font-weight: 500; }

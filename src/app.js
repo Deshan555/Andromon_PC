@@ -42,7 +42,7 @@ let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
 let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
-let shizukuCard = null; // "Start Shizuku" on the Overview (./shizuku.js), set up at the end of this file
+let shizukuCard = null; // The Shizuku page (./shizuku.js), set up at the end of this file
 let downloads = null; // the download manager (./downloads.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
 const credentialStore = new AdbWebCredentialStore("DroidDesk");
@@ -129,7 +129,7 @@ function armedClick(btn, action) {
 
 // ---------- navigation ----------
 let current = "overview";
-const loaders = { overview: loadOverview, apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
+const loaders = { overview: loadOverview, backup: () => backup?.renderCard(), shizuku: () => Promise.all([shizukuCard?.render(), renderRamCard()]), apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
   messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => loadDir(cwd), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
 const offlineViews = { wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load() };
@@ -160,7 +160,7 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], wifi: ["Wi‑Fi ", "transfer"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
@@ -709,9 +709,6 @@ async function loadOverview() {
     heroCard("Storage", ICON_SD, total ? Math.round(used / total * 100) : null, "%", total ? `used of ${fmtSize(total)}` : "Unknown", total ? used / total : null,
       total ? fmtSize(total - used) : "—", "free"),
   );
-  renderRamCard().catch((e) => console.warn("RAM manager card:", e));
-  shizukuCard?.render().catch((e) => console.warn("Shizuku card:", e));
-  backup?.renderCard();
   // Chips under the name: what people check first.
   const via = phoneVia.get(adb) === "wifi" ? "Wi‑Fi" : "USB";
   $("devChips").replaceChildren(...[
@@ -787,7 +784,7 @@ async function autoStartRamHelper() {
     if ((await companionVersionOnPhone()).version < RAM_HELPER_MIN_COMPANION) return;
     await startRamHelper();
     toast("Phone RAM manager turned on");
-    if (current === "overview") renderRamCard().catch(() => {});
+    if (current === "shizuku") renderRamCard().catch(() => {});
   } catch (e) { console.warn("RAM manager auto-start:", e); }
 }
 
@@ -4440,7 +4437,7 @@ apptesting = initAppTesting({
   spinner, readAll, track, getAdb: () => adb,
 });
 
-// ---------- Shizuku on the Overview (see ./shizuku.js) ----------
+// ---------- the Shizuku page (see ./shizuku.js) ----------
 shizukuCard = initShizuku({ $, el, toast, sh, shQuote, actionBtn, getAdb: () => adb });
 
 // ---------- ReVanced page (see ./revanced.js) ----------

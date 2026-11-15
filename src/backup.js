@@ -498,7 +498,7 @@ export function initBackup(h) {
     card.hidden = false;
     if (job?.card) return; // a backup is showing its progress here
     if (!fsApi) {
-      card.replaceChildren(el("h2", { textContent: "Back up this phone" }), el("p", { className: "muted", style: "margin:0", textContent: "Backups, restore and the automatic photo copy need the Droid Desk desktop app (they write to a folder on this computer)." }));
+      card.replaceChildren(el("div", { className: "card" }, el("h2", { textContent: "Back up this phone" }), el("p", { className: "muted", style: "margin:0", textContent: "Backups, restore and the automatic photo copy need the Droid Desk desktop app (they write to a folder on this computer)." })));
       return;
     }
     const [folder, photoFolder] = await Promise.all([fsApi.get("backup").catch(() => null), fsApi.get("photos").catch(() => null)]);
@@ -588,15 +588,22 @@ export function initBackup(h) {
     autoChoose.onclick = async () => { try { const f = await fsApi.choose("photos"); if (f) { autoFolder.textContent = f.path; autoChoose.textContent = "Change…"; } } catch (e) { showError(e); } };
     const autoNote = el("div", { className: "sub", id: "bkAutoNote", textContent: lastAuto });
 
+    // The page is three cards: back up, restore, and the automatic photo copy.
     card.replaceChildren(
-      el("h2", { textContent: "Back up this phone" }),
-      el("p", { className: "muted", textContent: "Saves a copy of what's ticked into a new dated folder on this computer. Nothing on the phone is changed." }),
-      el("div", { className: "bk-row" }, el("span", { className: "muted small", textContent: "Folder" }), folderText, choose, openBtn),
-      el("div", { className: "bk-parts" }, ...parts),
-      el("div", { className: "toolbar", style: "margin:14px 0 0" }, start, restore),
-      status,
-      el("p", { className: "muted small", style: "margin:12px 0 0", textContent: NOT_INCLUDED }),
-      el("div", { className: "bk-auto" },
+      el("div", { className: "card" },
+        el("h2", { textContent: "Back up this phone" }),
+        el("p", { className: "muted", textContent: "Saves a copy of what's ticked into a new dated folder on this computer. Nothing on the phone is changed." }),
+        el("div", { className: "bk-row" }, el("span", { className: "muted small", textContent: "Folder" }), folderText, choose, openBtn),
+        el("div", { className: "bk-parts" }, ...parts),
+        el("div", { className: "toolbar", style: "margin:14px 0 0" }, start),
+        status,
+        el("p", { className: "muted small", style: "margin:12px 0 0", textContent: NOT_INCLUDED })),
+      el("div", { className: "card" },
+        el("h2", { textContent: "Restore from a backup" }),
+        el("p", { className: "muted", textContent: "Choose a backup folder, see what it holds and pick the parts to put back on this phone. Only what isn't on the phone yet is added; nothing is deleted or replaced." }),
+        el("div", { className: "toolbar", style: "margin:0" }, restore)),
+      el("div", { className: "card" },
+        el("h2", { textContent: "Automatic photo copy" }),
         el("div", { className: "bk-row" }, autoSwitch, el("span", { className: "pd-grow" }, el("b", { textContent: "Copy new photos to this computer when the phone connects" }),
           el("span", { className: "sub", textContent: "Over USB or Wi‑Fi. Only photos and videos that aren't in the folder yet are copied; nothing is ever deleted, here or on the phone." }))),
         el("div", { className: "bk-row" }, el("span", { className: "muted small", textContent: "Folder" }), autoFolder, autoChoose), autoNote));
