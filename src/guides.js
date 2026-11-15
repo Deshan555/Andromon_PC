@@ -180,28 +180,51 @@ export const DEV_GUIDES = {
     careful: ["A proxy left on with nothing listening cuts the phone's internet. Clear it when finished.", "Tunnels end when the phone disconnects."],
   },
   input: {
-    name: "Input & GPS",
-    plain: "Type and press keys on the phone from this computer, and make the phone believe it is somewhere else.",
+    name: "Input",
+    plain: "Type and press keys on the phone from this computer.",
     what: [
       "Typing long text on a phone is slow. Here you type on this computer's keyboard, or paste, and it lands in the field that is focused on the phone.",
-      "Fake location tells Android “you are at these coordinates”. Apps that ask for the location get that answer.",
+      "The key buttons press the phone's own keys (Back, Home, volume, power) and open or close the notification shade.",
     ],
     why: [
       "Fill in forms, long passwords or test data quickly.",
-      "Test how an app behaves in another city or country without travelling.",
-      "Test what happens when the location jumps or is far from the last one.",
+      "Press Back, Home or Power when the phone's own buttons are hard to reach or broken.",
     ],
     how: [
       "Tap a text field on the phone first, then type or paste here.",
-      "For location: enter latitude and longitude (copy them from a map), start, and open the app on the phone.",
-      "Stop the fake location when done; the phone goes back to its real position.",
+      "Use the top box to send each key as you press it, or the big box to send a whole text at once.",
     ],
     read: [
       ["Some characters reported as not typed", "This way of typing only handles plain English letters, digits and common symbols. Use Screen mirror's type box for other languages and emoji."],
-      ["The app still shows the real place", "The app caches its last position, or reads it from the network instead. Close and reopen it."],
     ],
-    words: [["Latitude, longitude", "The two numbers that pin a place on Earth, for example 6.9271, 79.8612."], ["Mock location", "Android's name for a fake position used for testing."]],
-    careful: ["Needs Android 12 or newer for the fake location.", "Don't leave a fake location on: maps, weather and find-my-phone will be wrong."],
+    words: [["Focused field", "The text box on the phone that has the blinking cursor."], ["Key event", "One press of a key, sent to the phone as if its own button was pressed."]],
+    careful: ["Text is typed into whatever is focused on the phone: check it is the right field before sending a password."],
+  },
+  location: {
+    name: "Fake location",
+    plain: "Pick a place on a map and make the phone believe it is there.",
+    what: [
+      "Fake location tells Android “you are at these coordinates”. Apps that ask for the location get that answer.",
+      "The map and the search come from OpenStreetMap, a free map of the world made by volunteers.",
+    ],
+    why: [
+      "Test how an app behaves in another city or country without travelling.",
+      "Test what happens when the location jumps or is far from the last one.",
+      "Check where the phone thinks it is right now.",
+    ],
+    how: [
+      "Search for a place and pick a result, click the map, or type the latitude and longitude. A pin marks the spot; drag it to adjust.",
+      "Click “Set location”. The pin turns green while the phone is at that spot. Open the app you are testing on the phone.",
+      "“Show the phone's location” puts a blue dot where the phone says it is now.",
+      "Click “Stop faking” when done; the phone goes back to its real position.",
+    ],
+    read: [
+      ["The app still shows the real place", "The app caches its last position, or reads it from the network instead. Close and reopen it."],
+      ["“The phone has no position yet”", "Location is off on the phone, or nothing has asked for a position since it started. Open a maps app for a moment."],
+      ["The map stays empty", "This computer has no internet, or OpenStreetMap is busy. Typing coordinates still works."],
+    ],
+    words: [["Latitude, longitude", "The two numbers that pin a place on Earth, for example 6.9271, 79.8612."], ["Mock location", "Android's name for a fake position used for testing."], ["OpenStreetMap", "The free world map this page shows; its search service is called Nominatim."]],
+    careful: ["Needs Android 12 or newer.", "Don't leave a fake location on: maps, weather and find-my-phone will be wrong.", "What you search for and the part of the map you look at are sent to openstreetmap.org."],
   },
   phones: {
     name: "Phones",

@@ -125,7 +125,8 @@ The **Developer** tab collects what Android developers do with `adb` every day. 
 - **Capture:** screen recording to MP4 (size, bit rate, length up to 3 minutes, optional show-taps), a full bug report (`bugreportz`, saved as .zip), and device details to copy as Markdown or text for bug tickets.
 - **Performance:** live CPU, memory (PSS/RSS) and frames per second / jank / frame-time percentiles for the chosen app, with 2‑minute charts. Battery: pretend unplugged, fake level, reset or save battery stats. Doze: force deep Doze, step, leave. App standby bucket and inactive state.
 - **Network:** port forwarding without an adb server. *Phone → PC* (`adb reverse`): apps on the phone reach a server on this computer at `127.0.0.1:<port>`, e.g. Metro on 8081 or a dev server on 3000. *PC → phone*: programs here connect to `127.0.0.1:<port>` and reach a port or `localabstract:` socket on the phone, e.g. Chrome DevTools. Rules are saved and come back on the next connection. The main process (`main.js` › `setupDevnet`) only opens or dials 127.0.0.1 and hands each connection to the page as a MessagePort. **Proxy:** set or clear the phone's HTTP proxy, or one click to use Charles/mitmproxy on this computer over the cable.
-- **Input & GPS:** type into the focused field from a box or key by key, type this computer's clipboard, press system keys, open the notification shade or quick settings. **Fake location** (Android 12+) through Android's test providers for GPS, network and fused location, with city presets; paste "lat, long" from a map.
+- **Input:** type into the focused field from a box or key by key, type this computer's clipboard, press system keys, open the notification shade or quick settings.
+- **Fake location** (Android 12+): pick the spot on an OpenStreetMap map (click, drag the pin, search for a place, type or paste "lat, long", or a city preset) and set it through Android's test providers for GPS, network and fused location. "Show the phone's location" reads the phone's last known position and marks it on the map. The map is [Leaflet](https://leafletjs.com) with tiles from tile.openstreetmap.org; search uses OpenStreetMap's Nominatim, only when you press Search and at most once a second. Nothing is requested from either until the tab is opened.
 - **Phones:** keep more than one phone connected. **Add another phone (USB)**, then **Use this phone** to make it the one every tab works with (the other stays connected). Run a shell command, install an APK or take screenshots on all of them at once.
 - **Shell tab:** saved snippets (one-click commands; save your own, remove with ×) and command history with ↑ / ↓.
 
@@ -261,6 +262,8 @@ pc/
 | fflate | MIT | Unzipping APKs and bundles (bundled) |
 | UAD-ng package list | GPL-3.0 | **Not bundled.** Downloaded from GitHub only when the user clicks "Download the list", then cached |
 | qrcode-generator (QR code for pairing) | MIT | Bundled into the renderer |
+| [Leaflet](https://leafletjs.com) 1.9.4 | BSD-2-Clause | The map on Developer › Fake location (bundled; its stylesheet is copied to `renderer/dev/leaflet.css`) |
+| OpenStreetMap map tiles and Nominatim search | Map data © OpenStreetMap contributors, ODbL | **Not bundled.** Loaded from openstreetmap.org while the Fake location tab is used, under its tile and Nominatim usage policies; the credit stays on the map |
 | Poppins font, subset to Latin (same files as the companion) | SIL OFL 1.1 | `renderer/fonts/`, licence in `renderer/fonts/OFL.txt` |
 | [Lucide](https://lucide.dev) icons | ISC (parts derived from Feather, MIT) | Inline SVGs in the sidebar and overview (same icon set as the companion) |
 | LocalSend protocol | Apache-2.0 (spec) | Implemented from the spec; no LocalSend code is included |

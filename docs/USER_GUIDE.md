@@ -320,7 +320,8 @@ Record a test by using an app on the live phone picture (tap, long-press, swipe,
 | **Capture** | Screen recordings and bug reports. |
 | **Performance** | Live CPU, memory and frame graphs. |
 | **Network** | Port forwarding and a proxy setting. |
-| **Input & GPS** | Type text on the phone and set a fake location. |
+| **Input** | Type text on the phone and press its keys. |
+| **Fake location** | Pick a place on a map (or search for it) and make the phone report that position; show where the phone is now. The map and search come from OpenStreetMap, so they need internet. |
 | **Phones** | Use several phones at once. |
 
 ### Shell

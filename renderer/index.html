@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'">
 <title>Droid Desk</title>
 <style>
   /* Same look as the companion app on the phone: brand colours lime #E3F786, green #9CD237, ink
@@ -971,6 +971,8 @@
 <link rel="stylesheet" href="dev/perf.css">
 <link rel="stylesheet" href="dev/network.css">
 <link rel="stylesheet" href="dev/input.css">
+<link rel="stylesheet" href="dev/leaflet.css">
+<link rel="stylesheet" href="dev/location.css">
 <link rel="stylesheet" href="dev/phones.css">
 <link rel="stylesheet" href="dev/shell.css">
 <link rel="stylesheet" href="qa/perftest.css">
