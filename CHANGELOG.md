@@ -2,6 +2,18 @@
 
 Every build of the `release` branch, newest first. Written by the build; don't edit by hand.
 
+## v0.1.0 (build 3) · 2026-11-15
+
+- Say in the README where to download the builds (`feddcf1`)
+- Show Connect phone and Connect over Wi-Fi as icon buttons (`1d98db9`)
+- Pick the fake location on a map, with place search (`e0d319f`)
+- Move the options to Settings and rebuild the Files, Screenshot and Shell pages (`0e94d14`)
+- Replace the system's select menus with the app's own dropdown (`09c6254`)
+- Use icon buttons to call or text a number in Contacts (`ae40116`)
+- Show the optional tools this computer has, and offer them at install (`1c5c41b`)
+- Show nearby devices on a radar on the Wi-Fi transfer page (`4c8871f`)
+- Give backup & restore and Shizuku their own pages (`41305b1`)
+
 ## v0.1.0 (build 2) · 2026-11-15
 
 - Add an update check: find a newer build, download its installer and open it (`8c8adca`)

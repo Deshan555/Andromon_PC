@@ -1,13 +1,20 @@
 {
   "name": "Droid Desk",
   "version": "0.1.0",
-  "build": 2,
-  "date": "2026-11-15T07:24:53.344Z",
-  "commit": "90f099518d9df869422907de5f9e697aa2028cc5",
+  "build": 3,
+  "date": "2026-11-15T16:43:49.791Z",
+  "commit": "6aecc597347fde4246876f419917bd3d70130be8",
   "release": "https://github.com/Deshan555/Andromon_PC/releases/tag/v0.1.0",
   "changes": [
-    "Add an update check: find a newer build, download its installer and open it",
-    "Use the changes since the previous build as the release's description"
+    "Say in the README where to download the builds",
+    "Show Connect phone and Connect over Wi-Fi as icon buttons",
+    "Pick the fake location on a map, with place search",
+    "Move the options to Settings and rebuild the Files, Screenshot and Shell pages",
+    "Replace the system's select menus with the app's own dropdown",
+    "Use icon buttons to call or text a number in Contacts",
+    "Show the optional tools this computer has, and offer them at install",
+    "Show nearby devices on a radar on the Wi-Fi transfer page",
+    "Give backup & restore and Shizuku their own pages"
   ],
   "files": [
     {
@@ -15,8 +22,8 @@
       "arch": "x64",
       "kind": "deb",
       "name": "Droid-Desk-0.1.0-amd64.deb",
-      "size": 103211196,
-      "sha256": "b5350c84ce06490156fdf5d10427e03558338cb6a39544c26efcd95380c5da67",
+      "size": 103374936,
+      "sha256": "fdc49a022481ddf7038d9844284eb214e6a79b2539c39c04a24f6ff833e5c820",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-0.1.0-amd64.deb"
     },
     {
@@ -24,8 +31,8 @@
       "arch": "arm64",
       "kind": "dmg",
       "name": "Droid-Desk-0.1.0-arm64.dmg",
-      "size": 125265459,
-      "sha256": "ce9f3497dfdd703fdef145349d413a8fbc0d2373e9d947426487a268144cb505",
+      "size": 125378233,
+      "sha256": "0e0407ff81f9326c1dd2fd130a06f38824047ebdb40f2b6af44d474d3c2b026a",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-0.1.0-arm64.dmg"
     },
     {
@@ -33,8 +40,8 @@
       "arch": "x64",
       "kind": "dmg",
       "name": "Droid-Desk-0.1.0-x64.dmg",
-      "size": 129348843,
-      "sha256": "feff5a49771a2a19dfe72bcf30ef1857a277cdc766ffd54ca891dd0cb4c74338",
+      "size": 129480492,
+      "sha256": "a01b1499e63ed26db1592911ffeb2a6279fa03c7d77fbd9a1090a437411e41e2",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-0.1.0-x64.dmg"
     },
     {
@@ -42,8 +49,8 @@
       "arch": "x64",
       "kind": "AppImage",
       "name": "Droid-Desk-0.1.0-x86_64.AppImage",
-      "size": 127551594,
-      "sha256": "22dd63f7dbf3ba03b9d9f3e133c1952bbc5d0a20c8ff1c2e4208a87e38330bd1",
+      "size": 127658167,
+      "sha256": "14b7b142a8b4852a1e2c2bd09a55c603b8a57d880d1976a8813211b802392e65",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-0.1.0-x86_64.AppImage"
     },
     {
@@ -51,8 +58,8 @@
       "arch": "arm64",
       "kind": "exe",
       "name": "Droid-Desk-Setup-0.1.0-arm64.exe",
-      "size": 116689934,
-      "sha256": "cf8687ec6fcc045d007b07e276bebda21aee552148ffb1c15ad98c0b777a215c",
+      "size": 116780324,
+      "sha256": "0925e3ba7e58ee6234e7c78f323fddbc3dd69251a73097f168480334b5f214e5",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-Setup-0.1.0-arm64.exe"
     },
     {
@@ -60,8 +67,8 @@
       "arch": "x64",
       "kind": "exe",
       "name": "Droid-Desk-Setup-0.1.0-x64.exe",
-      "size": 122617808,
-      "sha256": "8e4fca44522a1d8b413b6f85d366f8c147f270e2f6f31964c6711dadcae5ce16",
+      "size": 122708212,
+      "sha256": "dcd7f98799895f463c14561e76670c0d5e8d4c126bfc57624e13b9d233431e34",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-Setup-0.1.0-x64.exe"
     },
     {
@@ -69,8 +76,8 @@
       "arch": "",
       "kind": "exe",
       "name": "Droid-Desk-Setup-0.1.0.exe",
-      "size": 238517558,
-      "sha256": "856ade3565cd20c584a7a783af952620e9def8fb4e476513c3f7d3a32c3a0f1f",
+      "size": 238695382,
+      "sha256": "66034141877a8072b4bbf5887bfd5ae611b5480358b8c8fe69fad54dc9eb268c",
       "url": "https://github.com/Deshan555/Andromon_PC/releases/download/v0.1.0/Droid-Desk-Setup-0.1.0.exe"
     }
   ]
