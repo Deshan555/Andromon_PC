@@ -61,17 +61,17 @@ export function initSettings(ctx) {
 
 
   // ---------- what the sections below show; filled in by refresh() ----------
-  const data = { info: null, wifi: null, rv: null, fd: null, uad: undefined };
+  const data = { info: null, wifi: null, rv: null, fd: null, uad: undefined, upd: null };
   let gen = 0;
   async function refresh() {
     const mine = ++gen;
-    const [info, wifi, rv, fd, uad] = await Promise.all([
+    const [info, wifi, rv, fd, uad, upd] = await Promise.all([
       api.app?.info().catch(() => null), api.wifi?.status().catch(() => null),
       api.revanced?.status().catch(() => null), api.fdroid?.status().catch(() => null),
-      ctx.uad.read().catch(() => null),
+      ctx.uad.read().catch(() => null), api.updates?.status().catch(() => null),
     ]);
     if (mine !== gen) return;
-    Object.assign(data, { info, wifi, rv, fd, uad });
+    Object.assign(data, { info, wifi, rv, fd, uad, upd });
     if (!panel.hidden) render();
   }
 
@@ -114,7 +114,7 @@ export function initSettings(ctx) {
     for (const box of panel.querySelectorAll(".set-dl")) box.replaceChildren(...(box.dataset.dl ? ctx.downloads.active(box.dataset.dl).map(ctx.downloads.block) : []));
   };
   // When a download starts or ends, the rows' text and buttons are out of date: load them again.
-  const SOURCES = ["rv", "fd", "uad"];
+  const SOURCES = ["rv", "fd", "uad", "up"];
   let running = 0;
   ctx.downloads.onChange(() => {
     if (panel.hidden) return;
@@ -151,6 +151,48 @@ export function initSettings(ctx) {
       el("div", { className: "set-text" }, el("b", { textContent: "Files received over Wi‑Fi" }), folder(w.saveDir)),
       group(action("Open", "Opening…", () => api.wifi.openFolder()), action("Change…", "Choosing…", () => api.wifi.chooseFolder()))));
     return section("Saving files", ...rows);
+  }
+
+  // ---------- updates: is a newer Droid Desk published, and get its installer ----------
+  let updNote = ""; // what the last "Check now" found, until the page is left
+  function updateRows() {
+    const u = data.upd, last = u?.last;
+    const mine = u ? `Version ${u.current.version}${u.current.build ? ` (build ${u.current.build})` : ""}` : `Version ${pkg.version}`;
+    const live = el("div", { className: "set-dl" }); live.dataset.dl = "up";
+    const text = [el("b", { textContent: last?.available ? `Droid Desk ${last.version} is available` : "Updates" })];
+    const buttons = [];
+    if (last?.available) {
+      const size = last.installer ? ` · ${fmtSize(last.installer.size)}` : "";
+      text.push(el("div", { className: "sub", textContent: `${mine} is installed. New: version ${last.version}${last.build ? ` (build ${last.build})` : ""}${last.date ? `, built ${fmtDate(Date.parse(last.date), true)}` : ""}${size}` }));
+      if (last.changes.length) {
+        text.push(el("details", { className: "set-changes" }, el("summary", { textContent: `What's new (${last.changes.length})` }),
+          el("ul", {}, ...last.changes.map((c) => el("li", { textContent: c })))));
+      }
+      if (u.downloaded) {
+        text.push(el("div", { className: "sub", textContent: `Downloaded to your Downloads folder as ${u.downloaded.name}. Opening it starts the installer; close Droid Desk when it asks.` }));
+        buttons.push(action("Open installer", "Opening…", () => api.updates.install(), "primary"));
+      } else if (last.installer) {
+        const b = action("Download update", "Downloading…", () => api.updates.download(), "primary");
+        if (ctx.downloads.active("up").length) busy(b, true, "Downloading…");
+        buttons.push(b);
+      } else {
+        text.push(el("div", { className: "sub", textContent: "There is no installer for this kind of computer in that build. See the releases page." }));
+      }
+      buttons.push(action("Releases page", "Opening…", () => api.updates.openReleases()));
+    } else {
+      const when = u?.checkedAt ? `Last checked ${fmtDate(u.checkedAt, true)}` : "Not checked yet";
+      text.push(el("div", { className: "sub", textContent: updNote || `${mine}. ${when}` }));
+      buttons.push(action("Check now", "Checking…", async () => {
+        const s = await api.updates.check();
+        updNote = s.last?.available ? "" : `${mine} is the newest. Checked just now`;
+      }));
+    }
+    text.push(live);
+    return [
+      el("div", { className: "set-row" }, el("div", { className: "set-text" }, ...text), group(...buttons)),
+      row("Check for updates automatically", "Once a day when Droid Desk starts. Only asks GitHub for the newest version; nothing is installed by itself",
+        makeSwitch(u ? u.auto : true, async (on) => { data.upd = await api.updates.setAuto(on); return data.upd.auto; })),
+    ];
   }
 
   function downloadsSection() {
@@ -214,7 +256,8 @@ export function initSettings(ctx) {
     parts.push(downloadsSection());
     const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noreferrer" });
     parts.push(section("About",
-      row("Droid Desk", `Version ${pkg.version} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
+      row("Droid Desk", `Version ${pkg.version}${data.upd?.current.build ? ` (build ${data.upd.current.build})` : ""} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
+      ...(api.updates ? updateRows() : []),
       row("Source code", "", el("div", { className: "set-links" }, a("PC app", "https://github.com/Deshan555/Andromon_PC"), a("Android companion", "https://github.com/Deshan555/Andromon-android"))),
       row("Credits", "ADB by Tango (ya-webadb) · screen mirroring by scrcpy · Wi‑Fi transfer speaks the LocalSend protocol · icons by Lucide · Poppins type", "")));
     $("settingsRoot").replaceChildren(...parts);

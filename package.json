@@ -45,6 +45,8 @@
       "revanced.js",
       "fdroid.js",
       "appsettings.js",
+      "updater.js",
+      "build-info.json",
       "renderer/**/*",
       "!renderer/*.map"
     ],

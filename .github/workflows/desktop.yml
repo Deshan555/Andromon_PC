@@ -49,6 +49,12 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      # The app's update check compares this build number with the one in latest.json.
+      - name: Stamp the build number
+        shell: bash
+        run: |
+          node -e 'require("fs").writeFileSync("build-info.json", JSON.stringify({ build: Number(process.env.GITHUB_RUN_NUMBER) || 0, commit: process.env.GITHUB_SHA || "", date: new Date().toISOString() }) + "\n")'
+          cat build-info.json
       # Unsigned build. To sign, add secrets and env vars:
       #   macOS:   CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
       #   Windows: CSC_LINK, CSC_KEY_PASSWORD (or an Azure Trusted Signing config)

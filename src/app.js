@@ -4476,6 +4476,14 @@ backup = initBackup({
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
 // ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------
 downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
+// ---------- update check (updater.js): a pill in the header when a newer build is published ----------
+{
+  const updates = globalThis.droidDesk?.updates, pill = $("updBtn");
+  const offer = (s) => { if (s?.last?.available) { pill.textContent = `Update to ${s.last.version}`; pill.hidden = false; } };
+  pill.addEventListener("click", () => show("settings"));
+  updates?.onEvent((ev) => { if (ev.kind === "available") { offer(ev.status); toast(`Droid Desk ${ev.status.last.version} is available`); } });
+  updates?.status().then(offer).catch(() => {});
+}
 // ---------- settings tab: appearance, sidebar and a few switches (see ./settings.js) ----------
 // With "Ask where to save each file" off, the main process saves downloads itself and says so here.
 globalThis.droidDesk?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });

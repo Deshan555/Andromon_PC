@@ -163,6 +163,21 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("app:event", h);
     },
   },
+  // Update check (updater.js): is a newer build published, and download its installer for this computer.
+  updates: {
+    status: () => call("upd:status"),
+    check: () => call("upd:check"),
+    setAuto: (on) => call("upd:setAuto", !!on),
+    download: () => call("upd:download"),
+    cancel: () => call("upd:cancel"),
+    install: () => call("upd:install"),
+    openReleases: () => call("upd:openReleases"),
+    onEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on("upd:event", h);
+      return () => ipcRenderer.removeListener("upd:event", h);
+    },
+  },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),
     unlisten: (ruleId) => call("devnet:unlisten", String(ruleId)),
