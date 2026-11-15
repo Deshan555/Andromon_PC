@@ -183,7 +183,7 @@ The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icn
 After each build the workflow commits two files to the `release` branch (`scripts/release-manifest.js`):
 
 - **`latest.json`**: the newest build. Version, build number, date, commit, the commit subjects since the previous build, and every installer with its platform, CPU type, size, SHA-256 and download address. The addresses work once that version's release is published. Always available at `https://raw.githubusercontent.com/Deshan555/Andromon_PC/release/latest.json`.
-- **`CHANGELOG.md`**: one section per build, newest first, listing the commits since the build before it.
+- **`CHANGELOG.md`**: one section per build, newest first, listing the commits since the build before it. The same list is the description of the GitHub Release.
 
 Because the build adds commits to `release`, bring `main` into it with a merge rather than pushing `main` over it:
 

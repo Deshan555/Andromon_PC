@@ -3,7 +3,8 @@
 //   latest.json    what the newest build is: version, build number, commit, and every installer with its
 //                  size, SHA-256 and download address
 //   CHANGELOG.md   one section per build, newest first, listing the commits since the build before it
-// usage: node scripts/release-manifest.js <folder with the installers>
+//   release notes  (optional third argument) the same list of commits, as the text of the GitHub Release
+// usage: node scripts/release-manifest.js <folder with the installers> [file to write the release notes to]
 // It reads GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_RUN_NUMBER when GitHub sets them, and git otherwise.
 const fs = require("node:fs");
 const path = require("node:path");
@@ -67,5 +68,18 @@ let old = "";
 try { old = fs.readFileSync(logFile, "utf8"); } catch {}
 const rest = old.startsWith(HEAD) ? old.slice(HEAD.length).replace(/^\n+/, "") : old.replace(/^# Changelog[^\n]*\n+/, "");
 fs.writeFileSync(logFile, `${HEAD}\n${section}${rest ? "\n" + rest : ""}`);
+
+// ---------- the GitHub Release's description: what changed since the previous build ----------
+if (process.argv[3]) {
+  const link = (c) => `- ${c.subject} ([\`${c.sha}\`](https://github.com/${repo}/commit/${c.sha}))`;
+  fs.writeFileSync(process.argv[3], [
+    `## What's changed${build ? ` in build ${build}` : ""}`, "",
+    ...(changes.length ? changes.map(link) : ["- Rebuilt; no changes to the app."]), "",
+    previous?.commit
+      ? `Changes since the previous build ([\`${previous.commit.slice(0, 7)}\`](https://github.com/${repo}/commit/${previous.commit})${previous.build ? `, build ${previous.build}` : ""}).`
+      : "First build: the list shows the latest commits.",
+    `Every build is listed in the [changelog](https://github.com/${repo}/blob/release/CHANGELOG.md).`, "",
+  ].join("\n"));
+}
 
 console.log(`${tag} build ${build}: ${files.length} installer(s), ${changes.length} change(s) since ${previous?.commit?.slice(0, 7) || "the start"}`);

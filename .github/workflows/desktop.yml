@@ -84,7 +84,7 @@ jobs:
           path: installers
           merge-multiple: true
       - name: Write latest.json and CHANGELOG.md
-        run: node scripts/release-manifest.js installers
+        run: node scripts/release-manifest.js installers "$RUNNER_TEMP/release-notes.md"
       - name: Create or update the draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,10 +93,12 @@ jobs:
           ls -la installers
           if gh release view "$version" >/dev/null 2>&1; then
             # Same version pushed again: replace the files on the existing release.
+            # Its description becomes the changes since the previous build.
             gh release upload "$version" installers/* --clobber
+            gh release edit "$version" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
             gh release create "$version" installers/* --draft --target "$GITHUB_SHA" \
-              --title "Droid Desk $version" --generate-notes
+              --title "Droid Desk $version" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
       # A push made with the workflow's own token does not start another build.
       - name: Commit latest.json and CHANGELOG.md to the release branch
