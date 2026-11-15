@@ -768,6 +768,11 @@
   .dl-btn { position: relative; flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
   .dl-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .dl-btn:hover { filter: brightness(.96); }
+  /* The header's Connect phone button: the main action, so it is filled. */
+  .dl-btn.hd-connect { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+  .dl-btn.hd-connect:hover { filter: brightness(1.15); }
+  .dl-btn:disabled { cursor: default; opacity: .7; }
+  .dl-btn .spin { width: 18px; height: 18px; }
   .dl-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .dl-btn[aria-expanded="true"] { background: var(--ink); color: var(--on-ink); box-shadow: none; }
   /* While something downloads, a ring around the button fills with the overall progress. */
@@ -1042,8 +1047,8 @@
       <div>
         <span class="activity" id="activity" role="status" hidden><span class="spin" aria-hidden="true"></span>Working…</span>
         <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Droid Desk is available. Opens Settings"></button>
-        <button class="btn" id="wifiConnectBtn" hidden title="Wireless debugging (Android 11+)">Connect over Wi‑Fi</button>
-        <button class="btn primary" id="connectBtn">Connect phone</button>
+        <button class="dl-btn" type="button" id="wifiConnectBtn" hidden title="Connect over Wi‑Fi (Wireless debugging, Android 11+)" aria-label="Connect over Wi‑Fi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg></button>
+        <button class="dl-btn hd-connect" type="button" id="connectBtn" title="Connect phone (USB cable)" aria-label="Connect phone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></button>
         <!-- One icon group: downloads, how this page works (the knowledge drawer), disconnect (while connected). -->
         <div class="hd-group" role="group" aria-label="Quick actions">
           <button class="dl-btn" type="button" id="dlBtn" title="Downloads" aria-label="Downloads" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><b class="nbadge" id="dlBadge" hidden></b></button>
@@ -1073,9 +1078,9 @@
         <ol class="steps">
           <li>On the phone: <b>Settings → About phone</b>, tap <b>Build number</b> 7 times.</li>
           <li><b>Settings → System → Developer options</b> → turn on <b>USB debugging</b>.</li>
-          <li>Plug in the USB cable, click <b>Connect phone</b>, pick the device, then tap <b>Allow</b> on the phone.</li>
+          <li>Plug in the USB cable, click <b>Connect phone</b> (the plug button at the top right), pick the device, then tap <b>Allow</b> on the phone.</li>
         </ol>
-        <p class="muted">No cable? On Android 11 and later, click <b>Connect over Wi‑Fi</b>, then scan the QR code in <b>Developer options → Wireless debugging → Pair device with QR code</b>. You only pair once; after that it connects with one click.</p>
+        <p class="muted">No cable? On Android 11 and later, click <b>Connect over Wi‑Fi</b> (the Wi‑Fi button next to it), then scan the QR code in <b>Developer options → Wireless debugging → Pair device with QR code</b>. You only pair once; after that it connects with one click.</p>
         <p class="muted" style="margin-bottom:0">Needs Chrome or Edge on desktop. If you have Android SDK tools installed, run <code>adb kill-server</code> first — only one program can hold the USB connection.</p>
       </div>
       <div id="overview" hidden>

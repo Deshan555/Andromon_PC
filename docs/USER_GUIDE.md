@@ -47,7 +47,7 @@ The screenshots were taken with an Android 12 emulator and made-up sample data.
 
 1. On the phone: **Settings › About phone**, tap **Build number** 7 times. This switches on Developer options.
 2. **Settings › System › Developer options**: turn on **USB debugging**.
-3. Plug in the cable, click **Connect phone**, pick the phone, then tap **Allow** on the phone. Tick "Always allow from this computer" to skip this next time.
+3. Plug in the cable, click **Connect phone** (the plug button at the top right), pick the phone, then tap **Allow** on the phone. Tick "Always allow from this computer" to skip this next time.
 
 ### Without a cable (Android 11 and newer)
 

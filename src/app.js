@@ -207,14 +207,24 @@ if (!AdbDaemonWebUsbDeviceManager.BROWSER) {
   showError("WebUSB is not available here. Use the Droid Desk desktop app, or open this page in desktop Chrome/Edge from http://localhost.");
 }
 
+// The header's Connect phone button is an icon: while it works, a spinner takes the icon's place and
+// what it is doing ("Connecting…") goes in its tooltip and its name for screen readers.
+const connectBtnUi = (() => {
+  const btn = $("connectBtn"), icon = [...btn.childNodes], title = btn.title, name = btn.getAttribute("aria-label");
+  const say = (text) => { btn.title = text; btn.setAttribute("aria-label", text); };
+  return {
+    start(text) { btn.replaceChildren(spinner()); btn.disabled = true; btn.setAttribute("aria-busy", "true"); say(text); },
+    set textContent(text) { say(text); }, // connectUsb reports its steps this way
+    stop() { if (!btn.hasAttribute("aria-busy")) return; btn.replaceChildren(...icon); btn.disabled = false; btn.removeAttribute("aria-busy"); btn.title = title; btn.setAttribute("aria-label", name); },
+  };
+})();
 $("connectBtn").addEventListener("click", async () => {
   clearError();
-  const btn = $("connectBtn");
   try {
     const device = await AdbDaemonWebUsbDeviceManager.BROWSER.requestDevice();
     if (!device) return; // picker cancelled
-    busy(btn, true, "Connecting…");
-    const connection = await connectUsb(device, btn);
+    connectBtnUi.start("Connecting…");
+    const connection = await connectUsb(device, connectBtnUi);
     $("authBox").hidden = false;
     const transport = await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore });
     $("authBox").hidden = true;
@@ -223,7 +233,7 @@ $("connectBtn").addEventListener("click", async () => {
     $("authBox").hidden = true;
     showError(e);
   } finally {
-    if (btn.disabled && btn.dataset.label) busy(btn, false);
+    connectBtnUi.stop();
   }
 });
 let connectedVia = null; // "usb" | "wifi"

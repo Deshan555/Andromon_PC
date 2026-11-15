@@ -215,7 +215,7 @@ The workflow file lists the environment variables electron-builder needs for sig
 ## Connecting a phone
 
 1. On the phone, open **Settings → About phone** and tap **Build number** 7 times. Then go to **Developer options** and turn on **USB debugging**.
-2. Plug the phone in and click **Connect phone**. Then tap **Allow** on the phone. Tick "Always allow from this computer" so you aren't asked again.
+2. Plug the phone in and click **Connect phone** (the plug button at the top right). Then tap **Allow** on the phone. Tick "Always allow from this computer" so you aren't asked again.
 3. If another program holds the phone's USB connection (an `adb` server from the SDK, Android Studio or scrcpy), the desktop app stops adb itself (`adb kill-server`, then any adb process still running) and connects again. If it still says the device is busy, a program such as Android Studio started adb again: close it and retry. The browser version can't run programs, so there you run `adb kill-server` yourself.
 4. **Windows:** Android 10+ phones connect with no driver, because Windows binds WinUSB automatically. Older phones may need the [Google USB Driver](https://developer.android.com/studio/run/win-usb) or the manufacturer's driver.
 5. **Xiaomi / Oppo / Vivo:** also turn on "USB debugging (Security settings)" or "Install via USB" so app install works.
