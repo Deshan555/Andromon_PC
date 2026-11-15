@@ -456,9 +456,17 @@
   .lk-media .prog input[type=range] { flex: 1; min-width: 0; accent-color: var(--on-ink); }
   .lk-media .prog .sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .lk-tel { display: flex; align-items: center; gap: 10px; min-height: 30px; }
-  .btn.sm.lk-call { padding: 3px 12px; font-size: 12px; font-family: var(--font, inherit); }
+  /* Call and Text beside a number: round icon buttons at the right edge of the row. */
+  .lk-acts { margin-left: auto; padding-left: 14px; display: flex; gap: 10px; flex: none; }
+  .lk-tel + .lk-tel { margin-top: 8px; } /* a contact's numbers: their buttons don't touch */
+  .lk-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; min-width: 30px; padding: 0 7px; border: 0; border-radius: 999px; background: var(--surface); color: var(--text); cursor: pointer; font: 500 12px var(--font, inherit); box-shadow: inset 0 0 0 1px var(--border); vertical-align: middle; }
+  .lk-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .lk-icon span { display: none; }
+  .lk-icon:hover { background: var(--chip); }
+  .lk-icon:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   td.num .lk-call { margin-left: 10px; }
-  .lk-call.armed { background: var(--ink); color: var(--on-ink); box-shadow: none; }
+  .lk-call.armed { background: var(--ink); color: var(--on-ink); box-shadow: none; padding: 0 11px; }
+  .lk-call.armed span { display: inline; }
 
   /* ---------- test automation ---------- */
   .at-grid { display: grid; grid-template-columns: minmax(250px, 34%) 1fr; gap: 16px; align-items: start; }

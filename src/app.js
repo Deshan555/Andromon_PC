@@ -2203,6 +2203,24 @@ async function loadContacts(force = false) {
   });
 }
 
+// Icon button beside a contact's number: opens Messages with a new message addressed to it.
+function textButton(number, name) {
+  const raw = String(number || "").trim();
+  if (!/^[+\d][\d\s().-]*$/.test(raw)) return "";
+  const title = `Text ${String(name || "").trim() || raw}`;
+  const b = el("button", { className: "lk-icon", type: "button", title },
+    document.querySelector('#nav button[data-view="messages"] svg')?.cloneNode(true) || "");
+  b.setAttribute("aria-label", title);
+  b.addEventListener("click", async () => {
+    show("messages");
+    await loadMessages().catch(() => {});
+    renderNewMessage();
+    const to = document.querySelector(".to-input"); if (to) to.value = raw;
+    document.querySelector(".composer textarea")?.focus();
+  });
+  return b;
+}
+
 function renderContacts() {
   if (!contactsCache) return;
   const q = $("ctSearch").value.trim().toLowerCase();
@@ -2213,7 +2231,8 @@ function renderContacts() {
   const lines = (arr, f) => el("div", {}, ...arr.map((x) => el("div", { textContent: f(x) })));
   const rows = list.slice(0, 1000).map((c) => el("tr", {},
     el("td", {}, people ? people.nameCell(c) : el("span", { textContent: (c.starred ? "★ " : "") + (c.name || "(no name)") })),
-    el("td", { className: "mono" }, el("div", {}, ...c.phones.map((p) => el("div", { className: "lk-tel" }, `${p.number}  ·  ${p.type}`, links?.callButton(p.number, c.name) || "")))),
+    el("td", { className: "mono" }, el("div", {}, ...c.phones.map((p) => el("div", { className: "lk-tel" }, el("span", { textContent: `${p.number}  ·  ${p.type}` }),
+      el("span", { className: "lk-acts" }, textButton(p.number, c.name), links?.callButton(p.number, c.name) || ""))))),
     el("td", { className: "hide-sm" }, lines(c.emails, (m) => m.address))));
   $("ctRows").replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colSpan: 3, className: "empty", textContent: q ? "No matches" : "No contacts" }))]));
   people?.renderSelection();

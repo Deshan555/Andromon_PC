@@ -266,8 +266,16 @@ export function initLinks(base) {
     const num = raw.replace(/[^\d+*#]/g, "");
     if (!num) return "";
     const who = String(name || "").trim() || raw;
-    const b = el("button", { className: "btn sm lk-call", type: "button", textContent: "Call", title: `Call ${who} from the phone (click twice)` });
-    armedClick(b, async () => {
+    // An icon button: the first click arms it (it fills and shows "Call?"), the second one dials.
+    const title = `Call ${who} from the phone (click twice)`;
+    const b = el("button", { className: "lk-icon lk-call", type: "button", title },
+      document.querySelector('#nav button[data-view="calls"] svg')?.cloneNode(true) || "", el("span", { textContent: "Call?" }));
+    b.setAttribute("aria-label", title);
+    let timer = 0;
+    const disarm = () => { clearTimeout(timer); b.classList.remove("armed"); };
+    b.addEventListener("click", async () => {
+      if (!b.classList.contains("armed")) { b.classList.add("armed"); timer = setTimeout(disarm, 3000); return; }
+      disarm();
       if (!getAdb()) return;
       clearError();
       try {
