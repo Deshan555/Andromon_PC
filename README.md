@@ -7,6 +7,7 @@ This is the "Phase 1 – ADB-only" design.
 ## Features
 
 The window uses the same design as the companion app on the phone: brand colours lime `#E3F786`, green `#9CD237`, ink `#292A2C` and white; a light grey page with off-white cards, one lime-to-green gradient hero card on the Overview, big light headings, dark pill buttons, and a dark navigation rail whose open tool sits on white. It follows the system's light or dark mode unless **Settings** says otherwise.
+The **Downloads** button at the top of every page is the download manager (`src/downloads.js`): each running download with a progress bar, speed, time left and Cancel, and a short history of finished, failed and cancelled ones. A ring around the button shows overall progress. The downloads run in the main process (`revanced.js`, `fdroid.js`), which announce start, progress and end on their event channels.
 
 The sidebar groups the tools: **Communication** (Messages, Contacts, Call log, Calendar, Notifications), **Files & media** (Files, Photos, Music, Wi‑Fi transfer), **Device** (Apps, Debloat, ReVanced, F-Droid, Controls, Screen mirror, Screenshot) and **Developer** (Test automation, App testing, Developer, Shell). Click a group's heading to fold it; Developer starts folded, and the choice is remembered.
 

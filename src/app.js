@@ -14,6 +14,7 @@ import { openPackageFiles, selectSplits, SENSITIVE_PERMISSIONS } from "./apk.js"
 import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
+import { initDownloads } from "./downloads.js";
 import { initShizuku } from "./shizuku.js";
 import { initRevanced } from "./revanced.js";
 import { initFdroid } from "./fdroid.js";
@@ -41,6 +42,7 @@ let backup = null; // Phone backup, restore and the automatic photo copy (./back
 let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
 let shizukuCard = null; // "Start Shizuku" on the Overview (./shizuku.js), set up at the end of this file
+let downloads = null; // the download manager (./downloads.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
 const credentialStore = new AdbWebCredentialStore("DroidDesk");
 
@@ -3373,10 +3375,17 @@ async function readUadCache() {
     return { list: await res.json(), fetchedAt: Number(res.headers.get("x-fetched-at")) || null };
   } catch { return null; }
 }
-async function downloadUadList() {
-  const res = await fetch(UAD_URL, { cache: "no-store" });
+const downloadUadList = () => downloads.track("uad", "Debloat list", "raw.githubusercontent.com", (report, signal) => fetchUadList(report, signal));
+async function fetchUadList(report, signal) {
+  const res = await fetch(UAD_URL, { cache: "no-store", signal });
   if (!res.ok) throw new Error(`Couldn't download the debloat list (HTTP ${res.status}).`);
-  const text = await res.text();
+  // Read in pieces so the download manager can show how much has arrived.
+  const parts = []; let got = 0;
+  for (const reader = res.body.getReader(); ;) {
+    const { done, value } = await reader.read(); if (done) break;
+    parts.push(value); got += value.length; report(got, 0);
+  }
+  const text = await new Blob(parts).text();
   const list = JSON.parse(text);
   if (!list || typeof list !== "object" || Array.isArray(list)) throw new Error("The debloat list has an unexpected format.");
   const fetchedAt = Date.now();
@@ -4463,3 +4472,5 @@ backup = initBackup({
 
 // The header stays in place while a page scrolls; its height tells sticky parts of a page where to stop.
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
+// ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------
+downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
