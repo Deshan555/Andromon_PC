@@ -762,6 +762,10 @@
           <button data-view="shell" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg><span>Shell</span></button>
         </div>
       </div>
+      <div class="nav-end">
+        <button data-view="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
+        <button type="button" id="railBtn" title="Collapse the sidebar" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg><span>Collapse</span></button>
+      </div>
     </nav>
   </aside>
 
@@ -1251,6 +1255,8 @@
       <div class="dev-tabs"><div class="seg" id="qaTabs" role="tablist"></div></div>
       <div id="qaRoot"></div>
     </section>
+
+    <section data-panel="settings" hidden><div id="settingsRoot"></div></section>
 
     <section data-panel="shell" hidden>
       <div class="card">

@@ -14,6 +14,7 @@ import { openPackageFiles, selectSplits, SENSITIVE_PERMISSIONS } from "./apk.js"
 import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
+import { initSettings } from "./settings.js";
 import { initDownloads } from "./downloads.js";
 import { initShizuku } from "./shizuku.js";
 import { initRevanced } from "./revanced.js";
@@ -131,7 +132,8 @@ let current = "overview";
 const loaders = { overview: loadOverview, apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
   messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => loadDir(cwd), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
-const offlineViews = { wifi: () => loadWifi(), fdroid: () => fdroidTab.load() };
+const offlineViews = { wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load() };
+let settingsUi = null;
 // The sidebar's tools are in groups. A group folds when its heading is clicked; which ones are folded is remembered.
 const NAV_FOLD_KEY = "dd.navClosed";
 function setNavGroup(g, open) {
@@ -158,7 +160,7 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], wifi: ["Wi‑Fi ", "transfer"], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], wifi: ["Wi‑Fi ", "transfer"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
@@ -4474,3 +4476,23 @@ backup = initBackup({
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
 // ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------
 downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
+// ---------- settings tab: appearance, sidebar and a few switches (see ./settings.js) ----------
+// With "Ask where to save each file" off, the main process saves downloads itself and says so here.
+globalThis.droidDesk?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
+settingsUi = initSettings({
+  $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick, companionVersion: COMPANION_VERSION, scrcpyVersion: SCRCPY_VERSION,
+  mirror: mirrorPrefs,
+  downloads,
+  uad: { read: readUadCache, update: async () => { Object.assign(debloat, await downloadUadList()); } },
+  callAlerts: {
+    get: () => callAlerts.on,
+    set: (on) => {
+      callAlerts.on = !!on;
+      try { localStorage.setItem("dd.callAlerts", on ? "on" : "off"); } catch {}
+      if (!on) hideCallPop();
+      startCallAlerts();
+    },
+  },
+  notifPopups: { get: () => notifs.popups, set: (on) => { notifs.popups = !!on; lsSet("dd.notifPopups", notifs.popups); renderNotifCard(); } },
+  wifiAuto: wadbApi ? { get: () => !!wadbUi.auto, set: async (on) => { wadbUi.auto = await wadbApi.setAuto(on); if (wadbUi.auto) maybeAutoConnect(); return wadbUi.auto; } } : null,
+});

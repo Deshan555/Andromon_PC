@@ -1,0 +1,227 @@
+// Settings tab: appearance (light/dark mode, colour theme, sidebar width) and a few switches that
+// otherwise live inside their own tabs. Appearance is stored in localStorage and applied before
+// paint by renderer/theme.js; the colours themselves are CSS (see "themes" in index.html).
+
+import pkg from "../package.json";
+
+export const THEMES = [
+  { id: "lime", label: "Lime", colors: ["#e3f786", "#9cd237"] },
+  { id: "ocean", label: "Ocean", colors: ["#bfe0fb", "#3d9be9"] },
+  { id: "sunset", label: "Sunset", colors: ["#ffd2b8", "#f5824a"] },
+  { id: "violet", label: "Violet", colors: ["#dcd3fb", "#8b6ff0"] },
+  { id: "graphite", label: "Graphite", colors: ["#dcdcd8", "#6c6d70"] },
+];
+const MODES = [["system", "Same as computer"], ["light", "Light"], ["dark", "Dark"]];
+
+export function initSettings(ctx) {
+  const { $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick } = ctx;
+  const api = globalThis.droidDesk || {};
+  const root = document.documentElement;
+  const app = document.querySelector(".app");
+  const get = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+  const mode = () => (["light", "dark"].includes(get("dd.theme")) ? get("dd.theme") : "system");
+  const accent = () => (THEMES.some((t) => t.id === get("dd.accent")) ? get("dd.accent") : "lime");
+  function setMode(m) {
+    if (m === "light" || m === "dark") root.dataset.theme = m; else delete root.dataset.theme;
+    set("dd.theme", m); render();
+  }
+  function setAccent(a) {
+    if (a !== "lime") root.dataset.accent = a; else delete root.dataset.accent;
+    set("dd.accent", a); render();
+  }
+
+  // ---------- sidebar: full, or a narrow rail of icons ----------
+  const railBtn = $("railBtn");
+  const panel = document.querySelector('[data-panel="settings"]');
+  let ready = false; // render() uses helpers defined further down
+  const isRail = () => app.classList.contains("rail");
+  function setRail(on) {
+    app.classList.toggle("rail", on);
+    set("dd.sidebar", on ? "rail" : "full");
+    railBtn.title = on ? "Expand the sidebar" : "Collapse the sidebar";
+    railBtn.setAttribute("aria-pressed", String(on));
+    railBtn.querySelector("span").textContent = on ? "Expand" : "Collapse";
+    if (ready && !panel.hidden) render();
+  }
+  railBtn.addEventListener("click", () => setRail(!isRail()));
+  addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")) {
+      e.preventDefault(); setRail(!isRail());
+    }
+  });
+  // In the rail the labels are hidden, so every tool gets its name as a tooltip.
+  for (const b of $("nav").querySelectorAll("button[data-view]")) b.title = b.querySelector("span")?.textContent || "";
+
+  // ---------- the page ----------
+  const row = (title, sub, control) => el("div", { className: "set-row" },
+    el("div", { className: "set-text" }, el("b", { textContent: title }), sub ? el("div", { className: "sub", textContent: sub }) : ""), control);
+  const section = (title, ...rows) => el("div", { className: "card" }, el("h2", { textContent: title }), ...rows);
+
+
+  // ---------- what the sections below show; filled in by refresh() ----------
+  const data = { info: null, wifi: null, rv: null, fd: null, uad: undefined };
+  let gen = 0;
+  async function refresh() {
+    const mine = ++gen;
+    const [info, wifi, rv, fd, uad] = await Promise.all([
+      api.app?.info().catch(() => null), api.wifi?.status().catch(() => null),
+      api.revanced?.status().catch(() => null), api.fdroid?.status().catch(() => null),
+      ctx.uad.read().catch(() => null),
+    ]);
+    if (mine !== gen) return;
+    Object.assign(data, { info, wifi, rv, fd, uad });
+    if (!panel.hidden) render();
+  }
+
+  const select = (options, value, onChange) => {
+    const s = el("select", {}, ...options.map(([v, label]) => el("option", { value: v, textContent: label })));
+    s.value = value; s.onchange = () => onChange(s.value);
+    return s;
+  };
+  const btn = (text, cls = "") => el("button", { className: "btn sm" + (cls ? " " + cls : ""), type: "button", textContent: text });
+  const group = (...kids) => el("div", { className: "set-seg" }, ...kids.filter(Boolean));
+  // A button that runs `fn`, shows it is working, then reloads the numbers on this page.
+  const action = (text, working, fn, cls) => {
+    const b = btn(text, cls);
+    b.onclick = async () => {
+      busy(b, true, working);
+      try { await fn(); } catch (e) { if (!/was cancelled/.test(e?.message || "")) showError(e); }
+      await refresh(); render();
+    };
+    return b;
+  };
+  const armed = (text, fn) => {
+    const b = btn(text, "danger");
+    armedClick(b, async () => { try { await fn(); } catch (e) { showError(e); } await refresh(); render(); });
+    return b;
+  };
+  const folder = (dir) => el("div", { className: "sub set-path", textContent: dir || "", title: dir || "" });
+  const source = (label, href) => el("a", { textContent: label, href, target: "_blank", rel: "noreferrer" });
+  // A download row: name, where it comes from, what is here now, and its buttons.
+  const dlRow = (src, title, from, state, ...buttons) => {
+    const live = el("div", { className: "set-dl" }); live.dataset.dl = src || "";
+    return el("div", { className: "set-row" },
+      el("div", { className: "set-text" }, el("b", { textContent: title }),
+        el("div", { className: "sub" }, state),
+        el("div", { className: "sub set-from" }, "From ", ...from.flatMap((f, i) => (i ? [", ", f] : [f]))),
+        live),
+      group(...buttons));
+  };
+  // Running downloads show under their row: progress bar, speed and Cancel (see ./downloads.js).
+  const showLive = () => {
+    for (const box of panel.querySelectorAll(".set-dl")) box.replaceChildren(...(box.dataset.dl ? ctx.downloads.active(box.dataset.dl).map(ctx.downloads.block) : []));
+  };
+  // When a download starts or ends, the rows' text and buttons are out of date: load them again.
+  const SOURCES = ["rv", "fd", "uad"];
+  let running = 0;
+  ctx.downloads.onChange(() => {
+    if (panel.hidden) return;
+    const n = SOURCES.reduce((sum, src) => sum + ctx.downloads.active(src).length, 0);
+    if (n !== running) { running = n; refresh(); } else showLive();
+  });
+  // A row's Download/Update button; it stays "Downloading…" for as long as that source is downloading.
+  const dlAction = (src, text, fn) => {
+    const b = action(text, "Downloading…", fn);
+    if (ctx.downloads.active(src).length) busy(b, true, "Downloading…");
+    return b;
+  };
+
+  function mirrorSection() {
+    const m = ctx.mirror, p = m.get();
+    return section("Screen mirror",
+      row("Picture quality", "Used each time mirroring starts. Lower quality is smoother on a slow link", select(m.QUALITY, p.quality, (v) => m.set({ quality: v }))),
+      row("Show", "The phone's screen, or one of its cameras (Android 12 and newer)", select(m.SOURCE, p.source, (v) => m.set({ source: v }))),
+      row("Play the phone's sound here", "Android 11 and newer. With a camera, the microphone is used", makeSwitch(p.audio, (on) => { m.set({ audio: on }); return on; })),
+      row("Turn the phone's screen off while mirroring", "The phone keeps working; only its display goes dark", makeSwitch(p.screenOff, (on) => { m.set({ screenOff: on }); return on; })),
+      row("Frame rate", "A lower limit saves the phone's battery", select(m.FPS, String(p.fps), (v) => m.set({ fps: Number(v) }))));
+  }
+
+  function savingSection() {
+    const s = data.info?.save, w = data.wifi;
+    const rows = [
+      row("Ask where to save each file", "Screenshots, recordings and exports. When off, they go straight into the folder below",
+        makeSwitch(s ? s.ask : true, async (on) => { data.info.save = await api.app.saveAsk(on); render(); return data.info.save.ask; })),
+      el("div", { className: "set-row" },
+        el("div", { className: "set-text" }, el("b", { textContent: "Save folder" }), folder(s?.dir), s?.ask ? el("div", { className: "sub", textContent: "Used when asking is switched off" }) : ""),
+        group(action("Open", "Opening…", () => api.app.saveOpen()), action("Change…", "Choosing…", () => api.app.saveChoose()))),
+    ];
+    if (w && api.wifi) rows.push(el("div", { className: "set-row" },
+      el("div", { className: "set-text" }, el("b", { textContent: "Files received over Wi‑Fi" }), folder(w.saveDir)),
+      group(action("Open", "Opening…", () => api.wifi.openFolder()), action("Change…", "Choosing…", () => api.wifi.chooseFolder()))));
+    return section("Saving files", ...rows);
+  }
+
+  function downloadsSection() {
+    const { rv, fd, uad, info } = data;
+    const size = (n) => (n ? ` · ${fmtSize(n)} on this computer` : "");
+    const rows = [];
+    if (api.revanced) {
+      const have = rv && (rv.cli || rv.patches);
+      const state = !rv ? "Checking…" : !have ? "Not downloaded"
+        : [rv.cli ? `Patcher ${rv.cli.version}` : "", rv.patches ? `patches ${rv.patches.version}, fetched ${fmtDate(rv.patches.fetchedAt, true)}` : "patches missing"].filter(Boolean).join(" · ") + size(info?.sizes.revanced);
+      rows.push(dlRow("rv", "ReVanced patcher and patches", [source("api.revanced.app", "https://api.revanced.app"), source("github.com/ReVanced", "https://github.com/ReVanced")], state,
+        dlAction("rv", have ? "Update" : "Download", () => api.revanced.setup()),
+        have ? armed("Remove", () => api.revanced.clear()) : null));
+    }
+    if (api.fdroid) {
+      const c = fd?.catalog;
+      const state = !fd ? "Checking…" : !c ? "Not downloaded" : `${c.apps.toLocaleString()} apps · fetched ${fmtDate(c.fetchedAt, true)}` + size(info?.sizes.fdroid);
+      rows.push(dlRow("fd", "F-Droid app catalogue", [source("f-droid.org", "https://f-droid.org")], state,
+        dlAction("fd", c ? "Update" : "Download", async () => { const r = await api.fdroid.update(); if (c && r && r.changed === false) toast("The catalogue is already up to date"); }),
+        c ? armed("Remove", () => api.fdroid.clear()) : null));
+    }
+    rows.push(dlRow("uad", "Debloat list", [source("Universal Android Debloater", "https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation")],
+      uad === undefined ? "Checking…" : !uad ? "Not downloaded" : `${Object.keys(uad.list || {}).length.toLocaleString()} apps described` + (uad.fetchedAt ? ` · fetched ${fmtDate(uad.fetchedAt, true)}` : ""),
+      dlAction("uad", uad ? "Update" : "Download", () => ctx.uad.update())));
+    rows.push(dlRow("", "Built into Droid Desk", [source("scrcpy", "https://github.com/Genymobile/scrcpy"), source("Droid Desk Companion", "https://github.com/Deshan555/Andromon-android")],
+      `Screen mirroring helper ${ctx.scrcpyVersion} · companion app ${ctx.companionVersion}. Nothing to download`));
+    if (api.app) rows.push(row("Droid Desk's data folder", "Settings, paired phones and everything listed above", group(action("Open folder", "Opening…", () => api.app.openData()))));
+    return section("Downloads and sources", ...rows);
+  }
+
+  function render() {
+    const modes = el("div", { className: "set-seg" }, ...MODES.map(([id, label]) => {
+      const b = el("button", { className: "btn sm" + (mode() === id ? " primary" : ""), type: "button", textContent: label });
+      b.setAttribute("aria-pressed", String(mode() === id));
+      b.onclick = () => setMode(id);
+      return b;
+    }));
+    const swatches = el("div", { className: "set-themes" }, ...THEMES.map((t) => {
+      const b = el("button", { className: "set-theme" + (accent() === t.id ? " on" : ""), type: "button", title: t.label },
+        el("i", { style: `background: linear-gradient(135deg, ${t.colors[0]}, ${t.colors[1]})` }), el("span", { textContent: t.label }));
+      b.setAttribute("aria-pressed", String(accent() === t.id));
+      b.onclick = () => setAccent(t.id);
+      return b;
+    }));
+    const parts = [
+      section("Appearance",
+        row("Mode", "Light, dark, or the same as this computer", modes),
+        row("Colour theme", "The accent colour of cards, highlights and the logo", swatches),
+        row("Collapse the sidebar", "Show only icons. Shortcut: Ctrl/⌘ + B", makeSwitch(isRail(), (on) => { setRail(on); return on; }))),
+    ];
+    const link = [];
+    link.push(row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
+      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; })));
+    link.push(row("Notification pop-ups", "Show a pop-up for each new phone notification (when Notifications is switched on)",
+      makeSwitch(ctx.notifPopups.get(), (on) => { ctx.notifPopups.set(on); return on; })));
+    if (ctx.wifiAuto) link.push(row("Connect over Wi‑Fi automatically", "Connect to a phone you've paired as soon as it appears on the network",
+      makeSwitch(ctx.wifiAuto.get(), (on) => ctx.wifiAuto.set(on))));
+    parts.push(section("Phone link", ...link));
+    parts.push(mirrorSection());
+    if (api.app) parts.push(savingSection());
+    parts.push(downloadsSection());
+    const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noreferrer" });
+    parts.push(section("About",
+      row("Droid Desk", `Version ${pkg.version} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
+      row("Source code", "", el("div", { className: "set-links" }, a("PC app", "https://github.com/Deshan555/Andromon_PC"), a("Android companion", "https://github.com/Deshan555/Andromon-android"))),
+      row("Credits", "ADB by Tango (ya-webadb) · screen mirroring by scrcpy · Wi‑Fi transfer speaks the LocalSend protocol · icons by Lucide · Poppins type", "")));
+    $("settingsRoot").replaceChildren(...parts);
+    showLive();
+  }
+
+  setRail(get("dd.sidebar") === "rail");
+  ready = true;
+  return { load: () => { render(); refresh(); }, setRail, isRail };
+}

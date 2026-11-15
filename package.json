@@ -43,6 +43,7 @@
       "backupfs.js",
       "revanced.js",
       "fdroid.js",
+      "appsettings.js",
       "renderer/**/*",
       "!renderer/*.map"
     ],

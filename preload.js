@@ -150,6 +150,19 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("fd:event", h);
     },
   },
+  // Settings page: where saved files go, and the size of what Droid Desk has downloaded (appsettings.js).
+  app: {
+    info: () => call("app:info"),
+    openData: () => call("app:openData"),
+    saveOpen: () => call("app:saveOpen"),
+    saveAsk: (ask) => call("app:saveAsk", !!ask),
+    saveChoose: () => call("app:saveChoose"),
+    onEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on("app:event", h);
+      return () => ipcRenderer.removeListener("app:event", h);
+    },
+  },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),
     unlisten: (ruleId) => call("devnet:unlisten", String(ruleId)),
