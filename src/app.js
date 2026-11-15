@@ -16,6 +16,7 @@ import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initSettings } from "./settings.js";
 import { initDownloads } from "./downloads.js";
+import { initDropdowns } from "./dropdown.js";
 import { initShizuku } from "./shizuku.js";
 import { initWifiRadar } from "./wifiradar.js";
 import { initRevanced } from "./revanced.js";
@@ -4519,6 +4520,8 @@ backup = initBackup({
 
 // The header stays in place while a page scrolls; its height tells sticky parts of a page where to stop.
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
+// ---------- dropdown menus: every <select> gets the app's own menu (see ./dropdown.js) ----------
+initDropdowns();
 // ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------
 downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 // ---------- update check (updater.js): a pill in the header when a newer build is published ----------
