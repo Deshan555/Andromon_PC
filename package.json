@@ -2,7 +2,7 @@
   "name": "droid-desk",
   "productName": "Droid Desk",
   "version": "0.1.0",
-  "description": "Android phone manager for Windows and macOS (ADB over USB)",
+  "description": "Android phone manager for Windows, macOS and Linux (ADB over USB)",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
     "web": "npm run build:renderer && python3 -m http.server 8000 --bind 127.0.0.1 --directory renderer",
     "dist:mac": "npm run build:renderer && electron-builder --mac",
     "dist:win": "npm run build:renderer && electron-builder --win",
+    "dist:linux": "npm run build:renderer && electron-builder --linux",
     "build:uihelper": "sh uihelper/build.sh",
     "build:companion": "cd ../android && ./gradlew assembleRelease -q && cp app/build/outputs/apk/release/app-release.apk ../pc/renderer/companion.apk"
   },
@@ -94,9 +95,9 @@
       "uninstallDisplayName": "Droid Desk",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Droid-Desk-Setup-${version}-${arch}.${ext}"
     },
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "Droid-Desk-${version}-${arch}.${ext}",
     "copyright": "Droid Desk",
     "dmg": {
       "title": "Install ${productName}",
@@ -118,6 +119,30 @@
           "path": "/Applications"
         }
       ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "executableName": "droid-desk",
+      "synopsis": "Android phone manager",
+      "maintainer": "Deshan555 <Deshan555@users.noreply.github.com>",
+      "syncDesktopName": true
     }
-  }
+  },
+  "homepage": "https://github.com/Deshan555/Andromon_PC",
+  "desktopName": "droid-desk.desktop"
 }

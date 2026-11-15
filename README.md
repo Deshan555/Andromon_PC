@@ -172,13 +172,30 @@ npm run build:uihelper    # rebuild uihelper/ into renderer/ui-helper.jar (needs
 ## Build installers
 
 ```sh
-npm run dist:mac   # -> dist/Droid Desk-0.1.0-arm64.dmg and -x64.dmg   (run on a Mac)
-npm run dist:win   # -> dist/Droid Desk-Setup-0.1.0-*.exe (x64 + ARM64) (best run on Windows)
+npm run dist:mac   # -> dist/Droid-Desk-0.1.0-arm64.dmg and -x64.dmg   (run on a Mac)
+npm run dist:win   # -> dist/Droid-Desk-Setup-0.1.0-*.exe (x64 + ARM64) (best run on Windows)
+npm run dist:linux # -> dist/Droid-Desk-0.1.0-x86_64.AppImage and -amd64.deb (x64)
 ```
 The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icns` / `.ico` by electron-builder), the Windows setup wizard's pictures (`installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`) and its welcome texts (`installer.nsh`), and the macOS disk image's background (`background.png`, `@2x`). The Windows wizard's pages: Welcome › install for me or for everyone › folder › installing › Finish (with "Run Droid Desk"), plus desktop and Start menu shortcuts and an uninstaller that keeps settings. Add `build/license.txt` to get a licence page.
 
 
-Or push the repo to GitHub and run **Actions → Build desktop app**. The workflow is `.github/workflows/desktop.yml`. It builds both installers and attaches them to the run.
+**Automatic builds:** every push to the `release` branch builds the macOS, Windows and Linux installers on GitHub (`.github/workflows/desktop.yml`). They are attached to the workflow run and collected in a **draft** GitHub Release named after the version in `package.json` (for example `v0.1.0`); open **Releases**, check it, and press **Publish**. Pushing the same version again replaces the files on that release, so raise `version` in `package.json` for a new one. 
+After each build the workflow commits two files to the `release` branch (`scripts/release-manifest.js`):
+
+- **`latest.json`**: the newest build. Version, build number, date, commit, the commit subjects since the previous build, and every installer with its platform, CPU type, size, SHA-256 and download address. The addresses work once that version's release is published. Always available at `https://raw.githubusercontent.com/Deshan555/Andromon_PC/release/latest.json`.
+- **`CHANGELOG.md`**: one section per build, newest first, listing the commits since the build before it.
+
+Because the build adds commits to `release`, bring `main` into it with a merge rather than pushing `main` over it:
+
+```sh
+git checkout release && git pull && git merge main && git push && git checkout main
+```
+
+The first time, create the branch with `git push origin main:release`.
+
+The workflow can also be started by hand from **Actions → Build desktop app → Run workflow**; that run only attaches the installers.
+
+**Linux:** the AppImage runs after `chmod +x`; the `.deb` installs with `sudo apt install ./Droid-Desk-0.1.0-amd64.deb`. To let the app reach a phone over USB without root, the phone needs a udev rule (the `android-udev-rules` or `android-sdk-platform-tools-common` package provides them). The Linux build has not been run on a Linux computer yet.
 
 **Unsigned builds:**
 - **macOS** says the app "can't be opened". Right-click the app, choose **Open**, then confirm. Alternatively, run `xattr -dr com.apple.quarantine "/Applications/Droid Desk.app"`.
