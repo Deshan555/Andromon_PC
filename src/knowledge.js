@@ -86,6 +86,13 @@ const PAGES = {
     tips: ["Both devices must be on the same Wi‑Fi, except with Direct link."],
     tour: [["#wifiSwitch", "On or off", "While on, this computer can be found by phones on the same network."], ["#wifiMethodName", "Transfer method", "Auto, Same Wi‑Fi or Direct link."], ["#wifiFolder", "Received files", "Where files from the phone are saved."]],
   },
+  recovery: {
+    name: "SD card recovery",
+    intro: "Bring back deleted photos, videos and files from a memory card or USB stick in this computer.",
+    how: ["Take the card out of the phone or camera and put it in this computer's card reader.", "Download PhotoRec once (the free program that does the recovery).", "Pick the card, what to look for and a folder on this computer.", "Start, and type your computer's password when asked: reading a whole card needs it.", "Open the folder when it finishes. Files get new names and are sorted into numbered folders."],
+    tips: ["Stop using the card as soon as you notice something is missing: new photos overwrite deleted ones.", "This can't recover from a phone's built-in storage. On the phone, try Recover in Andromon Companion.", "A damaged card? Copy it to an image file first (for example with ddrescue) and recover from that."],
+    tour: [["#recoveryRoot .card:nth-child(2)", "PhotoRec", "The recovery program. Downloaded once from its author's site and checked."], ["#recoveryRoot .card:nth-child(3)", "Source", "A card or drive in this computer, or an image file of one."], ["#recoveryRoot .card:nth-child(4)", "Options", "Which file types, and where the recovered files go."], ["#recoveryRoot .card:nth-child(5)", "Recover", "Start, watch the count grow, then open the folder."]],
+  },
   apps: {
     name: "Apps",
     intro: "Everything installed on the phone: install, back up, uninstall, and look inside.",

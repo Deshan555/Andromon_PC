@@ -49,6 +49,7 @@
       "updater.js",
       "build-info.json",
       "requirements.js",
+      "recovery.js",
       "renderer/**/*",
       "!renderer/*.map"
     ],

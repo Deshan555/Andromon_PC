@@ -19,6 +19,7 @@ const { setupFdroid } = require("./fdroid.js");
 const { setupAppSettings } = require("./appsettings.js");
 const { setupUpdater } = require("./updater.js");
 const { setupRequirements } = require("./requirements.js");
+const { setupRecovery } = require("./recovery.js");
 
 const RENDERER_DIR = path.join(__dirname, "renderer");
 const ORIGIN = "app://andromon";
@@ -299,6 +300,7 @@ function setupWifi() {
   setupAppSettings(handle, { userData: app.getPath("userData"), readSettings, writeSettings, origin: ORIGIN, getWindow: () => mainWindow }); // Settings page
   setupUpdater(handle, { readSettings, writeSettings, getWindow: () => mainWindow }); // update check (Settings › About)
   setupRequirements(handle, { findJava: revanced.findJava, adbCandidates, minJava: revanced.minJava }); // Settings › This computer
+  setupRecovery(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // SD card recovery page (PhotoRec)
   const method = (m) => (["auto", "lan", "direct"].includes(m) ? m : readSettings().wifiMethod || "auto");
   handle("wifi:status", () => ({ ...wifi.status(), method: method() }));
   handle("wifi:setMethod", (_e, m) => { if (["auto", "lan", "direct"].includes(m)) writeSettings({ wifiMethod: m }); return method(); });

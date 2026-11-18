@@ -181,6 +181,23 @@ contextBridge.exposeInMainWorld("andromon", {
       return () => ipcRenderer.removeListener("upd:event", h);
     },
   },
+  // SD card recovery (recovery.js): PhotoRec on a card in this computer's reader, or on an image file.
+  recovery: {
+    status: () => call("rc:status"),
+    install: () => call("rc:install"),
+    drives: () => call("rc:drives"),
+    chooseOut: () => call("rc:chooseOut"),
+    chooseImage: () => call("rc:chooseImage"),
+    start: (opts) => call("rc:start", { source: String(opts?.source || ""), drive: String(opts?.drive || ""), what: String(opts?.what || "") }),
+    stop: () => call("rc:stop"),
+    open: (dir) => call("rc:open", String(dir || "")),
+    openSite: () => call("rc:openSite"),
+    onEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on("rc:event", h);
+      return () => ipcRenderer.removeListener("rc:event", h);
+    },
+  },
   // Settings › This computer: the tools Andromon can use (Java, adb…) and whether they are installed (requirements.js).
   system: {
     requirements: (force) => call("sys:requirements", !!force),

@@ -154,6 +154,14 @@ The **App testing** tab is for testers and for checking an app before release. I
 - **API tester:** a small Postman. Method, URL, params, headers, body (JSON, text, form), auth (Bearer, Basic, API key), environments with `{{variables}}` (plus `{{$timestamp}}`, `{{$uuid}}`, `{{$randomInt}}`), tests (status, time, header, body text, JSON value), and "save to variable" to chain a login token into the next request. Collections run as a suite with a pass/fail report; import and export Postman v2.1 collections. Requests are sent by the main process (`apiclient.js`), so any server works. Saved in this computer's Andromon profile; credentials are left out of the history.
 - **Traces:** a Perfetto system trace (Android 9+) with presets for app & UI, app startup (cold-starts the app while recording), CPU & battery, and memory, 5 s to 1 min, optionally with logcat. **Open in Perfetto** serves the trace once from 127.0.0.1:9001 and opens ui.perfetto.dev in the browser, like Android's `record_android_trace` script (`traceview.js`); the file isn't uploaded. Also method traces (`am profile`) and Java heap dumps (`am dumpheap`) for debug builds, to open in Android Studio.
 
+### SD card recovery (PhotoRec)
+
+The **SD card recovery** page (Files & media, works without a phone) recovers deleted photos, videos and files from a memory card or USB stick in this computer's card reader, or from an image file of one. The work is done by [PhotoRec](https://www.cgsecurity.org/wiki/PhotoRec) 7.2 (GPL v2+, Christophe Grenier), which is not bundled: Andromon downloads the official build from cgsecurity.org the first time and checks its SHA-256 (`recovery.js`), or uses a copy already installed (`brew install testdisk`, the `testdisk` package on Linux).
+
+- Only removable drives are offered, and PhotoRec only reads them. Recovered files go to a folder you pick on the computer, in `Recovered <date>/recup_dir.N`.
+- Reading a whole drive needs administrator rights: macOS shows its password dialog, Linux uses `pkexec`, Windows the UAC prompt (PhotoRec then runs in its own window). An image file needs none.
+- It cannot recover from a phone's built-in storage (encrypted, and deleted space is wiped). The companion's **Recover** screen finds what is still in trash and recycle folders on the phone.
+
 ### Wi‑Fi transfer (LocalSend)
 
 - Off by default. Nothing listens on the network until you turn it on, and the listener stops when you turn it off or close the window.
