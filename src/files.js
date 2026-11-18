@@ -2,6 +2,7 @@
 // delete, compress (zip) and extract. Everything goes over ADB: listing and transfers through the sync
 // service, the rest (mkdir, mv, rm, unzip, tar) as shell commands on the phone.
 // Icons come from ./fileicons.js, the same ones every other file list uses.
+import { videoPlayer, audioPlayer } from "./player.js";
 import { Zip, ZipDeflate, ZipPassThrough, unzipSync, strFromU8 } from "fflate";
 import { fileIcon, fileKind, icon, extOf, KIND_NAMES } from "./fileicons.js";
 import { createProgress, countBytes } from "./progress.js";
@@ -406,10 +407,12 @@ export function initFiles(ctx) {
         const blob = new Blob([await readBytes(entry.path)], { type: MIME[ext] || "" });
         if (!live()) return resolve(el("div"));
         blobUrl = URL.createObjectURL(blob);
-        const m = el(tag, { src: blobUrl, className: "fx-media" });
-        if (tag !== "img") m.controls = true;
+        // Videos and sounds get the app's player (./player.js); pictures are a plain <img>.
+        const p = tag === "video" ? videoPlayer({ src: blobUrl, title: entry.name, autoplay: false, compact: true })
+          : tag === "audio" ? audioPlayer({ src: blobUrl, title: entry.name }) : null;
+        const m = p ? p.video || p.audio : el(tag, { src: blobUrl, className: "fx-media" });
         m.onerror = () => resolve(note(tag === "img" ? "This picture format can't be shown here. Download it to open it." : "This format can't be played here. Download it to open it."));
-        if (tag === "img") { m.alt = entry.name; m.onload = () => resolve(m); } else { m.onloadedmetadata = () => resolve(m); }
+        if (tag === "img") { m.alt = entry.name; m.onload = () => resolve(m); } else { m.onloadedmetadata = () => resolve(p.node); }
       })().catch((e) => resolve(note(`Couldn't open this file: ${e?.message || e}`)));
     });
     if (kind === "image") return media("img");

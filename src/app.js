@@ -16,6 +16,7 @@ import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initSettings } from "./settings.js";
 import { initPrivacyBlur } from "./privacyblur.js";
+import { videoPlayer, initMusicDock } from "./player.js";
 import { setKnownPii, personalName } from "./pii.js";
 import { initDownloads } from "./downloads.js";
 import { initDropdowns } from "./dropdown.js";
@@ -4351,7 +4352,7 @@ async function showViewerItem() {
     });
     if (viewer !== v || v.token !== token) return;
     v.url = URL.createObjectURL(blob);
-    const m = it.kind === "video" ? el("video", { src: v.url, controls: true, autoplay: true }) : el("img", { src: v.url, alt: it.name });
+    const m = it.kind === "video" ? videoPlayer({ src: v.url, title: it.name }).node : el("img", { src: v.url, alt: it.name });
     body.replaceChildren(m);
   } catch (e) { if (viewer === v) body.replaceChildren(el("div", { textContent: `Couldn't open: ${e.message}` })); }
 }
@@ -4501,7 +4502,7 @@ function renderMusicSelection() {
     onChange: renderMusic,
     onExport: (items) => exportMedia(items, $("muProgress"), (it) => it.artist || it.album),
     onDelete: async (items) => {
-      if (st.playing && items.some((it) => mkey(it) === mkey(st.playing))) stopSong();
+      musicDock?.remove(new Set(items.map(mkey)));
       const n = await deleteMedia(items);
       toast(`Deleted ${n} of ${items.length}`);
       st.sel.clear();
@@ -4528,44 +4529,34 @@ function renderMusicDups() {
   renderMusicSelection();
 }
 
-// ---- player: pulls the song over USB, plays it from memory ----
-const songCache = new Map(); // key -> blob URL (last few songs)
-async function playSong(list, index) {
-  const st = media.music, it = list[index]; if (!it) return;
-  st.queue = list; st.qi = index; st.playing = it;
-  const key = mkey(it), token = (st.playToken = (st.playToken || 0) + 1);
-  const box = $("muPlayer");
-  const art = el("img", { alt: "" }); art.dataset.thumb = key;
-  const audio = el("audio", { controls: true, autoplay: true });
-  const status = el("span", { className: "muted small", textContent: "Loading…" });
-  const prev = el("button", { className: "btn sm", textContent: "⏮", type: "button", title: "Previous" }); prev.onclick = () => playSong(list, index - 1); prev.disabled = index === 0;
-  const next = el("button", { className: "btn sm", textContent: "⏭", type: "button", title: "Next" }); next.onclick = () => playSong(list, index + 1); next.disabled = index >= list.length - 1;
-  const close = el("button", { className: "btn sm", textContent: "✕", type: "button", title: "Stop" }); close.onclick = stopSong;
-  box.replaceChildren(art, el("div", { style: "min-width:0;max-width:40%" }, el("b", { textContent: songTitle(it) }), el("div", { className: "muted small", textContent: [it.artist, it.album].filter(Boolean).join(" · ") }), status), prev, audio, next, close);
-  box.hidden = false;
-  if (thumbs.get(key)) art.src = thumbs.get(key); else { thumbWant.set(key, [art]); pumpThumbs(); }
-  if (current === "music") renderMusic();
-  try {
-    let url = songCache.get(key);
-    if (!url) {
-      const blob = await pullBlob(it, (n) => { if (st.playToken === token) status.textContent = `Loading ${fmtSize(n)} of ${fmtSize(it.size)}…`; });
-      url = URL.createObjectURL(blob);
-      songCache.set(key, url);
-      if (songCache.size > 6) { const [k, u] = songCache.entries().next().value; if (k !== key) { URL.revokeObjectURL(u); songCache.delete(k); } }
-    }
-    if (st.playToken !== token) return;
-    status.textContent = `${fmtDuration(it.duration)} · ${fmtSize(it.size)}`;
-    audio.src = url;
-    audio.onended = () => { if (index < list.length - 1) playSong(list, index + 1); };
-  } catch (e) { if (st.playToken === token) status.textContent = `Couldn't play: ${e.message}`; }
+// ---- player: the music dock at the bottom of the window (./player.js); songs come over USB one at a time ----
+const songCache = new Map(); // key -> blob URL (the last few songs, and the next one)
+let musicDock = null;
+async function songSource(it, onBytes) {
+  const key = mkey(it);
+  let url = songCache.get(key);
+  if (url) { songCache.delete(key); songCache.set(key, url); return url; } // most recently used last
+  const blob = await pullBlob(it, onBytes);
+  url = songCache.get(key) || URL.createObjectURL(blob); // fetched twice at once: keep the first
+  songCache.set(key, url);
+  while (songCache.size > 6) { const [k, u] = songCache.entries().next().value; URL.revokeObjectURL(u); songCache.delete(k); }
+  return url;
 }
-function stopSong() {
-  const st = media.music;
-  st.playing = null; st.playToken = (st.playToken || 0) + 1;
-  $("muPlayer").querySelector("audio")?.pause();
-  $("muPlayer").hidden = true; $("muPlayer").replaceChildren();
-  if (current === "music") renderMusic();
+function playSong(list, index) {
+  musicDock ??= initMusicDock({ fmtSize, toast });
+  musicDock.play(list, index, {
+    key: mkey,
+    source: songSource,
+    meta: (it) => ({ title: songTitle(it), artist: it.artist || "", album: it.album || "", duration: Number(it.duration) / 1000 || 0 }),
+    art: (it, img) => {
+      const key = mkey(it); img.dataset.thumb = key;
+      if (thumbs.get(key)) img.src = thumbs.get(key); else { thumbWant.set(key, [img]); pumpThumbs(); }
+    },
+    onChange: (it) => { media.music.playing = it; if (current === "music") renderMusic(); },
+    onOpen: () => show("music"),
+  });
 }
+function stopSong() { musicDock?.stop(); }
 
 // music toolbar
 $("muView").addEventListener("click", (e) => { const b = e.target.closest("button[data-v]"); if (!b) return; media.music.view = b.dataset.v; media.music.group = null; media.music.dups = null; renderMusic(); });
