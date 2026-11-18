@@ -10,6 +10,8 @@
     var mode = get("andromon.theme"), accent = get("andromon.accent");
     if (mode === "light" || mode === "dark") root.setAttribute("data-theme", mode);
     if (accent && accent !== "lime" && /^[a-z]+$/.test(accent)) root.setAttribute("data-accent", accent);
+    // Settings › Accessibility › Blur personal data (src/privacyblur.js), before paint so nothing shows unblurred.
+    if (get("andromon.privacy.blur") === "1") root.setAttribute("data-pii-blur", "");
   } catch (e) {}
 
   var SIZES = ["100", "115", "130", "150"];

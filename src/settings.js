@@ -91,6 +91,8 @@ export function initSettings(ctx) {
     if (ready && !panel.hidden) render();
   }
   railBtn.addEventListener("click", () => setRail(!isRail()));
+  // Blur personal data can also be switched from the top bar, the Screenshot page or the mirror.
+  for (const ev of ["andromon:piiblur", "andromon:shotprefs"]) addEventListener(ev, () => { if (ready && !panel.hidden) render(); });
   addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")) {
       e.preventDefault(); setRail(!isRail());
@@ -190,9 +192,11 @@ export function initSettings(ctx) {
       row("Reduce motion", "No sliding, fading or pulsing. Loading circles still turn, slowly", select(FOLLOW, a11y("motion"), (v) => setA11y("motion", v))),
       row("Strong focus outline", "A thick, bright ring around whatever the keyboard is on. Move with Tab and Shift + Tab", sw("focus")),
       row("Underline links", "So links stand out without relying on colour", sw("links")),
+      ctx.privacyBlur && row("Blur personal data", `Blurs phone numbers, IMEI and serial numbers, messages, names, emails, addresses, Wi‑Fi names and IP addresses in this window, so it's safe to screenshot or share. Point at a blurred item to read it. Also ${mod} + Shift + P. Phone screenshots have their own switch in Screenshot below`,
+        makeSwitch(ctx.privacyBlur.get(), (v) => ctx.privacyBlur.set(v))),
     ];
     if (a11yChanged()) rows.push(row("Back to defaults", "Undo all the changes on this card", group(action("Reset", "Resetting…", async () => resetA11y()))));
-    return section("Accessibility", ...rows);
+    return section("Accessibility", ...rows.filter(Boolean));
   }
 
   function phoneLinkSection() {

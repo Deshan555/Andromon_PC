@@ -15,6 +15,8 @@ import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initSettings } from "./settings.js";
+import { initPrivacyBlur } from "./privacyblur.js";
+import { setKnownPii, personalName } from "./pii.js";
 import { initDownloads } from "./downloads.js";
 import { initDropdowns } from "./dropdown.js";
 import { initFiles } from "./files.js";
@@ -942,6 +944,10 @@ async function loadOverview() {
     sh("df -k /data").catch(() => ""),
     sh("cat /proc/uptime").catch(() => ""),
   ]);
+  // The phone's own identifiers, blurred wherever they show up while Blur personal data is on (src/pii.js).
+  setKnownPii([adb.serial, props["ro.serialno"], props["ro.boot.serialno"]]);
+  Promise.all([sh("settings get global device_name"), sh("settings get secure bluetooth_name"), sh("cmd wifi status")].map((p) => p.catch(() => "")))
+    .then(([name, bt, wifi]) => setKnownPii([personalName(name), personalName(bt), wifi.match(/connected to "([^"]+)"/)?.[1]])).catch(() => {});
   const level = battery.match(/level:\s*(\d+)/)?.[1];
   const status = { 2: "Charging", 3: "Discharging", 4: "Not charging", 5: "Full" }[battery.match(/status:\s*(\d+)/)?.[1]] || "";
   const temp = battery.match(/temperature:\s*(\d+)/)?.[1];
@@ -4972,7 +4978,9 @@ downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 // With "Ask where to save each file" off, the main process saves downloads itself and says so here.
 globalThis.andromon?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
 document.querySelector(".app").classList.toggle("privacy", privacyOn()); // technician mode, as left last time
+const privacyBlur = initPrivacyBlur({ toast }); // Settings › Accessibility › Blur personal data
 settingsUi = initSettings({
+  privacyBlur,
   $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick, companionVersion: COMPANION_VERSION, scrcpyVersion: SCRCPY_VERSION,
   mirror: mirrorPrefs, shot: shotPrefs, shell: shellPrefs,
   downloads,

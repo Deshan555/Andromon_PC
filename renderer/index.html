@@ -1224,6 +1224,23 @@
   :root[data-focus="strong"] nav :focus-visible { outline-color: #ffd23f !important; outline-offset: -3px !important; } /* inside: the scrolling list would cut it off */
   /* Underline links */
   :root[data-links="underline"] a { text-decoration: underline !important; text-underline-offset: 2px; }
+
+  /* ---------- privacy blur (Settings › Accessibility, Ctrl/⌘ + Shift + P; src/privacyblur.js) ---------- */
+  /* Places that always hold personal data, plus whatever the scanner found (pii-auto, pii-span) or a page marked data-pii. */
+  :root[data-pii-blur] :is([data-pii], .pii-auto, .pii-span,
+    #threadList .thread-item .t > span:first-child, #threadList .thread-item .s, #threadView .thread-head, #threadView .bubble, .to-input, .composer textarea,
+    #ctRows tr > td:first-child, #ctRows .lk-tel > span:first-child, #ctRows td.hide-sm,
+    #callRows tr > td:nth-child(2),
+    .cal-title, .cal-what .sub, .cal-desc, .cal-detail,
+    .ncard .nt, .ncard .nx, .ncard .msgs, .ncard .nb .av, .ncard .rbox input,
+    .callpop .name, .callpop .num, .callpop .av,
+    .wr-name, .loc-map, .loc-phonelabel, .loc-pinlabel) {
+    filter: blur(6px); transition: filter .15s;
+  }
+  :root[data-pii-blur] .pii-span { display: inline-block; }
+  /* Point at it (or Tab to it) to read it: the item itself, or anything in the row or card it sits in. */
+  :root[data-pii-blur] :is([data-pii], .pii-auto, .pii-span, #threadView .bubble, #threadView .thread-head, .to-input, .composer textarea, .ncard .rbox input, .wr-name, .loc-map):is(:hover, :focus-within),
+  :root[data-pii-blur] :is(#threadList .thread-item, #ctRows tr, #callRows tr, .cal-ev, .cal-detail, .ncard, .callpop .who):is(:hover, :focus-within) * { filter: none !important; } /* beats the id selectors in the blur list */
 </style>
 <script src="theme.js"></script>
 <link rel="stylesheet" href="wifiradar.css">
