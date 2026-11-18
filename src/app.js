@@ -1841,11 +1841,22 @@ const COMPANION_PKG = "dev.andromon.companion";
 // The same app installed under the product's old name (Droid Desk Companion); replaced by the one above.
 const LEGACY_COMPANION_PKG = "dev.droiddesk.companion";
 const COMPANION_SOCKET = "andromon_companion";
-const COMPANION_VERSION = 32; // keep in sync with versionCode in android/app/build.gradle.kts
+const COMPANION_VERSION = 33; // keep in sync with versionCode in android/app/build.gradle.kts
 let companionInfo = null;
 
 class CompanionUnavailable extends Error {
   constructor(msg = "The companion app isn't running") { super(msg); }
+}
+// The person pressed Stop on the phone (PC link screen, its notification or tile). Andromon then
+// doesn't start the link again by itself: it waits until they press Start on the phone.
+class CompanionPaused extends CompanionUnavailable {
+  constructor() { super("The PC link is stopped on the phone. To use it again, open Andromon Companion on the phone and tap Start on the PC link screen."); this.paused = true; }
+}
+// Asks the companion whether the person stopped the link (LinkStateReceiver, companion 33+; older
+// ones don't answer, which reads as "not stopped").
+async function companionPausedOnPhone() {
+  const out = await sh(`am broadcast -n ${COMPANION_PKG}/.LinkStateReceiver 2>/dev/null`).catch(() => "");
+  return /data="paused"/.test(out);
 }
 
 function companionCall(method, params = {}) { return track(() => companionCallRaw(method, params)); }
@@ -1941,6 +1952,7 @@ async function waitForCompanion(tries, gap) {
 }
 
 async function startCompanion(progress) {
+  if (await companionPausedOnPhone()) throw new CompanionPaused();
   progress("Starting companion…");
   await sh(`am start-foreground-service -n ${COMPANION_PKG}/.CompanionService`).catch(() => {});
   let info = await waitForCompanion(8, 300);
@@ -2614,6 +2626,7 @@ function renderCallAlertCard() {
     starting: "Starting…",
     on: "On. Incoming calls pop up here, and as a notification when Andromon is in the background.",
     reconnecting: "Lost the link to the phone. Reconnecting…",
+    paused: "Stopped on the phone. Tap Start in Andromon Companion › PC link to turn it back on.",
     noperm: "The companion can't see calls yet. Allow “Phone” for Andromon Companion on the phone (Settings › Apps), then reconnect.",
     missing: "Needs the Andromon Companion app on the phone.",
     outdated: "Needs a newer Andromon Companion on the phone.",
@@ -2659,15 +2672,20 @@ async function startCallAlerts() {
       const opened = await streamCallEvents(gen).catch((e) => { if (e?.outdated) throw e; return false; });
       if (!live()) return;
       fails = opened ? 0 : fails + 1;
-      setCallAlertState("reconnecting");
+      if (callAlerts.state !== "paused") setCallAlertState("reconnecting");
       await wait(Math.min(30_000, 2000 * 2 ** fails));
       if (!live()) return;
-      try { companionInfo = await startCompanion(() => {}); } catch {}
+      // Stopped on the phone: keep checking (at most every 30 s) and pick up again once they press Start.
+      try { companionInfo = await startCompanion(() => {}); if (callAlerts.state === "paused") setCallAlertState("reconnecting"); }
+      catch (e) { if (e instanceof CompanionPaused) setCallAlertState("paused"); }
     }
   } catch (e) {
     if (!live()) return;
     if (e?.outdated) setCallAlertState("outdated");
-    else {
+    else if (e instanceof CompanionPaused) {
+      setCallAlertState("paused");
+      setTimeout(() => { if (live() && callAlerts.state === "paused") startCallAlerts(); }, 15_000);
+    } else {
       setCallAlertState("error", e?.message || String(e));
       // Often the companion was just stopping or starting: try again a little later, as long as
       // this phone is still the one connected and nothing else restarted the alerts meanwhile.
@@ -2894,6 +2912,7 @@ function renderNotifCard() {
   if (!notifs.on) text = "Off. Turn on in Settings to see the phone's notifications here (WhatsApp, SMS, email…) and answer them from this computer. This gives Andromon Companion “Notification access” on the phone.";
   else if (!adb) text = "Connect a phone to see its notifications.";
   else if (callAlerts.state === "missing" || callAlerts.state === "outdated") text = callAlerts.state === "missing" ? "Needs the Andromon Companion app on the phone." : "Needs a newer Andromon Companion on the phone.";
+  else if (callAlerts.state === "paused") text = "The PC link is stopped on the phone. Tap Start in Andromon Companion › PC link to turn it back on.";
   else if (!st && callAlerts.state === "error") text = `Couldn't reach Andromon Companion on the phone${callAlerts.detail ? ` (${callAlerts.detail})` : ""}. Trying again shortly…`;
   else if (!st) text = "Starting…";
   else if (!st.access) text = "The phone hasn't given Andromon Companion “Notification access” yet.";
