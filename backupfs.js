@@ -8,7 +8,7 @@
 // Every path the UI sends is relative to one of them, is checked segment by segment, and can never
 // leave that folder. Files are written as "<name>.ddpart" and renamed when complete, so a copy that
 // was cut off is never mistaken for a finished one. Nothing here deletes or overwrites a finished file.
-const { dialog, shell, BrowserWindow } = require("electron");
+const { dialog, shell, BrowserWindow, safeStorage } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const fsp = fs.promises;
@@ -208,6 +208,22 @@ function setupBackupFs(handle, { userData, readSettings, writeSettings }) {
       return new Uint8Array(buf.buffer, buf.byteOffset, bytesRead);
     } finally { await fh.close(); }
   });
+
+  // The password of locked scheduled backups, when the person lets this computer remember it. Kept
+  // encrypted by the system (Keychain on macOS, DPAPI on Windows, the keyring on Linux); refused
+  // where the system can't encrypt, rather than stored in the clear.
+  const secretFile = path.join(userData, "backup-secret.bin");
+  handle("bfs:secretSet", async (_e, text) => {
+    text = String(text || "");
+    if (!text) { await fsp.unlink(secretFile).catch(() => {}); return true; }
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("This computer can't keep a password safely, so it can't be remembered here.");
+    await fsp.writeFile(secretFile, safeStorage.encryptString(text), { mode: 0o600 });
+    return true;
+  });
+  handle("bfs:secretGet", async () => {
+    try { return safeStorage.decryptString(await fsp.readFile(secretFile)); } catch { return ""; }
+  });
+  handle("bfs:secretHas", () => fs.existsSync(secretFile));
 
   // Which photos were already copied from which phone: one small JSON file per phone (by serial).
   const recordFile = (serial) => {

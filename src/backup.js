@@ -9,6 +9,9 @@
 //     calendar.ics
 //     apps.csv        installed user apps; apps/<package>/*.apk when installers are included
 //     photos/<album>/…  original photo and video files, photos.json says where each one was
+// A backup locked with a password has the same files, each encrypted (./backupcrypto.js); its
+// backup.json holds only the lock's settings and the real backup.json, encrypted.
+// Backups can also run by themselves when the phone connects, every day, week or month.
 // Files are written by the main process (../backupfs.js) inside a folder the person picked; this
 // file only sends relative paths made of sanitised names. Everything read back from a backup is
 // treated like data from a stranger: parsed, validated, never run and never used as a path as is.
@@ -19,10 +22,15 @@ import {
 } from "./pdata.js";
 import { parseIcs } from "./ics.js";
 import { createProgress } from "./progress.js";
+import { newLock, unlock, sealer, sealBytes, openBytes, openPieces, toBase64, fromBase64 } from "./backupcrypto.js";
 
 const FORMAT = "andromon-backup";
 const AUTO_KEY = "andromon.autoPhotoBackup";
 const OPTS_KEY = "andromon.backupParts";
+const LOCK_KEY = "andromon.backupLock";          // lock new backups with a password
+const SCHED_KEY = "andromon.backupSchedule";     // "off" | "day" | "week" | "month"
+const LAST_KEY = "andromon.backupLastAuto";      // { serial: time of the last scheduled backup }
+const EVERY = { day: 864e5, week: 7 * 864e5, month: 30 * 864e5 };
 const NOT_INCLUDED = "Not included: what apps keep inside themselves (chats, game progress, logins), phone settings, Wi‑Fi passwords and music. MMS are saved with their pictures but can't be put back onto a phone.";
 const PARTS = [
   ["contacts", "Contacts", "with photos", true],
@@ -47,6 +55,8 @@ export function initBackup(h) {
   let autoJob = null;   // a running automatic photo copy
   let estimate = null;  // { count, bytes } of the phone's photos and videos, once known
   let lastAuto = "";
+  // While a locked backup is written or one is restored: the key for the "backup" or "restore" folder.
+  let writeKey = null, readKey = null;
 
   // ---------- small helpers ----------
   async function phoneFacts() {
@@ -55,8 +65,11 @@ export function initBackup(h) {
     return { model: model || "Android phone", manufacturer: manufacturer || "", android: android || "", sdk: Number(sdk) || 0, serial: String(h.getAdb()?.serial || "") };
   }
   const enc = new TextEncoder();
-  const writeText = (kind, rel, text, opts) => fsApi.writeFile(kind, rel, enc.encode(text), opts);
-  const readText = async (kind, rel) => new TextDecoder().decode(await fsApi.readFile(kind, rel));
+  const sealIf = async (kind, bytes) => (kind === "backup" && writeKey ? sealBytes(writeKey, bytes) : bytes);
+  const openIf = async (kind, bytes) => (kind === "restore" && readKey ? openBytes(readKey, bytes) : bytes);
+  const writeText = async (kind, rel, text, opts) => fsApi.writeFile(kind, rel, await sealIf(kind, enc.encode(text)), opts);
+  const readFile = async (kind, rel) => openIf(kind, await fsApi.readFile(kind, rel));
+  const readText = async (kind, rel) => new TextDecoder().decode(await readFile(kind, rel));
   /** Different names for files that would land on the same path (case-insensitive, as on Windows/macOS). */
   function uniqueRel(used, dir, name) {
     const base = safeName(name);
@@ -68,7 +81,9 @@ export function initBackup(h) {
   /** Copies one file from the phone to disk in 1 MB pieces. The file only gets its name once complete. */
   async function pullToFile(remote, kind, rel, { mtime = 0, onBytes = null, task = null } = {}) {
     const id = await fsApi.open(kind, rel);
+    const seal = kind === "backup" && writeKey ? sealer(writeKey) : null;
     try {
+      if (seal) await fsApi.write(id, seal.start());
       const total = await withSync(async (s) => {
         const reader = s.read(remote).getReader();
         let parts = [], held = 0, sum = 0;
@@ -77,7 +92,7 @@ export function initBackup(h) {
           const out = new Uint8Array(held); let o = 0;
           for (const p of parts) { out.set(p, o); o += p.length; }
           parts = []; held = 0;
-          await fsApi.write(id, out);
+          await fsApi.write(id, seal ? await seal.piece(out) : out);
         };
         for (;;) {
           const { done, value } = await reader.read();
@@ -88,6 +103,7 @@ export function initBackup(h) {
           if (held >= 1 << 20) await flush();
         }
         await flush();
+        if (seal) await fsApi.write(id, await seal.end());
         return sum;
       });
       await fsApi.close(id, { mtime });
@@ -96,6 +112,16 @@ export function initBackup(h) {
   }
   /** A file on disk as a stream for adb push, read in 4 MB pieces. */
   function diskStream(kind, rel, size, onBytes) {
+    if (kind === "restore" && readKey) { // a locked backup: opened piece by piece
+      const pieces = openPieces(readKey, (o, l) => fsApi.read(kind, rel, o, l));
+      return new ReadableStream({
+        async pull(ctrl) {
+          const { done, value } = await pieces.next();
+          if (done) return ctrl.close();
+          onBytes?.(value.length); ctrl.enqueue(value);
+        },
+      }, { highWaterMark: 1 });
+    }
     let off = 0;
     return new ReadableStream({
       async pull(ctrl) {
@@ -219,7 +245,7 @@ export function initBackup(h) {
           const r = await cc("mms.part", { partId: p.partId });
           const data = base64ToBytes(r.data);
           const rel = uniqueRel(used, "mms", attachmentName(p, m.id));
-          await fsApi.writeFile("backup", `${root}/${rel}`, data, { mtime: m.date });
+          await fsApi.writeFile("backup", `${root}/${rel}`, await sealIf("backup", data), { mtime: m.date });
           files.set(p.partId, rel); saved++; bytes += data.length;
         } catch (e) { console.warn("MMS attachment", p.partId, e); failed++; }
       }
@@ -281,6 +307,11 @@ export function initBackup(h) {
   });
 
   async function runBackup(opts, ui, task) {
+    const lock = task.password ? await newLock(task.password) : null;
+    writeKey = lock?.key || null;
+    try { return await writeBackup(opts, ui, task, lock); } finally { writeKey = null; }
+  }
+  async function writeBackup(opts, ui, task, lock) {
     const facts = await phoneFacts();
     let root = safeName(`Andromon backup ${facts.model} ${folderStamp()}`);
     for (let i = 2; await fsApi.stat("backup", root); i++) root = safeName(`Andromon backup ${facts.model} ${folderStamp()} (${i})`);
@@ -295,7 +326,11 @@ export function initBackup(h) {
       phone: facts, items: Object.fromEntries(Object.entries(results).map(([k, r]) => { const { summary, warn, ...rest } = r; return [k, rest]; })),
       notIncluded: ["app data", "settings", "music", "MMS can't be restored"],
     };
-    await writeText("backup", `${root}/backup.json`, JSON.stringify(manifest, null, 2));
+    if (lock) {
+      // Only what is needed to open it stays readable; the rest of backup.json is sealed too.
+      const sealed = await sealBytes(lock.key, enc.encode(JSON.stringify(manifest)));
+      await fsApi.writeFile("backup", `${root}/backup.json`, enc.encode(JSON.stringify({ format: FORMAT, version: 1, createdAt: manifest.createdAt, locked: lock.info, sealed: toBase64(sealed) }, null, 2)));
+    } else await writeText("backup", `${root}/backup.json`, JSON.stringify(manifest, null, 2));
     return { root, results, manifest };
   }
 
@@ -372,7 +407,8 @@ export function initBackup(h) {
           const dir = target.replace(/\/[^/]*$/, "");
           if (!dirs.has(dir)) { await sh(`mkdir -p ${shQuote(dir)}`); dirs.add(dir); }
           const there = await withSync((s) => s.stat(target)).catch(() => null);
-          if (there && Number(there.size) === f.size) { skipped++; bytes += f.size; continue; }
+          const size = readKey ? Number(entry?.size) : f.size; // a locked file is bigger on disk than on the phone
+          if (there && Number(there.size) === size) { skipped++; bytes += f.size; continue; }
           if (there) { failed++; continue; } // a different file has that name: never overwrite
           const mtime = Math.floor((Number(entry?.date) || f.mtime || Date.now()) / 1000);
           await withSync((s) => s.write({ filename: target, file: diskStream("restore", rel, f.size, (b) => { bytes += b; say(`${n(done)} of ${n(entries.size)} files`, bytes, total); }), permission: 0o660, mtime }));
@@ -398,7 +434,7 @@ export function initBackup(h) {
           if (!files.length) throw new Error("no APK files");
           const parts = [];
           for (const f of files.sort((a, b) => (a.rel === "base.apk" ? -1 : b.rel === "base.apk" ? 1 : a.rel.localeCompare(b.rel)))) {
-            const bytes = await fsApi.readFile("restore", `apps/${pkg}/${f.rel}`);
+            const bytes = await readFile("restore", `apps/${pkg}/${f.rel}`);
             parts.push({ bytes, size: bytes.length, split: f.rel.replace(/\.apk$/i, "") });
           }
           await h.installApk(parts, label, pkg, (t, d, tot) => say(`${i + 1} of ${dirs.length} · ${t}`, d, tot));
@@ -417,6 +453,29 @@ export function initBackup(h) {
     return { modal, body, close: () => modal.remove() };
   }
 
+  /** Asks for a locked backup's password until it is right (or the person gives up). Resolves to the key or null. */
+  function askPassword(info) {
+    return new Promise((resolve) => {
+      const d = dialog("This backup is locked");
+      const input = el("input", { type: "password", className: "bk-pass", placeholder: "Password", autocomplete: "off" });
+      const note = el("div", { className: "muted small", textContent: "Type the password that was set when the backup was made." });
+      const ok = el("button", { className: "btn primary", type: "button", textContent: "Open" });
+      const no = el("button", { className: "btn", type: "button", textContent: "Cancel" });
+      const finish = (key) => { d.close(); resolve(key); };
+      ok.onclick = async () => {
+        if (!input.value) return input.focus();
+        busy(ok, true, "Checking…");
+        try { const key = await unlock(info, input.value); if (key) return finish(key); note.textContent = "That password isn't right. Try again."; input.select(); }
+        catch (e) { note.textContent = errText(e); }
+        finally { if (ok.isConnected) busy(ok, false); }
+      };
+      no.onclick = () => finish(null);
+      input.onkeydown = (e) => { if (e.key === "Enter") ok.click(); if (e.key === "Escape") no.click(); };
+      d.body.append(input, note, el("div", { className: "toolbar", style: "margin:12px 0 0" }, ok, no));
+      input.focus();
+    });
+  }
+
   async function openRestore() {
     if (!fsApi) return showError("Restoring a backup needs the Andromon desktop app.");
     if (job) return toast("A backup or restore is already running");
@@ -425,6 +484,14 @@ export function initBackup(h) {
     if (!picked) return;
     let m;
     try { m = JSON.parse(picked.manifest); } catch { m = null; }
+    readKey = null;
+    if (m?.locked && (m.format === FORMAT) && typeof m.sealed === "string") {
+      const key = await askPassword(m.locked);
+      if (!key) return;
+      try { m = JSON.parse(new TextDecoder().decode(await openBytes(key, fromBase64(m.sealed)))); }
+      catch { throw new Error("This backup's backup.json is damaged, so it can't be opened."); }
+      readKey = key;
+    }
     // "droiddesk-backup": made before the app was renamed from Droid Desk
     if (!m || (m.format !== FORMAT && m.format !== "droiddesk-backup") || typeof m.items !== "object" || !m.items) throw new Error("That file isn't an Andromon backup (choose the backup.json inside a backup folder).");
     const files = await fsApi.list("restore", "", false);
@@ -471,7 +538,7 @@ export function initBackup(h) {
     const status = el("div", {});
     const go = el("button", { className: "btn primary", type: "button", textContent: "Restore the ticked parts" });
     const cancel = el("button", { className: "btn", type: "button", textContent: "Close" });
-    cancel.onclick = () => { if (job) { job.cancelled = true; cancel.disabled = true; cancel.textContent = "Stopping…"; } else d.close(); };
+    cancel.onclick = () => { if (job) { job.cancelled = true; cancel.disabled = true; cancel.textContent = "Stopping…"; } else { d.close(); readKey = null; } };
     const appList = found.apps.length ? el("details", { className: "bk-apps" }, el("summary", { textContent: `Apps that were installed (${found.apps.length})${apkDirs ? "" : " — installers weren't saved, so this is a list to reinstall from"}` }),
       el("div", { className: "bk-applist" }, ...found.apps.slice(0, 500).map((a) => el("div", {}, el("span", { textContent: a.name || a.pkg }), el("span", { className: "sub mono", textContent: `${a.pkg}${a.version ? ` · ${a.version}` : ""}${a.installer === "com.android.vending" ? " · Play Store" : ""}` }))))) : "";
     go.onclick = async () => {
@@ -538,6 +605,21 @@ export function initBackup(h) {
       };
       return el("label", { className: "bk-part" }, box, el("span", {}, el("b", { textContent: label }), note ? el("span", { className: "sub", textContent: note }) : "", key === "photos" ? est : ""));
     });
+    // Lock with a password: asked each time; remembered (by the system's keychain) only when wanted,
+    // which scheduled backups need.
+    const lockBox = el("input", { type: "checkbox", checked: !!lsGet(LOCK_KEY, false) });
+    const pass1 = el("input", { type: "password", className: "bk-pass", placeholder: "Password (8 characters or more)", autocomplete: "new-password" });
+    const pass2 = el("input", { type: "password", className: "bk-pass", placeholder: "The same again", autocomplete: "new-password" });
+    const remember = el("input", { type: "checkbox", checked: await fsApi.secretHas().catch(() => false) });
+    const passRow = el("div", { className: "bk-lock", hidden: !lockBox.checked }, pass1, pass2,
+      el("label", { className: "bk-part" }, remember, el("span", {}, el("b", { textContent: "Remember it on this computer" }),
+        el("span", { className: "sub", textContent: "Kept encrypted by the system's keychain; needed for backups that run by themselves" }))),
+      el("div", { className: "sub", textContent: "Without the password the backup can't be opened, by anyone. Keep it somewhere safe: it can't be recovered." }));
+    lockBox.onchange = () => { lsSet(LOCK_KEY, lockBox.checked); passRow.hidden = !lockBox.checked; };
+    remember.onchange = () => { if (!remember.checked) fsApi.secretSet("").catch(() => {}); };
+    const sched = el("select", {}, ...[["off", "Only when I click Back up now"], ["day", "Every day"], ["week", "Every week"], ["month", "Every month"]].map(([v, t]) => el("option", { value: v, textContent: t })));
+    sched.value = lsGet(SCHED_KEY, "off");
+    sched.onchange = () => { lsSet(SCHED_KEY, sched.value); if (sched.value !== "off") toast("The next backup runs when this phone connects and the last one is older than that"); };
     const folderText = el("span", { className: "bk-path", textContent: folder ? folder.path + (folder.exists ? "" : "  (not found: choose it again)") : "No folder chosen yet" });
     const choose = el("button", { className: "btn sm", type: "button", textContent: folder ? "Change…" : "Choose folder…" });
     choose.onclick = async () => { try { if (await fsApi.choose("backup")) renderCard(); } catch (e) { showError(e); } };
@@ -553,20 +635,28 @@ export function initBackup(h) {
       clearError();
       const chosen = Object.fromEntries([...boxes].map(([k, b]) => [k, b.checked]));
       if (!Object.values(chosen).some(Boolean)) return toast("Tick what to back up first");
+      let password = "";
+      if (lockBox.checked) {
+        password = pass1.value;
+        if (password.length < 8) { pass1.focus(); return toast("The password needs 8 characters or more"); }
+        if (password !== pass2.value) { pass2.focus(); return toast("The two passwords aren't the same"); }
+      }
       try {
+        if (lockBox.checked && remember.checked) await fsApi.secretSet(password);
         let f = await fsApi.get("backup");
         if (!f?.exists) f = await fsApi.choose("backup");
         if (!f) return;
         folderText.textContent = f.path; openBtn.hidden = false;
         if (Object.entries(chosen).some(([k, v]) => v && k !== "apps" && k !== "apks")) await needCompanion();
       } catch (e) { return showError(e); }
-      const task = (job = { cancelled: false, phone: h.getAdb(), opts: chosen, card: true });
+      const task = (job = { cancelled: false, phone: h.getAdb(), opts: chosen, card: true, password });
+      pass1.value = pass2.value = "";
       const labels = { contacts: "Contacts", messages: "Messages", calls: "Call log", calendar: "Calendar", apps: chosen.apks ? "Apps and installers" : "List of apps", photos: "Photos and videos" };
       const ui = progressList(["contacts", "messages", "calls", "calendar", "apps", "photos"].filter((k) => chosen[k] || (k === "apps" && chosen.apks)).map((k) => [k, labels[k]]));
       const stop = el("button", { className: "btn sm", type: "button", textContent: "Cancel" });
       stop.onclick = () => { task.cancelled = true; stop.disabled = true; stop.textContent = "Stopping…"; };
       status.replaceChildren(ui.box, el("div", { className: "toolbar", style: "margin:10px 0 0" }, stop));
-      start.disabled = restore.disabled = choose.disabled = true;
+      start.disabled = restore.disabled = choose.disabled = lockBox.disabled = true;
       for (const b of boxes.values()) b.disabled = true;
       try {
         const { root, results } = await runBackup(chosen, ui, task);
@@ -579,7 +669,8 @@ export function initBackup(h) {
       } catch (e) { showError(e); status.append(el("p", { className: "muted", textContent: `The backup stopped: ${errText(e)}` })); stop.remove(); }
       finally {
         job = null;
-        if (start.isConnected) { start.disabled = restore.disabled = choose.disabled = false; for (const b of boxes.values()) b.disabled = false; }
+        if (start.isConnected) { start.disabled = restore.disabled = choose.disabled = lockBox.disabled = false; for (const b of boxes.values()) b.disabled = false; }
+        if (!task.cancelled) markBackedUp();
       }
     };
 
@@ -592,6 +683,10 @@ export function initBackup(h) {
         el("p", { className: "muted", textContent: "Saves a copy of what's ticked into a new dated folder on this computer. Nothing on the phone is changed." }),
         el("div", { className: "bk-row" }, el("span", { className: "muted small", textContent: "Folder" }), folderText, choose, openBtn),
         el("div", { className: "bk-parts" }, ...parts),
+        el("label", { className: "bk-part", style: "margin-top:8px" }, lockBox, el("span", {}, el("b", { textContent: "Lock with a password" }), el("span", { className: "sub", textContent: "Every file is encrypted (AES-256) before it is written" }))),
+        passRow,
+        el("div", { className: "bk-row", style: "margin-top:8px" }, el("span", { className: "muted small", textContent: "Back up by itself" }), sched,
+          el("span", { className: "sub", textContent: "when this phone connects and the last backup is older" })),
         el("div", { className: "toolbar", style: "margin:14px 0 0" }, start),
         status,
         el("p", { className: "muted small", style: "margin:12px 0 0", textContent: NOT_INCLUDED })),
@@ -684,6 +779,44 @@ export function initBackup(h) {
     } finally { autoJob = null; }
   }
 
+  // ---------- backups that run by themselves ----------
+  const serialOf = () => String(h.getAdb()?.serial || "");
+  function markBackedUp() { const last = lsGet(LAST_KEY, {}); last[serialOf()] = Date.now(); lsSet(LAST_KEY, last); }
+  async function scheduledBackup() {
+    const every = EVERY[lsGet(SCHED_KEY, "off")];
+    const phone = h.getAdb();
+    if (!fsApi || !every || !phone || job || autoJob) return;
+    const last = lsGet(LAST_KEY, {})[serialOf()] || 0;
+    if (Date.now() - last < every) return;
+    const folder = await fsApi.get("backup").catch(() => null);
+    if (!folder?.exists) return toast("A scheduled backup is due, but its folder wasn't found. Choose it again on the Backup page.");
+    let password = "";
+    if (lsGet(LOCK_KEY, false)) {
+      password = await fsApi.secretGet().catch(() => "");
+      if (!password) return toast("A scheduled backup is due, but it's set to be locked and the password isn't remembered. Back up once from the Backup page with “Remember it” ticked.");
+    }
+    const opts = Object.fromEntries(Object.entries(partOpts()).map(([k, v]) => [k, !!v]));
+    if (Object.entries(opts).some(([k, v]) => v && k !== "apps" && k !== "apks") && !(await h.companionAvailable())) return;
+    const task = (job = { cancelled: false, phone, opts, password });
+    const box = autoToast(), bar = createProgress({ el, fmtSize });
+    const stop = el("button", { className: "btn sm", type: "button", textContent: "Stop" });
+    stop.onclick = () => { task.cancelled = true; stop.disabled = true; };
+    box.replaceChildren(bar.node, stop); box.hidden = false;
+    const ui = { set: (key, kind, text, done, total) => { if (kind === "run") bar.update(`Scheduled backup · ${key}: ${text}`, done, total); }, box: null };
+    try {
+      const { root, results } = await runBackup(opts, ui, task);
+      const bad = Object.values(results).filter((r) => !r.ok || r.warn).length;
+      if (!task.cancelled) markBackedUp();
+      const show = el("button", { className: "btn sm", type: "button", textContent: "Show" });
+      show.onclick = () => fsApi.reveal("backup", root).catch(showError);
+      const shut = el("button", { className: "btn sm", type: "button", textContent: "OK" });
+      shut.onclick = () => { box.hidden = true; };
+      box.replaceChildren(el("span", { textContent: task.cancelled ? "Scheduled backup stopped" : bad ? `Scheduled backup finished, ${bad} part${bad === 1 ? "" : "s"} with problems` : `Scheduled backup done: “${root}”` }), show, shut);
+      setTimeout(() => { if (box.contains(shut)) box.hidden = true; }, 15000);
+    } catch (e) { box.hidden = true; toast(`The scheduled backup stopped: ${errText(e)}`); }
+    finally { job = null; renderCard(); }
+  }
+
   const settingsBtn = () => { const b = el("button", { className: "btn sm", type: "button", textContent: "Change in Settings" }); b.onclick = () => h.showSettings(); return b; };
   return {
     // Settings › Phone link: copy new photos to this computer whenever the phone connects.
@@ -704,6 +837,11 @@ export function initBackup(h) {
       const phone = h.getAdb();
       // A moment after connecting, so the first screen isn't competing with it.
       setTimeout(() => { if (h.getAdb() === phone) autoPhotos(); }, 4000);
+      // The scheduled backup waits a little longer, and for the photo copy to finish.
+      setTimeout(async () => {
+        for (let i = 0; i < 120 && autoJob && h.getAdb() === phone; i++) await new Promise((r) => setTimeout(r, 5000));
+        if (h.getAdb() === phone) scheduledBackup().catch((e) => console.warn("Scheduled backup:", e));
+      }, 20000);
     },
     onDisconnected() {
       if (job) job.cancelled = true;
