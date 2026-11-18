@@ -141,6 +141,7 @@ contextBridge.exposeInMainWorld("andromon", {
     lookup: (pkgs, phone) => call("fd:lookup", Array.from(pkgs || [], String), fdPhone(phone)),
     app: (pkg, phone) => call("fd:app", String(pkg), fdPhone(phone)),
     icon: (pkg) => call("fd:icon", String(pkg)),
+    shot: (pkg, i) => call("fd:shot", String(pkg), Number(i) || 0),
     fetch: (pkg, code) => call("fd:fetch", String(pkg), Number(code)),
     read: (offset, length) => call("fd:read", Number(offset) || 0, Number(length) || 0),
     save: () => call("fd:save"),

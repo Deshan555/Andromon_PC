@@ -230,7 +230,8 @@ Browse and install free and open-source apps from [F-Droid](https://f-droid.org)
 
 - **Download the catalogue** (about 25 MB) once; **Check for new apps** updates it later.
 - **Search**, pick a **category**, sort by **Recently updated / Newest / A to Z**.
-- Click an app for its description, version, size, permissions, F-Droid's notes about it (ads, tracking…), every version and its links.
+- Click an app for its screenshots, description, version, size, permissions, F-Droid's notes about it (ads, tracking…), every version and its links.
+- Click a **screenshot** to see it at full size; the arrow keys or the ‹ › buttons step through, **Esc** closes. If an app shows no screenshots and the page says the catalogue is from before they were kept, press **Check for new apps** once.
 - **Install** downloads the newest stable version that fits the phone and installs it.
 - **On this phone** lists the phone's apps that F-Droid has. **Updates** lists those with a newer version; update one at a time or **Update all**.
 - Without a phone you can still browse and **Save the APK…** to the computer.
