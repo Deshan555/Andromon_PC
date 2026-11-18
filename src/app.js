@@ -4202,20 +4202,25 @@ function renderPhotoSelection() {
 
 function renderPhotoDups() {
   const st = media.photos, byKey = new Map(st.items.map((it) => [mkey(it), it]));
-  const groups = st.dups.map((g) => g.keys.map((k) => byKey.get(k)).filter(Boolean)).filter((g) => g.length > 1);
+  // Exact copies keep the oldest; look-alikes keep the biggest file, usually the best picture of the set.
+  const similar = !!st.dups.similar;
+  const groups = st.dups.map((g) => g.keys.map((k) => byKey.get(k)).filter(Boolean)).filter((g) => g.length > 1)
+    .map((g) => (similar ? [...g].sort((a, b) => b.size - a.size) : g));
   const extra = groups.flatMap((g) => g.slice(1));
-  const selectExtras = el("button", { className: "btn sm primary", textContent: "Select all extra copies", type: "button" });
+  const selectExtras = el("button", { className: "btn sm primary", textContent: similar ? "Select all but the biggest of each" : "Select all extra copies", type: "button" });
   selectExtras.onclick = () => { for (const it of extra) st.sel.add(mkey(it)); renderPhotoDups(); };
   const close = el("button", { className: "btn sm", textContent: "Back to gallery", type: "button" });
   close.onclick = () => { st.dups = null; renderPhotos(); };
   $("phDupHead").hidden = false;
   $("phDupHead").replaceChildren(el("div", { className: "toolbar", style: "margin:0" },
-    el("span", { style: "flex:1", textContent: groups.length
+    el("span", { style: "flex:1", textContent: similar
+      ? (groups.length ? `${groups.length} sets of photos that look alike · ${extra.length} could go · ${fmtSize(extra.reduce((s, it) => s + it.size, 0))}. Look before deleting: the biggest of each set is marked to keep.` : "No photos that look alike were found.")
+      : groups.length
       ? `${groups.length} sets of duplicates · ${extra.length} extra copies · ${fmtSize(extra.reduce((s, it) => s + it.size, 0))} can be freed. The oldest copy in each set is kept.`
       : "No duplicate photos or videos found." }),
     groups.length ? selectExtras : "", close));
   $("phGrid").replaceChildren(...groups.map((g) => el("div", { className: "mgroup card" },
-    el("div", { className: "sub", textContent: `${g.length} copies · ${fmtSize(g[0].size)} each · ${g.map((it) => it.album || "?").filter((v, i, a) => a.indexOf(v) === i).join(", ")}` }),
+    el("div", { className: "sub", textContent: `${g.length} ${similar ? "look alike" : `copies · ${fmtSize(g[0].size)} each`} · ${g.map((it) => it.album || "?").filter((v, i, a) => a.indexOf(v) === i).join(", ")}` }),
     el("div", { className: "mgrid" }, ...g.map((it, i) => photoTile(it, g, i === 0))))));
   renderPhotoSelection();
 }
@@ -4309,6 +4314,19 @@ $("phAddInput").addEventListener("change", async (e) => {
   const root = (st.items.find((it) => /^\/storage\/emulated\/\d+\//.test(it.path))?.path.match(/^\/storage\/emulated\/\d+/) || ["/storage/emulated/0"])[0];
   const dirFor = (f) => albumDir || `${root}/${f.type.startsWith("video/") ? "Movies" : "Pictures"}/Andromon`;
   try { await addMediaFiles(files, dirFor, $("phProgress")); await loadPhotos(true); } catch (err) { showError(err); }
+});
+// Photos that look alike (bursts, retakes, edits): the companion compares small versions of every
+// photo on the phone (a picture fingerprint), so nothing big is copied over.
+$("phSimilar").addEventListener("click", async () => {
+  const b = $("phSimilar"), p = $("phProgress"); busy(b, true, "Comparing…");
+  p.hidden = false; p.textContent = "Comparing every photo on the phone with the others… The first time can take a few minutes with many photos.";
+  try {
+    const groups = await cc("media.similar", { kind: "image" });
+    const dups = groups.map((g) => ({ size: Number(g.totalSize) || 0, keys: (g.ids || []).map((id) => `image:${id}`) })).filter((g) => g.keys.length > 1);
+    dups.similar = true;
+    media.photos.dups = dups; renderPhotos();
+  } catch (e) { showError(/Unknown method/i.test(e?.message) ? new Error("Finding similar photos needs a newer Andromon Companion. Open Messages, Contacts or Photos to update it.") : e); }
+  finally { p.hidden = true; busy(b, false); }
 });
 $("phDups").addEventListener("click", async () => {
   const b = $("phDups"); busy(b, true, "Searching…");
