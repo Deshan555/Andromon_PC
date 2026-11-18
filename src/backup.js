@@ -18,6 +18,7 @@ import {
   parseVcf, makeContactMatcher, base64ToBytes, folderStamp,
 } from "./pdata.js";
 import { parseIcs } from "./ics.js";
+import { createProgress } from "./progress.js";
 
 const FORMAT = "droiddesk-backup";
 const AUTO_KEY = "dd.autoPhotoBackup";
@@ -155,14 +156,23 @@ export function initBackup(h) {
     for (const [key, label] of items) {
       const state = el("span", { className: "bk-state", textContent: "·" });
       const text = el("span", { className: "muted small", textContent: "waiting" });
-      rows.set(key, { state, text });
-      box.append(el("div", { className: "bk-step" }, state, el("b", { textContent: label }), text));
+      const row = el("div", { className: "bk-step" }, state, el("b", { textContent: label }), text);
+      rows.set(key, { state, text, row, bar: null, kind: "" });
+      box.append(row);
     }
-    const set = (key, kind, text) => {
+    // While a step copies files with a known size, a bar under it shows how far (and the speed).
+    const set = (key, kind, text, done, total) => {
       const r = rows.get(key); if (!r) return;
-      r.state.className = "bk-state " + kind;
-      r.state.replaceChildren(kind === "run" ? spinner() : kind === "ok" ? "✓" : kind === "fail" ? "✕" : kind === "warn" ? "!" : kind === "skip" ? "–" : "·");
+      if (r.kind !== kind) {
+        r.kind = kind;
+        r.state.className = "bk-state " + kind;
+        r.state.replaceChildren(kind === "run" ? spinner() : kind === "ok" ? "✓" : kind === "fail" ? "✕" : kind === "warn" ? "!" : kind === "skip" ? "–" : "·");
+      }
       r.text.textContent = text;
+      if (kind === "run" && total > 0) {
+        if (!r.bar) { r.bar = createProgress({ el, fmtSize }); r.row.append(r.bar.node); }
+        r.bar.update("", done, total);
+      } else if (r.bar && kind !== "run") { r.bar.node.remove(); r.bar = null; }
     };
     return { box, set };
   }
@@ -173,7 +183,7 @@ export function initBackup(h) {
       if (task.cancelled) { ui.set(key, "skip", "cancelled"); continue; }
       ui.set(key, "run", "working…");
       try {
-        const r = await fn((text) => ui.set(key, "run", text));
+        const r = await fn((text, done, total) => ui.set(key, "run", text, done, total));
         results[key] = { ok: true, ...r };
         ui.set(key, r?.warn ? "warn" : "ok", r?.summary || "done"); // "warn": done, but not everything made it
       } catch (e) {
@@ -260,7 +270,7 @@ export function initBackup(h) {
         check(task);
         const rel = uniqueRel(used, `photos/${safeName(it.album || "No album", "No album")}`, it.name || `${it.kind}-${it.id}`);
         try {
-          await pullToFile(it.path, "backup", `${root}/${rel}`, { mtime: it.date, task, onBytes: (b) => { bytes += b; say(`${n(done + 1)} of ${n(items.length)} · ${fmtSize(bytes)} of ${fmtSize(total)}`); } });
+          await pullToFile(it.path, "backup", `${root}/${rel}`, { mtime: it.date, task, onBytes: (b) => { bytes += b; say(`${n(done + 1)} of ${n(items.length)} files`, bytes, total); } });
           index.push({ file: rel, path: it.path, size: it.size, date: it.date, kind: it.kind });
         } catch (e) { if (e instanceof Cancelled) throw e; check(task); console.warn(it.path, e); failed++; }
         done++;
@@ -365,7 +375,7 @@ export function initBackup(h) {
           if (there && Number(there.size) === f.size) { skipped++; bytes += f.size; continue; }
           if (there) { failed++; continue; } // a different file has that name: never overwrite
           const mtime = Math.floor((Number(entry?.date) || f.mtime || Date.now()) / 1000);
-          await withSync((s) => s.write({ filename: target, file: diskStream("restore", rel, f.size, (b) => { bytes += b; say(`${n(done)} of ${n(entries.size)} · ${fmtSize(bytes)} of ${fmtSize(total)}`); }), permission: 0o660, mtime }));
+          await withSync((s) => s.write({ filename: target, file: diskStream("restore", rel, f.size, (b) => { bytes += b; say(`${n(done)} of ${n(entries.size)} files`, bytes, total); }), permission: 0o660, mtime }));
           pushed.push(target);
         } catch (e) { check(task); console.warn(rel, e); failed++; }
       }
@@ -391,7 +401,7 @@ export function initBackup(h) {
             const bytes = await fsApi.readFile("restore", `apps/${pkg}/${f.rel}`);
             parts.push({ bytes, size: bytes.length, split: f.rel.replace(/\.apk$/i, "") });
           }
-          await h.installApk(parts, label, pkg, (t) => say(`${i + 1} of ${dirs.length} · ${label} · ${t}`));
+          await h.installApk(parts, label, pkg, (t, d, tot) => say(`${i + 1} of ${dirs.length} · ${t}`, d, tot));
           ok++;
         } catch (e) { check(task); console.warn("Install", pkg, e); failed++; }
       }
@@ -640,11 +650,11 @@ export function initBackup(h) {
       if (!todo.length) { await save(); setAutoNote(`Photos are up to date (${n(items.length)} on the phone, checked ${new Date().toLocaleTimeString([], { timeStyle: "short" })}).`); if (manual) toast("No new photos to copy"); return; }
       const total = todo.reduce((s, it) => s + (Number(it.size) || 0), 0);
       let done = 0, bytes = 0, failed = 0;
-      const text = el("span", {});
+      const bar = createProgress({ el, fmtSize });
       const stop = el("button", { className: "btn sm", type: "button", textContent: "Stop" });
       stop.onclick = () => { task.cancelled = true; stop.disabled = true; };
-      box.replaceChildren(spinner(), text, stop); box.hidden = false;
-      const draw = () => { text.textContent = `Copying new photos… ${n(done)} of ${n(todo.length)} · ${fmtSize(bytes)} of ${fmtSize(total)}`; };
+      box.replaceChildren(bar.node, stop); box.hidden = false;
+      const draw = () => bar.update(`Copying new photos… ${n(Math.min(done + 1, todo.length))} of ${n(todo.length)}`, bytes, total);
       draw();
       for (const it of todo) {
         if (!alive()) break;

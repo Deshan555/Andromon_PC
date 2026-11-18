@@ -29,6 +29,7 @@ import { initFdroid } from "./fdroid.js";
 import { initPeople } from "./people.js";
 import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
+import { createProgress, countBytes } from "./progress.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
 const $ = (id) => document.getElementById(id);
@@ -1308,9 +1309,11 @@ async function previewInstall(files) {
   go.onclick = async () => {
     const job = pendingInstall; if (!job) return;
     busy(go, true, "Installing…"); cancel.disabled = true;
-    try { await runInstall(job, (t) => { go.textContent = t; }); box.hidden = true; pendingInstall = null; }
+    const bar = createProgress({ el, fmtSize });
+    go.parentElement.before(bar.node); bar.node.style.marginTop = "14px";
+    try { await runInstall(job, (t, done, total) => bar.update(t, done, total)); box.hidden = true; pendingInstall = null; }
     catch (e) { showError(e); }
-    finally { if (go.isConnected) { busy(go, false); cancel.disabled = false; } }
+    finally { bar.node.remove(); if (go.isConnected) { busy(go, false); cancel.disabled = false; } }
   };
   box.replaceChildren(head, stats, warnBox, permBox, el("div", { className: "toolbar", style: "margin:16px 0 0" }, go, cancel));
   box.hidden = false;
@@ -1324,13 +1327,17 @@ async function runInstall({ pkg, pick }, progress) {
   try {
     await sh(`mkdir -p ${shQuote(dir)}`);
     const remote = [];
+    // progress(text, done, total): the bytes copied to the phone so far, for the progress bar.
+    const upTotal = parts.reduce((n, p) => n + (p.bytes?.byteLength ?? p.size ?? 0), 0);
+    let up = 0;
     for (const [i, p] of parts.entries()) {
-      progress(`Uploading ${parts.length > 1 ? `${i + 1}/${parts.length}` : ""}…`);
+      const what = `Copying ${label} to the phone${parts.length > 1 ? ` (part ${i + 1} of ${parts.length})` : ""}`;
+      progress(what, up, upTotal);
       const path = `${dir}/${i}.apk`;
-      await withSync((s) => s.write({ filename: path, file: new Blob([p.bytes]).stream(), permission: 0o644 }));
+      await withSync((s) => s.write({ filename: path, file: countBytes(new Blob([p.bytes]).stream(), (b) => { up += b; progress(what, up, upTotal); }), permission: 0o644 }));
       remote.push({ path, size: p.size, name: `${i}_${(p.split || "base").replace(/[^\w.-]/g, "_")}` });
     }
-    progress("Installing…");
+    progress(`Installing ${label}…`);
     if (remote.length === 1) {
       const out = (await sh(`pm install -r ${shQuote(remote[0].path)}`)).trim();
       if (!/Success/.test(out)) throw new Error(`Install failed: ${out}`);
@@ -1353,13 +1360,16 @@ async function runInstall({ pkg, pick }, progress) {
       }
     }
     // Game data that ships next to the app (.xapk): Android/obb/<package>/...
+    const obbTotal = pkg.obb.reduce((n, o) => n + (o.bytes?.byteLength ?? 0), 0);
+    let obbDone = 0;
     for (const [i, o] of pkg.obb.entries()) {
       const rel = o.path.split("/").filter((x) => x && x !== "." && x !== "..").join("/");
       if (!/^Android\/obb\//i.test(rel)) continue;
-      progress(`Copying game data ${i + 1}/${pkg.obb.length}…`);
+      const what = `Copying game data${pkg.obb.length > 1 ? ` (${i + 1} of ${pkg.obb.length})` : ""}`;
+      progress(what, obbDone, obbTotal);
       const target = "/sdcard/" + rel;
       await sh(`mkdir -p ${shQuote(target.replace(/\/[^/]+$/, ""))}`);
-      await withSync((s) => s.write({ filename: target, file: new Blob([o.bytes]).stream(), permission: 0o660 }));
+      await withSync((s) => s.write({ filename: target, file: countBytes(new Blob([o.bytes]).stream(), (b) => { obbDone += b; progress(what, obbDone, obbTotal); }), permission: 0o660 }));
     }
     toast(`Installed ${label}`);
     loadApps().catch(showError);
@@ -3645,9 +3655,10 @@ async function exportMedia(items, progressEl, groupOf) {
   const groups = new Set(items.map(groupOf).filter(Boolean));
   const total = items.reduce((s, it) => s + (it.size || 0), 0);
   let done = 0, count = 0, failed = 0;
-  progressEl.hidden = false;
-  const show = (extra = "") => { progressEl.textContent = `Copying ${count} of ${items.length} · ${fmtSize(done)} of ${fmtSize(total)}${extra}`; };
-  const t0 = performance.now();
+  const bar = createProgress({ el, fmtSize });
+  progressEl.replaceChildren(bar.node); progressEl.hidden = false;
+  let current = "";
+  const show = () => bar.update(items.length > 1 ? `Copying ${current} (${Math.min(count + 1, items.length)} of ${items.length})` : `Copying ${current}`, done, total);
   try {
     await withSync(async (s) => {
       for (const it of items) {
@@ -3659,12 +3670,13 @@ async function exportMedia(items, progressEl, groupOf) {
             name = safeFileName(it.name).replace(/(\.[^.]*)?$/, ` (${i})$1`);
           }
           const w = await (await target.getFileHandle(name, { create: true })).createWritable();
+          current = it.name; show();
           const reader = s.read(it.path).getReader();
           try {
             for (;;) {
               const { done: end, value } = await reader.read(); if (end) break;
               await w.write(value.slice()); done += value.length;
-              show(` · ${fmtSize(done / Math.max(0.1, (performance.now() - t0) / 1000))}/s`);
+              show();
             }
             await w.close();
           } catch (e) { await w.abort().catch(() => {}); throw e; }
@@ -3672,7 +3684,7 @@ async function exportMedia(items, progressEl, groupOf) {
         count++; show();
       }
     });
-  } finally { progressEl.hidden = true; }
+  } finally { progressEl.hidden = true; progressEl.replaceChildren(); }
   toast(`Copied ${count - failed} file${count - failed === 1 ? "" : "s"} to “${dir.name}”${failed ? ` · ${failed} failed` : ""}`);
 }
 
@@ -3682,7 +3694,9 @@ async function addMediaFiles(files, dirFor, progressEl) {
   const total = files.reduce((s, f) => s + f.size, 0);
   let done = 0, i = 0;
   const paths = [];
-  progressEl.hidden = false;
+  const bar = createProgress({ el, fmtSize });
+  bar.update(`Adding ${files.length} file${files.length === 1 ? "" : "s"} to the phone…`);
+  progressEl.replaceChildren(bar.node); progressEl.hidden = false;
   try {
     const dirs = new Set(files.map(dirFor));
     for (const d of dirs) await sh(`mkdir -p ${shQuote(d)}`);
@@ -3695,15 +3709,15 @@ async function addMediaFiles(files, dirFor, progressEl) {
           try { await s.stat(`${dir}/${name}`); } catch { break; }
           name = safeFileName(f.name).replace(/(\.[^.]*)?$/, ` (${n})$1`);
         }
-        progressEl.textContent = `Adding ${i} of ${files.length} · ${f.name}`;
-        await s.write({ filename: `${dir}/${name}`, file: f.stream(), permission: 0o660, mtime: Math.floor(f.lastModified / 1000) });
-        done += f.size;
+        const what = files.length > 1 ? `Adding ${f.name} (${i} of ${files.length})` : `Adding ${f.name}`;
+        bar.update(what, done, total);
+        await s.write({ filename: `${dir}/${name}`, file: countBytes(f.stream(), (b) => { done += b; bar.update(what, done, total); }), permission: 0o660, mtime: Math.floor(f.lastModified / 1000) });
         paths.push(`${dir}/${name}`);
       }
     });
-    progressEl.textContent = "Adding to the phone's library…";
+    bar.update("Adding to the phone's library…");
     await cc("media.scan", { paths });
-  } finally { progressEl.hidden = true; }
+  } finally { progressEl.hidden = true; progressEl.replaceChildren(); }
   toast(`Added ${paths.length} file${paths.length === 1 ? "" : "s"} (${fmtSize(total)})`);
   return paths.length;
 }
@@ -3918,7 +3932,13 @@ async function showViewerItem() {
     body);
   $("viewer").hidden = false;
   try {
-    const blob = await pullBlob(it, (n) => { if (v.token === token && it.size > 2e6) body.firstChild.textContent = `Loading ${fmtSize(n)} of ${fmtSize(it.size)}…`; });
+    // Big files show a progress bar while they come over from the phone.
+    let bar = null;
+    const blob = await pullBlob(it, (n) => {
+      if (v.token !== token || it.size <= 2e6) return;
+      if (!bar) { bar = createProgress({ el, fmtSize }); body.replaceChildren(bar.node); }
+      bar.update(`Loading ${it.kind === "video" ? "video" : "photo"} from the phone…`, n, it.size);
+    });
     if (viewer !== v || v.token !== token) return;
     v.url = URL.createObjectURL(blob);
     const m = it.kind === "video" ? el("video", { src: v.url, controls: true, autoplay: true }) : el("img", { src: v.url, alt: it.name });
