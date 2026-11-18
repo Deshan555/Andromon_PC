@@ -78,10 +78,17 @@
   b, strong, th { font-weight: 500; }
   ::selection { background: var(--lavender); }
 
-  /* ---------- frame: floating black nav + colour-blocked page ---------- */
+  /* ---------- frame: black nav docked to the left edge + colour-blocked page ---------- */
   .app { display: grid; grid-template-columns: 236px 1fr; gap: 12px; padding: 12px; min-height: 100vh; }
   aside { background: var(--nav-bg); color: #fff; border-radius: 28px; padding: 20px 12px 16px; display: flex; flex-direction: column; gap: 2px;
     position: sticky; top: 12px; height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: none; }
+  /* The sidebar is pinned to the window's left edge: it never moves when the page scrolls, down or sideways.
+     Its grid column stays as the spacer, so the page keeps to column 2. */
+  @media (min-width: 761px) {
+    .app { padding-left: 0; }
+    .app > aside { position: fixed; left: 0; top: 0; bottom: 0; width: 236px; height: auto; border-radius: 0 20px 20px 0; z-index: 5; }
+    .app > main { grid-column: 2; }
+  }
   nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
   nav::-webkit-scrollbar { display: none; }
   nav button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; background: none; border: 0; padding: 8px 14px; font-size: 12.5px; border-radius: 12px; cursor: pointer; color: var(--nav-icon); flex: none; transition: background .15s, color .15s; }
