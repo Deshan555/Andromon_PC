@@ -93,6 +93,13 @@ const PAGES = {
     tips: ["Folders that Android and apps need (DCIM, Download, Android…) can't be deleted as a whole: open them and delete what's inside.", "Deleted files are gone: there is no recycle bin on the phone. Back up first if in doubt."],
     tour: [["#storageRoot > .card:first-child", "By kind", "Android's own count of what takes the space."], [".sm-map", "The map", "Bigger box, more space. Click a folder to open it."], [".sm-lists", "Biggest items", "Delete what you don't need."]],
   },
+  battery: {
+    name: "Battery health",
+    intro: "How worn the battery is, its charge cycles and condition, and the charge over the last days.",
+    how: ["Battery health compares what the battery holds now with what it held when new, where the phone tells it.", "Charge cycles count full charges' worth used so far (Android 14 and newer on many phones).", "The chart comes from Andromon Companion, which records the charge while the phone is in use."],
+    tips: ["Heat wears a battery fastest. Keeping the charge between about 20% and 80% helps it last."],
+    tour: [["#batteryRoot .bh-stat.hero", "Health", "Capacity now against new."], [".bh-chart", "Charge history", "Shaded parts are charging."]],
+  },
   recovery: {
     name: "SD card recovery",
     intro: "Bring back deleted photos, videos and files from a memory card or USB stick in this computer.",
