@@ -3052,15 +3052,21 @@ function closeNotifToast(key) {
 // We decode with WebCodecs (hardware) and send touches/keys back over the control socket.
 const SCRCPY_VERSION = "3.3.3";
 const MIRROR_QUALITY = {
+  low: { maxSize: 960, videoBitRate: 2_000_000 },
   fast: { maxSize: 1280, videoBitRate: 4_000_000 },
   balanced: { maxSize: 1920, videoBitRate: 8_000_000 },
   sharp: { maxSize: 0, videoBitRate: 16_000_000 },
 };
+// "Auto" starts here for each kind of link, and steps down this ladder when the picture falls behind.
+const MIRROR_LADDER = ["balanced", "fast", "low"];
+const autoStart = () => (connectedVia === "wifi" ? "fast" : "balanced");
+// Falling behind: the newest picture is this much older than the quickest one seen, for this many seconds in a row.
+const MIRROR_BEHIND_MS = 800, MIRROR_BEHIND_SECONDS = 3;
 let mirror = null; // { client, decoder, canvas, controller, screenOff, stopping }
 
 // The options on the mirror page, remembered between launches; Settings edits the same ones.
 const mirrorPrefs = {
-  QUALITY: [["fast", "Fast (720p · 4 Mbps)"], ["balanced", "Balanced (1080p · 8 Mbps)"], ["sharp", "Sharp (full resolution · 16 Mbps)"]],
+  QUALITY: [["auto", "Auto (adjusts to the cable or Wi‑Fi)"], ["low", "Low (540p · 2 Mbps, weak Wi‑Fi)"], ["fast", "Fast (720p · 4 Mbps)"], ["balanced", "Balanced (1080p · 8 Mbps)"], ["sharp", "Sharp (full resolution · 16 Mbps)"]],
   SOURCE: [["screen", "Phone screen"], ["back", "Back camera"], ["front", "Front camera"]],
   FPS: [["60", "Up to 60 a second"], ["30", "Up to 30 a second"], ["15", "Up to 15 a second"]],
   CODEC: [["h264", "H.264 (works everywhere)"], ["h265", "H.265 (sharper at the same speed)"]],
@@ -3068,7 +3074,7 @@ const mirrorPrefs = {
     let p = {}; try { p = JSON.parse(localStorage.getItem("andromon.mirror")) || {}; } catch {}
     const one = (list, v, d) => (list.some(([id]) => id === String(v)) ? v : d);
     return {
-      quality: one(this.QUALITY, p.quality, "balanced"), source: one(this.SOURCE, p.source, "screen"),
+      quality: one(this.QUALITY, p.quality, "auto"), source: one(this.SOURCE, p.source, "screen"),
       audio: p.audio !== false, screenOff: p.screenOff === true, fps: Number(one(this.FPS, p.fps, 60)),
       codec: one(this.CODEC, p.codec, "h264"), touches: p.touches === true, awake: p.awake !== false,
       lockOnStop: p.lockOnStop === true, clipboard: p.clipboard !== false,
@@ -3090,8 +3096,12 @@ const mirrorPrefs = {
 };
 mirrorPrefs.show();
 $("mirrorSettings").addEventListener("click", () => show("settings"));
-// A control's label sits in a <span> beside its icon.
-const keyLabel = (btn, text) => { btn.querySelector("span").textContent = text; };
+// The controls are icons only: a control's name is its tooltip and what screen readers say.
+// `shown` is short text next to the icon, used only by Record for its running time.
+const keyLabel = (btn, text, shown = "") => {
+  btn.title = text; btn.setAttribute("aria-label", text);
+  const s = btn.querySelector("span"); if (s) s.textContent = shown;
+};
 
 // The control grid: [key, label, tooltip, icon] in named groups. What each does is in KEY_BUTTONS below.
 const MIRROR_KEYS = [
@@ -3100,24 +3110,35 @@ const MIRROR_KEYS = [
     ["closepanels", "Close panels", "Close the notification shade and quick settings", "panel-top-close"]]],
   ["Sound and power", [["voldown", "Vol −", "Volume down", "volume-1"], ["volup", "Vol +", "Volume up", "volume-2"], ["mutephone", "Mute phone", "Mute or unmute the phone's own sound", "volume-x"],
     ["power", "Power", "Power button", "power"], ["lock", "Lock", "Lock the phone (screen off)", "lock"], ["screen", "Screen off", "Turn the phone's own display off or on; mirroring continues", "eye-off", "mirrorScreenToggle"]]],
-  ["Media and brightness", [["prev", "Previous", "Previous track", "skip-back"], ["play", "Play / pause", "Play or pause", "play"], ["next", "Next", "Next track", "skip-forward"],
-    ["bdown", "Dimmer", "Brightness down", "sun-dim"], ["bup", "Brighter", "Brightness up", "sun"], ["rotate", "Rotate", "Rotate the phone's screen", "rotate-ccw"]]],
+  // In pairs, as the right-hand strip is two icons wide: Previous | Next, Play | Rotate, Dimmer | Brighter.
+  ["Media and brightness", [["prev", "Previous", "Previous track", "skip-back"], ["next", "Next", "Next track", "skip-forward"], ["play", "Play / pause", "Play or pause", "play"],
+    ["rotate", "Rotate", "Rotate the phone's screen", "rotate-ccw"], ["bdown", "Dimmer", "Brightness down", "sun-dim"], ["bup", "Brighter", "Brightness up", "sun"]]],
   ["View", [["full", "Full screen", "Fill this computer's screen", "maximize"], ["zoom", "Actual size", "Show the picture at its real size, or fit it to the window", "zoom-in"],
     ["ontop", "Keep on top", "Keep this window above other windows while mirroring", "pin"]]],
   ["Capture", [["shot", "Save frame", "Save the current picture as a PNG file", "camera"], ["copyframe", "Copy frame", "Copy the current picture to this computer's clipboard", "copy"],
     ["paste", "Paste", "Paste this computer's clipboard text on the phone", "clipboard-paste"], ["audio", "Mute", "Mute or unmute the phone's sound on this computer", "headphones"]]],
 ];
-$("mirrorKeys").replaceChildren(...MIRROR_KEYS.flatMap(([group, keys]) => [
-  el("div", { className: "mr-grp", textContent: group }),
-  ...keys.map(([k, label, title, ic, id]) => {
-    const b = el("button", { className: "mr-key", type: "button", title }, icon(ic), el("span", { textContent: label }));
+// Record sits at the end of the Capture row, two cells wide so its running time fits.
+const recordKey = (() => {
+  const b = el("button", { className: "mr-key mr-rec", type: "button", id: "mirrorRecord", title: "Record the mirrored screen (and sound) to an MP4 file" }, icon("circle-dot"), el("span"));
+  b.setAttribute("aria-label", "Record");
+  b.dataset.k = "record"; return b;
+})();
+// Two vertical strips beside the phone: Navigation on the left, the other groups on the right,
+// with a thin line between groups instead of a heading.
+const mirrorKeyGroup = ([group, keys]) => {
+  const row = el("div", { className: "mr-grp" }, ...keys.map(([k, label, title, ic, id]) => {
+    const b = el("button", { className: "mr-key", type: "button", title }, icon(ic));
+    b.setAttribute("aria-label", label);
     b.dataset.k = k; if (id) b.id = id;
     return b;
-  }),
-]), (() => {
-  const b = el("button", { className: "mr-key mr-rec", type: "button", id: "mirrorRecord", title: "Record the mirrored screen (and sound) to an MP4 file" }, icon("circle-dot"), el("span", { textContent: "Record" }));
-  b.dataset.k = "record"; return b;
-})());
+  }), ...(group === "Capture" ? [recordKey] : []));
+  row.setAttribute("role", "group"); row.setAttribute("aria-label", group);
+  return row;
+};
+$("mirrorNav").replaceChildren(...MIRROR_KEYS.filter(([g]) => g === "Navigation").map(mirrorKeyGroup));
+$("mirrorKeys").replaceChildren(...MIRROR_KEYS.filter(([g]) => g !== "Navigation").map(mirrorKeyGroup));
+const mirrorButtons = () => document.querySelectorAll("#mirrorNav button, #mirrorKeys button");
 
 function mirrorUi(on) {
   $("mirrorStart").hidden = on; $("mirrorStop").hidden = !on;
@@ -3129,7 +3150,7 @@ function mirrorUi(on) {
   }
   $("mirrorKeys").querySelector('[data-k="audio"]').hidden = true;
   recUi(null);
-  for (const b of $("mirrorKeys").querySelectorAll("button")) b.disabled = !on;
+  for (const b of mirrorButtons()) b.disabled = !on;
   $("mirrorIdle").hidden = on; $("mirrorStage").hidden = !on;
   $("mirrorRoot").classList.toggle("on", on);
   if (!on) { $("mirrorInfo").textContent = "Not mirroring"; keyLabel($("mirrorScreenToggle"), "Screen off"); $("mirrorScreenToggle").classList.remove("on"); }
@@ -3137,7 +3158,8 @@ function mirrorUi(on) {
 }
 mirrorUi(false);
 
-async function startMirror() {
+// `level` (a MIRROR_QUALITY key) is only given when Auto restarts the mirroring at a lower quality.
+async function startMirror(level) {
   if (!adb || mirror) return;
   if (!WebCodecsVideoDecoder.isSupported) throw new Error("This computer's browser engine can't decode video (WebCodecs missing).");
   const btn = $("mirrorStart"); busy(btn, true, "Starting…");
@@ -3151,7 +3173,9 @@ async function startMirror() {
 
     info.textContent = "Starting…";
     const prefs = mirrorPrefs.get(); // Settings › Screen mirror
-    const q = MIRROR_QUALITY[prefs.quality] || MIRROR_QUALITY.balanced;
+    const auto = prefs.quality === "auto";
+    level = level || (auto ? autoStart() : prefs.quality);
+    const q = MIRROR_QUALITY[level] || MIRROR_QUALITY.balanced;
     const source = prefs.source; // screen | back | front
     // H.265 only when this computer can decode it; a phone that can't encode it falls back below.
     let codec = prefs.codec;
@@ -3198,14 +3222,53 @@ async function startMirror() {
   const video = await client.videoStream;
   const decoder = new WebCodecsVideoDecoder({ codec: video.metadata.codec, renderer });
   const controller = client.controller;
-  const m = mirror = { client, decoder, canvas, controller, screenOff: false, stopping: false, log, videoConfig: null, rec: null, audio: null };
+  const prefsNow = mirrorPrefs.get();
+  const m = mirror = { client, decoder, canvas, controller, screenOff: false, stopping: false, log, videoConfig: null, rec: null, audio: null,
+    level: MIRROR_QUALITY[level] ? level : "balanced", auto: prefsNow.quality === "auto", via: connectedVia,
+    stats: { frames: 0, fps: 0, lagMs: 0, minOffset: Infinity, lastPts: -1, behind: 0, hinted: false } };
 
   const showSize = () => {
-    info.textContent = `${video.metadata.deviceName || "Phone"} · ${decoder.width || video.width}×${decoder.height || video.height}`;
+    const st = m.stats;
+    info.textContent = [
+      `${video.metadata.deviceName || "Phone"} · ${decoder.width || video.width}×${decoder.height || video.height}`,
+      st.fps ? `${st.fps} fps` : "",
+      m.via === "wifi" ? "Wi‑Fi" : "USB",
+      m.auto ? `Auto: ${{ low: "Low", fast: "Fast", balanced: "Balanced" }[m.level] || m.level}` : "",
+      st.lagMs >= 300 ? `${(st.lagMs / 1000).toFixed(1)} s behind` : "",
+    ].filter(Boolean).join(" · ");
   };
   decoder.sizeChanged(showSize);
+  // How far behind the phone the picture is: each frame's arrival time minus the time the phone
+  // captured it (pts), compared with the quickest frame so far. Clocks differ, but only the change counts.
+  const measure = (packet) => {
+    if (packet.type !== "data" || packet.pts === undefined) return;
+    const st = m.stats, pts = Number(packet.pts);
+    if (pts < st.lastPts) st.minOffset = Infinity; // the phone restarted its encoder (rotation): start over
+    st.lastPts = pts; st.frames++;
+    const offset = performance.now() * 1000 - pts;
+    if (offset < st.minOffset) st.minOffset = offset;
+    st.lagMs = Math.max(0, (offset - st.minOffset) / 1000);
+  };
+  m.statsTimer = setInterval(() => {
+    const st = m.stats;
+    st.fps = st.frames; st.frames = 0;
+    if (!st.fps) st.lagMs = 0; // nothing moved on the phone: nothing to be behind on
+    st.behind = st.lagMs > MIRROR_BEHIND_MS ? st.behind + 1 : 0;
+    showSize();
+    if (st.behind < MIRROR_BEHIND_SECONDS || m.stopping) return;
+    st.behind = 0;
+    const next = MIRROR_LADDER[MIRROR_LADDER.indexOf(m.level) + 1];
+    if (m.auto && next && !m.rec) {
+      // Waiting doesn't help: what is queued on the way has to be thrown away, so start again lighter.
+      stopMirror().then(() => startMirror(next)).then(() => toast(`The connection couldn't keep up, so the picture quality was lowered (${next})`)).catch(showError);
+    } else if (!st.hinted) {
+      st.hinted = true;
+      toast(m.auto ? "The picture is falling behind the phone. Move closer to the Wi‑Fi router or use the cable."
+        : "The picture is falling behind the phone. Pick a lower quality (or Auto) in Settings › Screen mirror.");
+    }
+  }, 1000);
   // Every packet also passes by the recorder, which copies it into an MP4 while recording is on.
-  const tap = new TransformStream({ transform(packet, ctl) { recordVideoPacket(m, packet); ctl.enqueue(packet); } });
+  const tap = new TransformStream({ transform(packet, ctl) { measure(packet); recordVideoPacket(m, packet); ctl.enqueue(packet); } });
   video.stream.pipeThrough(tap).pipeTo(decoder.writable).catch((e) => { if (mirror && !mirror.stopping) console.warn("video stream ended", e); });
   // The audio stream must always be consumed (or it stalls the connection), even if it fails to start.
   client.audioStream?.then((meta) => startAudio(m, meta)).catch((e) => console.warn("audio", e));
@@ -3233,6 +3296,7 @@ async function startMirror() {
 async function stopMirror(message) {
   const m = mirror; if (!m) return;
   m.stopping = true; mirror = null;
+  clearInterval(m.statsTimer);
   await stopRecording(m); // save what was recorded so far
   try { if (m.screenOff) await m.controller?.setScreenPowerMode(AndroidScreenPowerMode.Normal); } catch {}
   try { await m.client.close(); } catch {}
@@ -3253,15 +3317,20 @@ function startAudio(m, meta) {
   if (m.stopping || typeof AudioDecoder === "undefined") { meta.stream.pipeTo(sink).catch(() => {}); return; }
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: "interactive" });
   const gain = ctx.createGain(); gain.gain.value = audioMuted ? 0 : 1; gain.connect(ctx.destination);
-  let next = 0;
+  // Sound is scheduled a little ahead (the jitter buffer). Wi‑Fi delivers in bursts, so it starts
+  // with more, and each gap in the sound adds a little more, up to a quarter of a second.
+  let next = 0, ahead = m.via === "wifi" ? 0.12 : 0.06;
   const decoder = new AudioDecoder({
     output(data) {
       try {
         const buf = ctx.createBuffer(data.numberOfChannels, data.numberOfFrames, data.sampleRate);
         for (let c = 0; c < data.numberOfChannels; c++) data.copyTo(buf.getChannelData(c), { planeIndex: c, format: "f32-planar" });
         const now = ctx.currentTime;
-        // Keep ~60 ms of buffer; if playback fell behind or a backlog built up, restart the schedule.
-        if (next < now + 0.01 || next > now + 0.35) next = now + 0.06;
+        if (next < now + 0.01) { // ran dry: a gap was heard
+          if (next) ahead = Math.min(0.25, ahead + 0.03);
+          next = now + ahead;
+        } else if (next > now + ahead + 0.3) next = now + ahead; // a backlog built up: catch up
+
         const src = ctx.createBufferSource(); src.buffer = buf; src.connect(gain); src.start(next);
         next += buf.duration;
       } finally { data.close(); }
@@ -3382,9 +3451,9 @@ function recUi(m) {
   const rec = m === mirror ? m?.rec : null;
   b.classList.toggle("rec-on", !!rec);
   if (!rec) { keyLabel(b, "Record"); return; }
-  if (rec.t0 == null) { keyLabel(b, "Waiting for picture…"); return; }
-  const s = Math.floor((Date.now() - rec.started) / 1000);
-  keyLabel(b, `Stop ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · ${fmtSize(rec.bytes)}`);
+  if (rec.t0 == null) { keyLabel(b, "Waiting for picture…", "…"); return; }
+  const s = Math.floor((Date.now() - rec.started) / 1000), time = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  keyLabel(b, `Stop recording (${time}, ${fmtSize(rec.bytes)})`, time);
 }
 
 function setPhoneScreen(on) {
@@ -3549,13 +3618,13 @@ const KEY_BUTTONS = {
   },
 };
 const mirrorKey = (k) => $("mirrorKeys").querySelector(`[data-k="${k}"]`);
-// The text box under the controls: whatever is typed there is pasted on the phone, in any language.
+// The text box under the phone's screen: whatever is typed there is pasted on the phone, in any language.
 $("mirrorType").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = $("mirrorText").value; if (!text || !mirror?.controller) return;
   mirror.controller.setClipboard({ sequence: 0n, paste: true, content: text }).then(() => { $("mirrorText").value = ""; }, showError);
 });
-$("mirrorKeys").addEventListener("click", (e) => {
+for (const strip of [$("mirrorNav"), $("mirrorKeys")]) strip.addEventListener("click", (e) => {
   const b = e.target.closest("button[data-k]"); if (!b || !mirror) return;
   Promise.resolve(KEY_BUTTONS[b.dataset.k]?.()).catch(showError);
   if (b.dataset.k !== "full" && b.dataset.k !== "paste") mc.focus();
