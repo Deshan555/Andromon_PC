@@ -3,6 +3,7 @@
 // paint by renderer/theme.js; the colours themselves are CSS (see "themes" in index.html).
 
 import pkg from "../package.json";
+import { shortcutEditor } from "./shortcuts.js";
 
 export const THEMES = [
   { id: "lime", label: "Lime", colors: ["#e3f786", "#9cd237"] },
@@ -251,7 +252,11 @@ export function initSettings(ctx) {
       row("Show touches on the phone", "Draws a dot on the phone's screen wherever it is touched while mirroring", makeSwitch(p.touches, (on) => { m.set({ touches: on }); return on; })),
       row("Keep the phone awake", "The phone's screen doesn't time out while mirroring", makeSwitch(p.awake, (on) => { m.set({ awake: on }); return on; })),
       row("Lock the phone when mirroring stops", "Turns the phone's screen off as soon as mirroring ends", makeSwitch(p.lockOnStop, (on) => { m.set({ lockOnStop: on }); return on; })),
-      row("Copy from the phone automatically", "Text copied on the phone lands in this computer's clipboard", makeSwitch(p.clipboard, (on) => { m.set({ clipboard: on }); return on; })));
+      row("Copy from the phone automatically", "Text copied on the phone lands in this computer's clipboard", makeSwitch(p.clipboard, (on) => { m.set({ clipboard: on }); return on; })),
+      // Keyboard shortcuts for the controls while mirroring (./shortcuts.js); folded away until wanted.
+      el("details", { className: "sc-details" },
+        el("summary", {}, el("b", { textContent: "Keyboard shortcuts" }), el("span", { className: "sub", textContent: " · keys that press the mirror's controls; they don't reach the phone" })),
+        shortcutEditor({ el, toast })));
   }
 
   function savingSection() {

@@ -32,6 +32,7 @@ import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
 import { createProgress, countBytes } from "./progress.js";
 import { initMirrorDrop } from "./mirrordrop.js";
+import { loadShortcuts, comboOf, usableCombo, comboLabel } from "./shortcuts.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
 const $ = (id) => document.getElementById(id);
@@ -3161,6 +3162,7 @@ const mirrorButtons = () => document.querySelectorAll("#mirrorNav button, #mirro
 
 function mirrorUi(on) {
   $("mirrorStart").hidden = on; $("mirrorStop").hidden = !on;
+  if (on) labelShortcuts();
   $("mirrorText").disabled = !on; $("mirrorType").querySelector("button").disabled = !on;
   if (!on) { // the view options end with the mirroring
     $("mirrorStage").classList.remove("actual");
@@ -3563,8 +3565,25 @@ async function pressBack() {
   await mirror?.controller?.backOrScreenOn(AndroidKeyEventAction.Up).catch(() => {});
 }
 const META = (e) => (e.shiftKey ? 1 : 0) | (e.altKey ? 2 : 0) | (e.ctrlKey ? 0x1000 : 0);
+// Keyboard shortcuts for the controls (Settings › Screen mirror; ./shortcuts.js). A key that is a
+// shortcut runs its control and doesn't reach the phone, its release included.
+const swallowedKeys = new Set();
+function runShortcut(e) {
+  const combo = comboOf(e); if (!combo || !usableCombo(combo)) return false;
+  const action = Object.entries(loadShortcuts()).find(([, c]) => c === combo)?.[0];
+  if (!action || !KEY_BUTTONS[action]) return false;
+  e.preventDefault(); e.stopPropagation(); swallowedKeys.add(e.code);
+  if (!e.repeat || action === "volup" || action === "voldown") Promise.resolve(KEY_BUTTONS[action]()).catch(showError);
+  return true;
+}
+// Elsewhere on the mirror page (not in a text box) the shortcuts work too.
+document.addEventListener("keydown", (e) => {
+  if (current !== "mirror" || !mirror || e.target === mc || e.isComposing || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || "") || e.target?.isContentEditable) return;
+  runShortcut(e);
+});
 mc.addEventListener("keydown", (e) => {
   if (!mirror || e.isComposing) return;
+  if (runShortcut(e)) return;
   if ((e.metaKey || e.ctrlKey) && (e.key === "v" || e.key === "V")) return; // handled by the paste event
   if (autotest?.captureKey(e)) return;
   if (e.metaKey) return; // leave Cmd shortcuts to the PC
@@ -3578,6 +3597,7 @@ mc.addEventListener("keydown", (e) => {
   mirror.controller?.injectKeyCode({ action: AndroidKeyEventAction.Down, keyCode: code, repeat: e.repeat ? 1 : 0, metaState: META(e) }).catch(() => {});
 });
 mc.addEventListener("keyup", (e) => {
+  if (swallowedKeys.delete(e.code)) { e.preventDefault(); return; }
   if (!mirror || e.metaKey || e.key === "Escape" || (e.key.length === 1 && !e.ctrlKey && !e.altKey)) return;
   const code = AndroidKeyCode[e.code];
   if (code === undefined) return;
@@ -3637,6 +3657,14 @@ const KEY_BUTTONS = {
   },
 };
 const mirrorKey = (k) => $("mirrorKeys").querySelector(`[data-k="${k}"]`);
+// Each control's tooltip names its shortcut, refreshed when mirroring starts (they may have changed).
+function labelShortcuts() {
+  const map = loadShortcuts();
+  for (const b of mirrorButtons()) {
+    const base = (b.dataset.tip ??= b.title);
+    b.title = map[b.dataset.k] ? `${base} (${comboLabel(map[b.dataset.k])})` : base;
+  }
+}
 // Files dropped on the phone's screen: apps are installed, other files copied (./mirrordrop.js).
 initMirrorDrop({
   $, el, toast, showError, fmtSize, sh, shQuote, withSync, cc, isMirroring: () => !!mirror,
