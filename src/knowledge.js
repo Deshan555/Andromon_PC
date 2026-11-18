@@ -13,9 +13,9 @@ const PAGES = {
     intro: "The start page. It connects a phone and, once one is connected, shows its state at a glance.",
     how: [
       "Plug the phone in with USB debugging on and press Connect phone, or use Connect over Wi‑Fi (Android 11 and newer).",
-      "Droid Desk talks to the phone with ADB, the same channel developers use. Nothing has to be installed on the phone to start.",
+      "Andromon talks to the phone with ADB, the same channel developers use. Nothing has to be installed on the phone to start.",
       "After connecting, the tiles open the most used tools, and the right column lists facts about the phone; click a row to copy it.",
-      "Some tools (Messages, Contacts, Photos, Music, Notifications) need the Droid Desk Companion app on the phone. Droid Desk offers to install it when it is needed.",
+      "Some tools (Messages, Contacts, Photos, Music, Notifications) need the Andromon Companion app on the phone. Andromon offers to install it when it is needed.",
     ],
     tips: ["Tools that need a phone are greyed out in the sidebar until one is connected.", "Settings and the Collapse button are at the bottom of the sidebar."],
     tour: [
@@ -164,7 +164,7 @@ const PAGES = {
       "On a phone that isn't rooted, Shizuku stops when the phone restarts. Start Shizuku starts it again over the connection.",
     ],
     tips: ["After the first start, give the companion its permission: in the companion, Settings › Privileged access › Grant permission.", "It keeps running after you unplug the phone."],
-    tour: [["#szCard .card:nth-child(1)", "State and actions", "Whether Shizuku is installed and running, with Start, Open on the phone and Check again."], ["#szCard .card:nth-child(2)", "What it is for", "The companion tools that use it."], ["#szCard .card:nth-child(3)", "Setting it up", "The steps, once per phone."], ["#ramCard", "Phone RAM manager", "Droid Desk's own helper: it gives the companion's Memory screen the same rights without Shizuku, until the phone restarts."]],
+    tour: [["#szCard .card:nth-child(1)", "State and actions", "Whether Shizuku is installed and running, with Start, Open on the phone and Check again."], ["#szCard .card:nth-child(2)", "What it is for", "The companion tools that use it."], ["#szCard .card:nth-child(3)", "Setting it up", "The steps, once per phone."], ["#ramCard", "Phone RAM manager", "Andromon's own helper: it gives the companion's Memory screen the same rights without Shizuku, until the phone restarts."]],
   },
   shell: {
     name: "ADB shell",
@@ -175,8 +175,8 @@ const PAGES = {
   },
   settings: {
     name: "Settings",
-    intro: "Every option of Droid Desk in one place.",
-    how: ["Appearance: light or dark, the colour theme, the sidebar.", "Each tool has its own section here: Phone link, Notifications, Screen mirror, Screenshot, ADB shell, Wi‑Fi transfer.", "Saving files decides whether Droid Desk asks where each file goes.", "Downloads and sources lists what Droid Desk has downloaded, where from, and lets you update or remove it.", "About shows the version and checks for updates."],
+    intro: "Every option of Andromon in one place.",
+    how: ["Appearance: light or dark, the colour theme, the sidebar.", "Each tool has its own section here: Phone link, Notifications, Screen mirror, Screenshot, ADB shell, Wi‑Fi transfer.", "Saving files decides whether Andromon asks where each file goes.", "Downloads and sources lists what Andromon has downloaded, where from, and lets you update or remove it.", "About shows the version and checks for updates."],
     tips: ["Changes apply at once; there is no Save button."],
     tour: [["#settingsRoot .card:nth-child(1)", "Appearance", "Mode, colour theme and sidebar."], ["#settingsRoot .card:nth-child(2)", "Phone link", "What happens when a phone connects."], ["#settingsRoot .card:nth-child(4)", "Screen mirror", "The options the mirror page uses."], ["#settingsRoot .card:last-child", "About", "Version, updates and credits."]],
   },

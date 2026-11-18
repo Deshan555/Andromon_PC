@@ -1,7 +1,7 @@
 // "Back up this phone", "Restore from a backup…" and the automatic photo copy.
 //
 // A backup is a dated folder on this computer:
-//   Droid Desk backup <model> <yyyy-mm-dd HHmm>/
+//   Andromon backup <model> <yyyy-mm-dd HHmm>/
 //     backup.json     what is inside, counts, phone and app details
 //     contacts.vcf    vCard 3.0 with photos
 //     messages.xml    SMS and MMS ("SMS Backup & Restore" layout), mms/ holds the attachments
@@ -20,9 +20,9 @@ import {
 import { parseIcs } from "./ics.js";
 import { createProgress } from "./progress.js";
 
-const FORMAT = "droiddesk-backup";
-const AUTO_KEY = "dd.autoPhotoBackup";
-const OPTS_KEY = "dd.backupParts";
+const FORMAT = "andromon-backup";
+const AUTO_KEY = "andromon.autoPhotoBackup";
+const OPTS_KEY = "andromon.backupParts";
 const NOT_INCLUDED = "Not included: what apps keep inside themselves (chats, game progress, logins), phone settings, Wi‑Fi passwords and music. MMS are saved with their pictures but can't be put back onto a phone.";
 const PARTS = [
   ["contacts", "Contacts", "with photos", true],
@@ -37,7 +37,7 @@ class Cancelled extends Error { constructor() { super("Cancelled"); } }
 
 export function initBackup(h) {
   const { $, el, toast, showError, clearError, busy, armedClick, makeSwitch, cc, sh, shQuote, withSync, fmtSize, spinner } = h;
-  const fsApi = globalThis.droidDesk?.backupFs || null;
+  const fsApi = globalThis.andromon?.backupFs || null;
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   const n = (x) => Number(x || 0).toLocaleString();
@@ -109,11 +109,11 @@ export function initBackup(h) {
   }
   async function needCompanion() {
     if (await h.companionAvailable()) return;
-    throw new Error("This needs the Droid Desk Companion on the phone. Open Messages, Contacts or Photos once to install it, then try again.");
+    throw new Error("This needs the Andromon Companion on the phone. Open Messages, Contacts or Photos once to install it, then try again.");
   }
   async function listMedia() {
     const p = h.companionInfo()?.permissions || {};
-    if (p.MEDIA_IMAGES === false || p.MEDIA_VIDEO === false) throw new Error("The companion doesn't have access to photos and videos (Settings › Apps › Droid Desk Companion › Permissions on the phone).");
+    if (p.MEDIA_IMAGES === false || p.MEDIA_VIDEO === false) throw new Error("The companion doesn't have access to photos and videos (Settings › Apps › Andromon Companion › Permissions on the phone).");
     const [images, videos] = await Promise.all([cc("media.list", { kind: "image" }), cc("media.list", { kind: "video" })]);
     return [...images.map((x) => ({ ...x, kind: "image" })), ...videos.map((x) => ({ ...x, kind: "video" }))].filter((it) => it.path);
   }
@@ -282,8 +282,8 @@ export function initBackup(h) {
 
   async function runBackup(opts, ui, task) {
     const facts = await phoneFacts();
-    let root = safeName(`Droid Desk backup ${facts.model} ${folderStamp()}`);
-    for (let i = 2; await fsApi.stat("backup", root); i++) root = safeName(`Droid Desk backup ${facts.model} ${folderStamp()} (${i})`);
+    let root = safeName(`Andromon backup ${facts.model} ${folderStamp()}`);
+    for (let i = 2; await fsApi.stat("backup", root); i++) root = safeName(`Andromon backup ${facts.model} ${folderStamp()} (${i})`);
     await fsApi.mkdir("backup", root);
     task.root = root;
     const all = backupSteps(task, root, facts);
@@ -291,7 +291,7 @@ export function initBackup(h) {
     const results = await runSteps(task, keys.map((k) => [k, all[k]]), ui);
     const manifest = {
       format: FORMAT, version: 1, createdAt: new Date().toISOString(), complete: !task.cancelled && Object.values(results).every((r) => r.ok),
-      cancelled: !!task.cancelled, app: { name: "Droid Desk", version: APP_VERSION, companion: h.companionInfo()?.version ?? null },
+      cancelled: !!task.cancelled, app: { name: "Andromon", version: APP_VERSION, companion: h.companionInfo()?.version ?? null },
       phone: facts, items: Object.fromEntries(Object.entries(results).map(([k, r]) => { const { summary, warn, ...rest } = r; return [k, rest]; })),
       notIncluded: ["app data", "settings", "music", "MMS can't be restored"],
     };
@@ -418,14 +418,15 @@ export function initBackup(h) {
   }
 
   async function openRestore() {
-    if (!fsApi) return showError("Restoring a backup needs the Droid Desk desktop app.");
+    if (!fsApi) return showError("Restoring a backup needs the Andromon desktop app.");
     if (job) return toast("A backup or restore is already running");
     clearError();
     const picked = await fsApi.pickBackup();
     if (!picked) return;
     let m;
     try { m = JSON.parse(picked.manifest); } catch { m = null; }
-    if (!m || m.format !== FORMAT || typeof m.items !== "object" || !m.items) throw new Error("That file isn't a Droid Desk backup (choose the backup.json inside a backup folder).");
+    // "droiddesk-backup": made before the app was renamed from Droid Desk
+    if (!m || (m.format !== FORMAT && m.format !== "droiddesk-backup") || typeof m.items !== "object" || !m.items) throw new Error("That file isn't an Andromon backup (choose the backup.json inside a backup folder).");
     const files = await fsApi.list("restore", "", false);
     const found = new Set(files.map((f) => f.rel));
     found.apps = [];
@@ -453,7 +454,7 @@ export function initBackup(h) {
     });
     const when = new Date(m.createdAt);
     const phone = m.phone && typeof m.phone === "object" ? m.phone : {};
-    const calPick = el("select", {}, el("option", { value: "new", textContent: "A new calendar kept only on the phone (“Droid Desk”)" }));
+    const calPick = el("select", {}, el("option", { value: "new", textContent: "A new calendar kept only on the phone (“Andromon”)" }));
     const calRow = el("div", { className: "bk-part", hidden: true }, el("span", {}), el("span", {}, el("span", { className: "sub", textContent: "Events whose calendar isn't on this phone go to " }), calPick));
     boxes.get("calendar").onchange = async () => {
       calRow.hidden = !boxes.get("calendar").checked;
@@ -508,7 +509,7 @@ export function initBackup(h) {
     card.hidden = false;
     if (job?.card) return; // a backup is showing its progress here
     if (!fsApi) {
-      card.replaceChildren(el("div", { className: "card" }, el("h2", { textContent: "Back up this phone" }), el("p", { className: "muted", style: "margin:0", textContent: "Backups, restore and the automatic photo copy need the Droid Desk desktop app (they write to a folder on this computer)." })));
+      card.replaceChildren(el("div", { className: "card" }, el("h2", { textContent: "Back up this phone" }), el("p", { className: "muted", style: "margin:0", textContent: "Backups, restore and the automatic photo copy need the Andromon desktop app (they write to a folder on this computer)." })));
       return;
     }
     const [folder, photoFolder] = await Promise.all([fsApi.get("backup").catch(() => null), fsApi.get("photos").catch(() => null)]);
@@ -625,7 +626,7 @@ export function initBackup(h) {
     try {
       const folder = await fsApi.get("photos");
       if (!folder?.exists) { setAutoNote("Automatic photo copy is on, but its folder wasn't found. Choose the folder again."); return; }
-      if (!(await h.companionAvailable())) { setAutoNote("Automatic photo copy is waiting for the Droid Desk Companion (open Photos once to install it)."); return; }
+      if (!(await h.companionAvailable())) { setAutoNote("Automatic photo copy is waiting for the Andromon Companion (open Photos once to install it)."); return; }
       const facts = await phoneFacts();
       const serial = /^[\w.:-]{1,64}$/.test(facts.serial) ? facts.serial : "";
       if (!serial) { setAutoNote("Automatic photo copy: this phone has no usable serial number."); return; }

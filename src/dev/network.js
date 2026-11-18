@@ -1,7 +1,7 @@
 // Developer tab › Network: port forwarding between this computer and the phone, and the phone's HTTP proxy.
 //
 // There's no adb server here: the page speaks ADB itself, so forwarding has two halves.
-//  - PC → phone ("forward"): main.js listens on 127.0.0.1:<pc port> (preload `droidDesk.devnet`); each
+//  - PC → phone ("forward"): main.js listens on 127.0.0.1:<pc port> (preload `andromon.devnet`); each
 //    accepted connection arrives as a MessagePort and is piped to adb.createSocket("tcp:N" | "localabstract:X").
 //  - Phone → PC ("reverse"): adb.reverse.add("tcp:N", handler); each connection the phone opens is handed to
 //    the handler, which asks main.js to dial 127.0.0.1:<pc port> and pipes the two together.
@@ -68,7 +68,7 @@ export function mount(root, ctx) {
   async function startRule(r) {
     const adb = ctx.getAdb();
     if (!adb) throw new Error("Connect a phone first.");
-    if (!net) throw new Error("Port forwarding needs the Droid Desk desktop app.");
+    if (!net) throw new Error("Port forwarding needs the Andromon desktop app.");
     const st = info(r.id);
     st.state = "starting"; st.msg = ""; render();
     try {
@@ -233,7 +233,7 @@ export function mount(root, ctx) {
       el("div", { className: "nw-scroll" }, table),
       addForm, hint, presets,
       el("p", { className: "dev-note", textContent: "Works over USB and Wi‑Fi. Only this computer's own programs (127.0.0.1) can use the ports it opens. Rules stop when the phone disconnects." }))
-    : card("Port forwarding", null, el("div", { className: "empty", textContent: "Port forwarding needs the Droid Desk desktop app; a browser page can't open network ports." }));
+    : card("Port forwarding", null, el("div", { className: "empty", textContent: "Port forwarding needs the Andromon desktop app; a browser page can't open network ports." }));
 
   // ---------------------------------------------------------------- UI: proxy
   const curProxy = el("span", { className: "mono", textContent: "–" });
@@ -267,7 +267,7 @@ export function mount(root, ctx) {
     catch (e) { showError(e); } finally { busy(clearBtn, false); }
   };
   async function usbProxy(port) {
-    if (!net) throw new Error("This needs the Droid Desk desktop app.");
+    if (!net) throw new Error("This needs the Andromon desktop app.");
     if (!validPort(port)) throw new Error("The proxy port must be a number from 1 to 65535.");
     let r = rules.find((x) => x.dir === "reverse" && x.phone === `tcp:${port}`);
     if (r && r.pc !== port) throw new Error(`tcp:${port} on the phone already goes to port ${r.pc} on this computer. Remove that rule first.`);

@@ -1,9 +1,9 @@
-// Droid Desk — Wi‑Fi link quality, and joining a phone's Direct link (main process).
+// Andromon — Wi‑Fi link quality, and joining a phone's Direct link (main process).
 //
 // Link quality: reads this computer's Wi‑Fi band, rate and signal (macOS: system_profiler,
 // Windows: netsh) so the UI can warn when a transfer will be slow, and estimates the speed.
 //
-// Direct link: Droid Desk Companion can start a temporary private hotspot on the phone for one
+// Direct link: Andromon Companion can start a temporary private hotspot on the phone for one
 // transfer. Its name and password arrive inside the encrypted, accepted transfer. This module joins
 // that network, and afterwards removes it and reconnects to the previous Wi‑Fi. Built-in OS tools
 // only (macOS networksetup, Windows netsh): no admin rights, nothing to install.
@@ -193,7 +193,7 @@ async function winJoin(net, cancelled) {
   </security></MSM>
 </WLANProfile>`;
   // The profile file holds the password: private temp file, deleted right after it's imported.
-  const file = path.join(os.tmpdir(), `droiddesk-${crypto.randomUUID()}.xml`);
+  const file = path.join(os.tmpdir(), `andromon-${crypto.randomUUID()}.xml`);
   fs.writeFileSync(file, xml, { mode: 0o600 });
   let r;
   try { r = await run("netsh", ["wlan", "add", "profile", `filename=${file}`, "user=current"]); }

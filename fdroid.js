@@ -1,6 +1,6 @@
-// Droid Desk — the F-Droid catalogue (main process).
+// Andromon — the F-Droid catalogue (main process).
 //
-// F-Droid (https://f-droid.org) is a catalogue of free and open-source Android apps. Droid Desk
+// F-Droid (https://f-droid.org) is a catalogue of free and open-source Android apps. Andromon
 // doesn't ship any of it: when the person asks, this file downloads F-Droid's own index and, for an
 // app they choose, that app's APK. Everything is checked before it is used:
 //   - entry.jar       a small signed JAR. Its signature is checked here against F-Droid's signing
@@ -147,7 +147,7 @@ function readSignedJar(jar, name, fingerprint = FINGERPRINT) {
   throw bad();
 }
 
-// ---------- index-v2.json -> the catalogue Droid Desk keeps ----------
+// ---------- index-v2.json -> the catalogue Andromon keeps ----------
 const str = (v, max = 400) => (typeof v === "string" ? v.slice(0, max) : "");
 // A text in several languages: English, else the first one.
 function text(v, max) {
@@ -278,7 +278,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     return REPO + name.split("/").map(encodeURIComponent).join("/");
   };
   async function fetchBytes(name, limit, signal) {
-    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "DroidDesk" }, signal });
+    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "Andromon" }, signal });
     if (!res.ok) throw new Error(`Couldn't reach f-droid.org (HTTP ${res.status}).`);
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > limit) throw new Error("F-Droid sent a larger file than expected.");
@@ -298,7 +298,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     }
   }
   async function downloadTo(name, dest, what, total, limit, signal, ev = {}) {
-    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "DroidDesk" }, signal });
+    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "Andromon" }, signal });
     if (!res.ok || !res.body) throw new Error(`Couldn't download ${what} (HTTP ${res.status}).`);
     await fsp.mkdir(path.dirname(dest), { recursive: true });
     const part = dest + ".part";

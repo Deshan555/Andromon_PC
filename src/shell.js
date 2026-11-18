@@ -4,7 +4,7 @@
 // Settings › ADB shell and kept in localStorage.
 import { icon } from "./fileicons.js";
 
-const KEY = "dd.shell";
+const KEY = "andromon.shell";
 export const shellPrefs = {
   SIZE: [["s", "Small"], ["m", "Medium"], ["l", "Large"]],
   get() {

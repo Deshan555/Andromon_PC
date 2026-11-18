@@ -341,7 +341,7 @@ export function mount(root, ctx) {
   const swipeSeg = seg([["10", "10"], ["20", "20"], ["40", "40"]], String(store.get("ptSwipes", 20)), (v) => store.set("ptSwipes", Number(v)));
   const dirSeg = seg([["v", "Up & down"], ["h", "Left & right"]], store.get("ptDir", "v"), (v) => store.set("ptDir", v));
   const jankCard = testCard("Smoothness",
-    "Open the screen you want to test in the app first (a list or feed). Droid Desk swipes it and counts frames that took too long to draw.",
+    "Open the screen you want to test in the app first (a list or feed). Andromon swipes it and counts frames that took too long to draw.",
     [row(lbl("Swipes"), swipeSeg), row(lbl("Direction"), dirSeg)],
     async ({ progress, results }) => {
       const pkg = pkgOrThrow(), count = Number(swipeSeg.value), dir = dirSeg.value;
@@ -564,7 +564,7 @@ export function mount(root, ctx) {
 .meta{color:#6e6e78;margin:0 0 8px}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:5px 10px;border-bottom:1px solid #e6e6ec;vertical-align:top}th{font-weight:500;width:230px;color:#444}
 .pass,.fail{font-size:12px;padding:2px 9px;border-radius:999px;margin-left:6px}.pass{background:#d5efea;color:#1f6e55}.fail{background:#fbe1df;color:#b3312c}
 @media (prefers-color-scheme: dark){body{background:#121216;color:#f1f1f5}th{color:#c8c8d0}th,td{border-color:#2c2c34}.meta{color:#a2a2ad}.pass{background:#22403a;color:#7fdcc0}.fail{background:#4a2f2d;color:#f08a86}}</style></head>
-<body><h1>Performance tests</h1><p class="meta">Made with Droid Desk on ${esc(new Date().toLocaleString())}</p>${sections}</body></html>`;
+<body><h1>Performance tests</h1><p class="meta">Made with Andromon on ${esc(new Date().toLocaleString())}</p>${sections}</body></html>`;
   }
 
   // ---------- layout ----------

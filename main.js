@@ -1,4 +1,4 @@
-// Droid Desk — Electron main process.
+// Andromon — Electron main process.
 // The UI in renderer/ talks ADB to the phone over WebUSB (Chromium built into Electron).
 // This file only creates the window, serves the UI from a secure app:// origin,
 // and answers Chromium's WebUSB permission + device-chooser requests.
@@ -21,7 +21,140 @@ const { setupUpdater } = require("./updater.js");
 const { setupRequirements } = require("./requirements.js");
 
 const RENDERER_DIR = path.join(__dirname, "renderer");
-const ORIGIN = "app://droiddesk";
+const ORIGIN = "app://andromon";
+
+// ---------- moving over from the app's old name, Droid Desk ----------
+// Droid Desk kept its settings in a folder named "Droid Desk" and its page data (settings saved by the
+// page, the adb key every phone already trusts) under the origin app://droiddesk. On the first start
+// with no "Andromon" folder yet, the old folder is copied (it is left as it was), and once the app is
+// ready the old origin's localStorage and IndexedDB are copied to the new origin. Runs once.
+const LEGACY_HOST = "droiddesk";
+const LEGACY_DIR = "Droid Desk";
+const MIGRATE_PAGE = "/__migrate";
+const migrateMark = () => path.join(app.getPath("userData"), "migrated-from-droid-desk.json");
+(function copyLegacyFolder() {
+  try {
+    const now = app.getPath("userData");
+    const old = path.join(path.dirname(now), LEGACY_DIR);
+    // The folder itself already exists by now (Electron makes it at launch), so look for saved data in it.
+    if (!fs.existsSync(old) || fs.existsSync(migrateMark())) return;
+    if (["settings.json", "IndexedDB"].some((f) => fs.existsSync(path.join(now, f)))) return;
+    // caches are rebuilt by themselves; Singleton* files would make this look like a second copy of the old app
+    const SKIP = new Set(["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "ShaderCache", "GrShaderCache", "Crashpad"]);
+    fs.cpSync(old, now, {
+      recursive: true,
+      filter: (src) => !(path.dirname(src) === old && SKIP.has(path.basename(src))) && !/^Singleton/.test(path.basename(src)),
+    });
+    fs.writeFileSync(migrateMark(), JSON.stringify({ from: old, at: new Date().toISOString(), web: "pending" }, null, 2));
+  } catch (e) {
+    console.warn("Couldn't copy the Droid Desk settings:", e);
+  }
+})();
+
+// Runs inside a blank page of the old origin: everything in its localStorage and IndexedDB, as JSON
+// (binary values, such as the adb key, as base64).
+const EXPORT_WEB_DATA = async () => {
+  const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const enc = async (v) => {
+    if (v instanceof Blob) return { $blob: b64(new Uint8Array(await v.arrayBuffer())), type: v.type };
+    if (v instanceof ArrayBuffer) return { $ab: b64(new Uint8Array(v)) };
+    if (ArrayBuffer.isView(v)) return { $view: v.constructor.name, b64: b64(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
+    if (v instanceof Date) return { $date: v.getTime() };
+    if (Array.isArray(v)) return Promise.all(v.map(enc));
+    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) o[k] = await enc(v[k]); return o; }
+    return v;
+  };
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const ls = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+  const dbs = [];
+  for (const info of await indexedDB.databases()) {
+    const db = await req(indexedDB.open(info.name));
+    const stores = [];
+    for (const name of db.objectStoreNames) {
+      const st = db.transaction(name, "readonly").objectStore(name);
+      const indexes = [...st.indexNames].map((n) => { const ix = st.index(n); return { name: n, keyPath: ix.keyPath, unique: ix.unique, multiEntry: ix.multiEntry }; });
+      const [keys, values] = await Promise.all([req(st.getAllKeys()), req(st.getAll())]);
+      const rows = [];
+      for (let i = 0; i < keys.length; i++) rows.push([await enc(keys[i]), await enc(values[i])]);
+      stores.push({ name, keyPath: st.keyPath, autoIncrement: st.autoIncrement, indexes, rows });
+    }
+    dbs.push({ name: info.name, version: db.version, stores });
+    db.close();
+  }
+  return JSON.stringify({ ls, dbs });
+};
+// Runs inside a blank page of the new origin with what EXPORT_WEB_DATA returned. Keeps anything the new
+// origin already has; old "dd." / "dd-" localStorage keys become "andromon." / "andromon-" keys.
+const IMPORT_WEB_DATA = async (dump) => {
+  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const dec = (v) => {
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === "object") {
+      if (typeof v.$blob === "string") return new Blob([unb64(v.$blob)], { type: v.type || "" });
+      if (typeof v.$ab === "string") return unb64(v.$ab).buffer;
+      if (typeof v.$view === "string") { const u = unb64(v.b64), T = globalThis[v.$view]; return T && T !== Uint8Array ? new T(u.buffer) : u; }
+      if (typeof v.$date === "number") return new Date(v.$date);
+      const o = {}; for (const k of Object.keys(v)) o[k] = dec(v[k]); return o;
+    }
+    return v;
+  };
+  for (const [k, v] of Object.entries(dump.ls)) {
+    const key = /^dd[.-]/.test(k) ? "andromon" + k.slice(2) : k;
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, v);
+  }
+  for (const d of dump.dbs) {
+    const db = await new Promise((res, rej) => {
+      const r = indexedDB.open(d.name, d.version);
+      r.onupgradeneeded = () => {
+        for (const s of d.stores) {
+          if (r.result.objectStoreNames.contains(s.name)) continue;
+          const st = r.result.createObjectStore(s.name, { keyPath: s.keyPath ?? undefined, autoIncrement: s.autoIncrement });
+          for (const ix of s.indexes) st.createIndex(ix.name, ix.keyPath, { unique: ix.unique, multiEntry: ix.multiEntry });
+        }
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    for (const s of d.stores) {
+      if (!db.objectStoreNames.contains(s.name) || !s.rows.length) continue;
+      await new Promise((res, rej) => {
+        const tx = db.transaction(s.name, "readwrite"), st = tx.objectStore(s.name);
+        // an empty store only: never add a second copy (the adb key store would then hold two keys)
+        const count = st.count();
+        count.onsuccess = () => { if (count.result) return; for (const [k, v] of s.rows) st.keyPath === null ? st.put(dec(v), dec(k)) : st.put(dec(v)); };
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    }
+    db.close();
+  }
+  return true;
+};
+async function migrateLegacyWebData() {
+  let mark;
+  try { mark = JSON.parse(fs.readFileSync(migrateMark(), "utf8")); } catch { return; }
+  if (mark.web !== "pending") return;
+  const page = async (host) => {
+    const w = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+    await w.loadURL(`app://${host}${MIGRATE_PAGE}`);
+    return w;
+  };
+  try {
+    const from = await page(LEGACY_HOST);
+    const dump = await from.webContents.executeJavaScript(`(${EXPORT_WEB_DATA})()`);
+    from.destroy();
+    const to = await page("andromon");
+    await to.webContents.executeJavaScript(`(${IMPORT_WEB_DATA})(${dump})`);
+    to.destroy();
+    const n = JSON.parse(dump);
+    mark.web = "done";
+    mark.copied = { localStorage: Object.keys(n.ls).length, indexedDB: n.dbs.map((d) => d.name) };
+  } catch (e) {
+    console.warn("Couldn't copy Droid Desk's page data:", e);
+    mark.web = "failed: " + (e?.message || e);
+  }
+  try { fs.writeFileSync(migrateMark(), JSON.stringify(mark, null, 2)); } catch {}
+}
 
 // app:// must be "secure" (WebUSB needs a secure context) and "standard" (gives a stable
 // origin so IndexedDB keeps the ADB RSA key between launches -> no re-authorizing each time).
@@ -32,7 +165,11 @@ protocol.registerSchemesAsPrivileged([
 function serveRenderer() {
   protocol.handle("app", (request) => {
     const { host, pathname } = new URL(request.url);
-    if (host !== "droiddesk") return new Response("Not found", { status: 404 });
+    // a blank page on the old and the new origin, used once to move the page data over (see above)
+    if (pathname === MIGRATE_PAGE && (host === LEGACY_HOST || host === "andromon")) {
+      return new Response("<!doctype html><title>Andromon</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+    if (host !== "andromon") return new Response("Not found", { status: 404 });
     const rel = decodeURIComponent(pathname === "/" ? "/index.html" : pathname);
     const file = path.normalize(path.join(RENDERER_DIR, rel));
     // Block path traversal out of the renderer folder.
@@ -94,7 +231,7 @@ function createWindow() {
     height: 820,
     minWidth: 760,
     minHeight: 520,
-    title: "Droid Desk",
+    title: "Andromon",
     backgroundColor: "#111317",
     show: false,
     webPreferences: {
@@ -133,7 +270,7 @@ function writeSettings(patch) {
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
 }
-const defaultSaveDir = () => path.join(app.getPath("downloads"), "Droid Desk");
+const defaultSaveDir = () => path.join(app.getPath("downloads"), "Andromon");
 
 function setupWifi() {
   wifi = new LocalSend({
@@ -141,7 +278,7 @@ function setupWifi() {
     saveDir: readSettings().wifiSaveDir || defaultSaveDir(),
     emit: (ev) => mainWindow?.webContents.send("wifi:event", ev),
   });
-  // Only our own UI (app://droiddesk) may drive the network service.
+  // Only our own UI (app://andromon) may drive the network service.
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => {
     const url = event.senderFrame?.url || "";
     if (!url.startsWith(ORIGIN + "/")) throw new Error("Not allowed");
@@ -435,7 +572,7 @@ function setupWadb(handle) {
       if (svc) candidates.push({ host: svc.host, port: svc.port });
       const saved = pairedPhones().find((p) => p.serial === serial);
       if (saved?.lastHost && saved.lastPort) candidates.push({ host: saved.lastHost, port: saved.lastPort });
-      if (!candidates.length) throw new Error("The phone isn't on the network right now. On the phone, open Droid Desk Companion › PC link and tap “Turn on Wi‑Fi connection” (same Wi‑Fi as this computer).");
+      if (!candidates.length) throw new Error("The phone isn't on the network right now. On the phone, open Andromon Companion › PC link and tap “Turn on Wi‑Fi connection” (same Wi‑Fi as this computer).");
     }
     if (!candidates.length) throw new Error("Enter the phone's IP address & port (Wireless debugging › IP address & Port).");
     const { port1, port2 } = new MessageChannelMain();
@@ -499,10 +636,11 @@ async function releaseAdb() {
   return { killServer, forced };
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);
-  if (process.platform === "win32") app.setAppUserModelId("dev.droiddesk.app"); // needed for notifications
+  if (process.platform === "win32") app.setAppUserModelId("dev.andromon.app"); // needed for notifications
   serveRenderer();
+  await migrateLegacyWebData(); // once, after an update from Droid Desk
   allowWebUsb();
   setupWifi();
   createWindow();

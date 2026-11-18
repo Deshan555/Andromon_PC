@@ -15,21 +15,21 @@ const MODES = [["system", "Same as computer"], ["light", "Light"], ["dark", "Dar
 
 export function initSettings(ctx) {
   const { $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick } = ctx;
-  const api = globalThis.droidDesk || {};
+  const api = globalThis.andromon || {};
   const root = document.documentElement;
   const app = document.querySelector(".app");
   const get = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const set = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
-  const mode = () => (["light", "dark"].includes(get("dd.theme")) ? get("dd.theme") : "system");
-  const accent = () => (THEMES.some((t) => t.id === get("dd.accent")) ? get("dd.accent") : "lime");
+  const mode = () => (["light", "dark"].includes(get("andromon.theme")) ? get("andromon.theme") : "system");
+  const accent = () => (THEMES.some((t) => t.id === get("andromon.accent")) ? get("andromon.accent") : "lime");
   function setMode(m) {
     if (m === "light" || m === "dark") root.dataset.theme = m; else delete root.dataset.theme;
-    set("dd.theme", m); render();
+    set("andromon.theme", m); render();
   }
   function setAccent(a) {
     if (a !== "lime") root.dataset.accent = a; else delete root.dataset.accent;
-    set("dd.accent", a); render();
+    set("andromon.accent", a); render();
   }
 
   // ---------- sidebar: full, or a narrow rail of icons ----------
@@ -39,7 +39,7 @@ export function initSettings(ctx) {
   const isRail = () => app.classList.contains("rail");
   function setRail(on) {
     app.classList.toggle("rail", on);
-    set("dd.sidebar", on ? "rail" : "full");
+    set("andromon.sidebar", on ? "rail" : "full");
     railBtn.title = on ? "Expand the sidebar" : "Collapse the sidebar";
     railBtn.setAttribute("aria-pressed", String(on));
     railBtn.querySelector("span").textContent = on ? "Expand" : "Collapse";
@@ -152,9 +152,9 @@ export function initSettings(ctx) {
   function notificationsSection() {
     const n = ctx.notifs, muted = n.muted();
     const rows = [
-      row("Phone notifications on this computer", "WhatsApp, SMS, email and the rest appear on the Notifications page, where you can answer them. Gives Droid Desk Companion “Notification access” on the phone",
+      row("Phone notifications on this computer", "WhatsApp, SMS, email and the rest appear on the Notifications page, where you can answer them. Gives Andromon Companion “Notification access” on the phone",
         makeSwitch(n.get(), (on) => { n.set(on); return on; })),
-      row("Notification pop-ups", "Show each new notification in the corner of this window, and as a system notification when Droid Desk is in the background",
+      row("Notification pop-ups", "Show each new notification in the corner of this window, and as a system notification when Andromon is in the background",
         makeSwitch(ctx.notifPopups.get(), (on) => { ctx.notifPopups.set(on); return on; })),
     ];
     if (muted.length) {
@@ -227,13 +227,13 @@ export function initSettings(ctx) {
     return section("Saving files", ...rows);
   }
 
-  // ---------- updates: is a newer Droid Desk published, and get its installer ----------
+  // ---------- updates: is a newer Andromon published, and get its installer ----------
   let updNote = ""; // what the last "Check now" found, until the page is left
   function updateRows() {
     const u = data.upd, last = u?.last;
     const mine = u ? `Version ${u.current.version}${u.current.build ? ` (build ${u.current.build})` : ""}` : `Version ${pkg.version}`;
     const live = el("div", { className: "set-dl" }); live.dataset.dl = "up";
-    const text = [el("b", { textContent: last?.available ? `Droid Desk ${last.version} is available` : "Updates" })];
+    const text = [el("b", { textContent: last?.available ? `Andromon ${last.version} is available` : "Updates" })];
     const buttons = [];
     if (last?.available) {
       const size = last.installer ? ` · ${fmtSize(last.installer.size)}` : "";
@@ -243,7 +243,7 @@ export function initSettings(ctx) {
           el("ul", {}, ...last.changes.map((c) => el("li", { textContent: c })))));
       }
       if (u.downloaded) {
-        text.push(el("div", { className: "sub", textContent: `Downloaded to your Downloads folder as ${u.downloaded.name}. Opening it starts the installer; close Droid Desk when it asks.` }));
+        text.push(el("div", { className: "sub", textContent: `Downloaded to your Downloads folder as ${u.downloaded.name}. Opening it starts the installer; close Andromon when it asks.` }));
         buttons.push(action("Open installer", "Opening…", () => api.updates.install(), "primary"));
       } else if (last.installer) {
         const b = action("Download update", "Downloading…", () => api.updates.download(), "primary");
@@ -264,12 +264,12 @@ export function initSettings(ctx) {
     text.push(live);
     return [
       el("div", { className: "set-row" }, el("div", { className: "set-text" }, ...text), group(...buttons)),
-      row("Check for updates automatically", "Once a day when Droid Desk starts. Only asks GitHub for the newest version; nothing is installed by itself",
+      row("Check for updates automatically", "Once a day when Andromon starts. Only asks GitHub for the newest version; nothing is installed by itself",
         makeSwitch(u ? u.auto : true, async (on) => { data.upd = await api.updates.setAuto(on); return data.upd.auto; })),
     ];
   }
 
-  // ---------- this computer: the tools Droid Desk can use, and whether they are installed ----------
+  // ---------- this computer: the tools Andromon can use, and whether they are installed ----------
   function computerSection() {
     const sys = data.sys;
     const BADGE = { ok: ["Installed", "on"], old: ["Too old", "warn"], missing: ["Not installed", "warn"], optional: ["Optional", "neutral"], unknown: ["Can't tell", "neutral"] };
@@ -309,9 +309,9 @@ export function initSettings(ctx) {
     rows.push(dlRow("uad", "Debloat list", [source("Universal Android Debloater", "https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation")],
       uad === undefined ? "Checking…" : !uad ? "Not downloaded" : `${Object.keys(uad.list || {}).length.toLocaleString()} apps described` + (uad.fetchedAt ? ` · fetched ${fmtDate(uad.fetchedAt, true)}` : ""),
       dlAction("uad", uad ? "Update" : "Download", () => ctx.uad.update())));
-    rows.push(dlRow("", "Built into Droid Desk", [source("scrcpy", "https://github.com/Genymobile/scrcpy"), source("Droid Desk Companion", "https://github.com/Deshan555/Andromon-android")],
+    rows.push(dlRow("", "Built into Andromon", [source("scrcpy", "https://github.com/Genymobile/scrcpy"), source("Andromon Companion", "https://github.com/Deshan555/Andromon-android")],
       `Screen mirroring helper ${ctx.scrcpyVersion} · companion app ${ctx.companionVersion}. Nothing to download`));
-    if (api.app) rows.push(row("Droid Desk's data folder", "Settings, paired phones and everything listed above", group(action("Open folder", "Opening…", () => api.app.openData()))));
+    if (api.app) rows.push(row("Andromon's data folder", "Settings, paired phones and everything listed above", group(action("Open folder", "Opening…", () => api.app.openData()))));
     return section("Downloads and sources", ...rows);
   }
 
@@ -345,7 +345,7 @@ export function initSettings(ctx) {
     parts.push(downloadsSection());
     const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noreferrer" });
     parts.push(section("About",
-      row("Droid Desk", `Version ${pkg.version}${data.upd?.current.build ? ` (build ${data.upd.current.build})` : ""} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
+      row("Andromon", `Version ${pkg.version}${data.upd?.current.build ? ` (build ${data.upd.current.build})` : ""} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
       ...(api.updates ? updateRows() : []),
       row("Source code", "", el("div", { className: "set-links" }, a("PC app", "https://github.com/Deshan555/Andromon_PC"), a("Android companion", "https://github.com/Deshan555/Andromon-android"))),
       row("Credits", "ADB by Tango (ya-webadb) · screen mirroring by scrcpy · Wi‑Fi transfer speaks the LocalSend protocol · icons by Lucide · Poppins type", "")));
@@ -353,7 +353,7 @@ export function initSettings(ctx) {
     showLive();
   }
 
-  setRail(get("dd.sidebar") === "rail");
+  setRail(get("andromon.sidebar") === "rail");
   ready = true;
   return { load: () => { render(); refresh(); }, setRail, isRail };
 }

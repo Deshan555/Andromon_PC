@@ -1,4 +1,4 @@
-// Droid Desk — files for phone backups, restores and the automatic photo copy (main process).
+// Andromon — files for phone backups, restores and the automatic photo copy (main process).
 //
 // The sandboxed UI can't touch the disk. It gets three folders, each one picked by the person in a
 // native dialog and nothing else:
@@ -105,8 +105,8 @@ function setupBackupFs(handle, { userData, readSettings, writeSettings }) {
     const win = BrowserWindow.fromWebContents(event.sender);
     let start; try { start = rootOf("backup"); } catch {}
     const r = await dialog.showOpenDialog(win, {
-      title: "Open a Droid Desk backup (backup.json)", properties: ["openFile"], defaultPath: start,
-      filters: [{ name: "Droid Desk backup", extensions: ["json"] }],
+      title: "Open an Andromon backup (backup.json)", properties: ["openFile"], defaultPath: start,
+      filters: [{ name: "Andromon backup", extensions: ["json"] }],
     });
     if (r.canceled || !r.filePaths[0]) return null;
     const file = r.filePaths[0];

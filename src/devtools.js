@@ -55,8 +55,8 @@ function sharedCtx(base) {
 
   // ---------- small shared helpers ----------
   const store = {
-    get(key, def) { try { const v = localStorage.getItem("dd.dev." + key); return v == null ? def : JSON.parse(v); } catch { return def; } },
-    set(key, v) { try { localStorage.setItem("dd.dev." + key, JSON.stringify(v)); } catch {} },
+    get(key, def) { try { const v = localStorage.getItem("andromon.dev." + key); return v == null ? def : JSON.parse(v); } catch { return def; } },
+    set(key, v) { try { localStorage.setItem("andromon.dev." + key, JSON.stringify(v)); } catch {} },
   };
 
   // A long-running shell process (logcat, screenrecord...). Not tracked by the busy spinner.
@@ -130,7 +130,7 @@ function sharedCtx(base) {
 
   shared = {
     ...base, store, spawn, readLines, app,
-    net: globalThis.droidDesk?.devnet || null,
+    net: globalThis.andromon?.devnet || null,
     // A titled card; `extra` goes on the right of the title.
     card(title, extra, ...kids) {
       const head = el("div", { className: "dev-head" }, el("h2", { textContent: title }));

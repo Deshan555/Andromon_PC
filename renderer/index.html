@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'">
-<title>Droid Desk</title>
+<title>Andromon</title>
 <style>
   /* Same look as the companion app on the phone: brand colours lime #E3F786, green #9CD237, ink
      #292A2C and white; a light grey page, off-white cards, one lime-to-green hero card, dark pill
@@ -1065,7 +1065,7 @@
       <h1 id="title">Connect <i>your phone</i></h1>
       <div>
         <span class="activity" id="activity" role="status" hidden><span class="spin" aria-hidden="true"></span>Working…</span>
-        <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Droid Desk is available. Opens Settings"></button>
+        <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Andromon is available. Opens Settings"></button>
         <button class="dl-btn" type="button" id="wifiConnectBtn" hidden title="Connect over Wi‑Fi (Wireless debugging, Android 11+)" aria-label="Connect over Wi‑Fi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg></button>
         <button class="dl-btn hd-connect" type="button" id="connectBtn" title="Connect phone (USB cable)" aria-label="Connect phone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></button>
         <!-- One icon group: downloads, how this page works (the knowledge drawer), disconnect (while connected). -->
@@ -1133,7 +1133,7 @@
               </div>
               <div class="card" id="lkClipCard">
                 <h3>Shared clipboard</h3>
-                <p class="sub">Copy here, paste on the phone, and the other way round. On the phone, “Send clipboard to PC” is on the Droid Desk notification and in a quick-settings tile.</p>
+                <p class="sub">Copy here, paste on the phone, and the other way round. On the phone, “Send clipboard to PC” is on the Andromon notification and in a quick-settings tile.</p>
                 <div class="lk-row">
                   <button class="btn" id="lkClipTo" type="button">Copy to phone's clipboard</button>
                   <button class="btn" id="lkClipFrom" type="button">Get phone's clipboard</button>
@@ -1161,7 +1161,7 @@
     <section data-panel="backup" hidden><div class="pg-cards" id="backupCard" hidden></div></section>
 
     <!-- SHIZUKU (src/shizuku.js): its state on the phone, start it over adb, open it.
-         Below it, the Phone RAM manager (src/app.js): Droid Desk's own helper for the same companion tools. -->
+         Below it, the Phone RAM manager (src/app.js): Andromon's own helper for the same companion tools. -->
     <section data-panel="shizuku" hidden>
       <div class="pg-cards">
         <div class="pg-cards" id="szCard"></div>
@@ -1465,7 +1465,7 @@
 
     <!-- WI-FI TRANSFER -->
     <section data-panel="wifi" hidden>
-      <div class="card" id="wifiUnavailable" hidden>Wi‑Fi transfer is only available in the Droid Desk desktop app.</div>
+      <div class="card" id="wifiUnavailable" hidden>Wi‑Fi transfer is only available in the Andromon desktop app.</div>
       <div id="wifiMain">
         <div class="card">
           <div class="ctl" style="margin-bottom:12px">
@@ -1493,9 +1493,9 @@
           <div class="wifi-near"><div id="wifiRadar"></div><div class="wifi-list" id="wifiDevices"></div></div>
         </div>
         <div class="card muted small">
-          <b>How it works:</b> on your phone, turn on <b>Receive</b> in Droid Desk Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>
-          <b>Methods:</b> <i>Same Wi‑Fi</i> goes through your router and works with both apps. <i>Direct link</i> (Droid Desk Companion only) has this computer join a private Wi‑Fi from the phone for the transfer: one hop instead of two, so much faster on 2.4 GHz or busy networks, but this computer has no internet until it reconnects (automatically, right after). <i>Auto</i> picks Direct link only for big transfers on slow Wi‑Fi.<br>
-          Everything is encrypted, nothing goes through the internet, and you're asked before any file is received. Droid Desk only listens on the network while this is on.
+          <b>How it works:</b> on your phone, turn on <b>Receive</b> in Andromon Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>
+          <b>Methods:</b> <i>Same Wi‑Fi</i> goes through your router and works with both apps. <i>Direct link</i> (Andromon Companion only) has this computer join a private Wi‑Fi from the phone for the transfer: one hop instead of two, so much faster on 2.4 GHz or busy networks, but this computer has no internet until it reconnects (automatically, right after). <i>Auto</i> picks Direct link only for big transfers on slow Wi‑Fi.<br>
+          Everything is encrypted, nothing goes through the internet, and you're asked before any file is received. Andromon only listens on the network while this is on.
         </div>
       </div>
     </section>

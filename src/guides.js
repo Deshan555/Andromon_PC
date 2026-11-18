@@ -230,7 +230,7 @@ export const DEV_GUIDES = {
     name: "Phones",
     plain: "Keep several phones connected at once and do the same thing on all of them.",
     what: [
-      "Droid Desk normally works with one phone, the “main” one. This tab keeps others connected in the background and lets you switch which one is main with a click.",
+      "Andromon normally works with one phone, the “main” one. This tab keeps others connected in the background and lets you switch which one is main with a click.",
       "It can also send one command, install one APK, or take a screenshot on every connected phone together.",
     ],
     why: [
@@ -247,7 +247,7 @@ export const DEV_GUIDES = {
       ["One phone fails an install that the others accept", "Usually an older Android version or a different processor type than the app supports."],
       ["Different command output per phone", "A quick way to compare versions or settings across the set."],
     ],
-    words: [["Main phone", "The one every other page of Droid Desk is talking to."], ["Serial", "A phone's unique id, used to tell identical models apart."]],
+    words: [["Main phone", "The one every other page of Andromon is talking to."], ["Serial", "A phone's unique id, used to tell identical models apart."]],
     careful: ["An “all phones” command runs everywhere at once; check it on one phone first."],
   },
 
@@ -319,7 +319,7 @@ export const DEV_GUIDES = {
     plain: "Watch the web requests apps on the phone make: where they go, what they send, what comes back.",
     what: [
       "Apps talk to servers constantly. Capture puts this computer in the middle (as a proxy) and lists every request the phone makes while it is on.",
-      "Plain http can be read directly. https is encrypted; to read it the phone must trust a certificate from Droid Desk, and the app must accept that (apps you build in debug mode usually do; most shop apps refuse).",
+      "Plain http can be read directly. https is encrypted; to read it the phone must trust a certificate from Andromon, and the app must accept that (apps you build in debug mode usually do; most shop apps refuse).",
     ],
     why: [
       "A screen shows “something went wrong”: see which request failed and what the server answered.",

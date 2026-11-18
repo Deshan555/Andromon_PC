@@ -1,7 +1,7 @@
 // Shared plumbing for port forwarding (Developer › Network, App testing › API calls).
 //
 // There's no adb server: the page speaks ADB itself and main.js only does the PC end, as plain TCP on
-// 127.0.0.1 (preload `droidDesk.devnet`). Each TCP connection reaches the page as a MessagePort:
+// 127.0.0.1 (preload `andromon.devnet`). Each TCP connection reaches the page as a MessagePort:
 //  - "accept": a program on this computer connected to a forward rule's port (PC → phone);
 //  - "connect": the answer to dialPc(), for a connection the phone opened (phone → PC).
 // One window listener dispatches both. pipe() joins a MessagePort and an ADB socket.
@@ -15,7 +15,7 @@ function ensureListener() {
   if (listening) return;
   listening = true;
   window.addEventListener("message", (e) => {
-    if (e.source !== window || e.origin !== location.origin || e.data?.source !== "droiddesk-devnet" || !e.ports[0]) return;
+    if (e.source !== window || e.origin !== location.origin || e.data?.source !== "andromon-devnet" || !e.ports[0]) return;
     const port = e.ports[0], meta = e.data.meta || {};
     if (meta.kind === "connect") {
       const p = pending.get(meta.reqId);

@@ -18,11 +18,11 @@ export function initLinks(base) {
   const { $, el, toast, showError, clearError, sh, shQuote, busy, armedClick, cc, getAdb, companionPkg } = base;
 
   const store = {
-    get(key, def) { try { const v = localStorage.getItem("dd.links." + key); return v == null ? def : JSON.parse(v); } catch { return def; } },
-    set(key, v) { try { localStorage.setItem("dd.links." + key, JSON.stringify(v)); } catch {} },
+    get(key, def) { try { const v = localStorage.getItem("andromon.links." + key); return v == null ? def : JSON.parse(v); } catch { return def; } },
+    set(key, v) { try { localStorage.setItem("andromon.links." + key, JSON.stringify(v)); } catch {} },
   };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const NEEDS_UPDATE = "This needs a newer Droid Desk Companion on the phone.";
+  const NEEDS_UPDATE = "This needs a newer Andromon Companion on the phone.";
   // Older companions don't know these calls.
   const friendly = (e) => (/Unknown method/.test(e?.message || "") ? new Error(NEEDS_UPDATE) : e);
   // Runs a button's action with the usual spinner and error box.
@@ -51,8 +51,8 @@ export function initLinks(base) {
     });
     gate.replaceChildren(
       el("div", { className: "grow", textContent: linkState === "outdated"
-        ? "Phone links need a newer Droid Desk Companion on the phone."
-        : "Phone links need the Droid Desk Companion app on the phone." }),
+        ? "Phone links need a newer Andromon Companion on the phone."
+        : "Phone links need the Andromon Companion app on the phone." }),
       status, btn);
   }
 
@@ -112,7 +112,7 @@ export function initLinks(base) {
   let pendingClip = null;  // text from the phone that couldn't be written while the window was in the background
 
   // Browsers only let the focused window write the clipboard. Text sent from the phone while
-  // Droid Desk is in the background is kept in memory until the window is used again.
+  // Andromon is in the background is kept in memory until the window is used again.
   function writeClip(text) {
     navigator.clipboard.writeText(text).then(
       () => { pendingClip = null; toast("Copied from phone"); },
@@ -135,7 +135,7 @@ export function initLinks(base) {
   }));
 
   $("lkClipFrom").addEventListener("click", () => run($("lkClipFrom"), "Asking the phone…", async () => {
-    if (!listening()) throw new Error("Droid Desk isn't listening to the phone yet. Try again in a moment.");
+    if (!listening()) throw new Error("Andromon isn't listening to the phone yet. Try again in a moment.");
     const got = new Promise((resolve) => { clipWaiter = resolve; });
     try {
       // Android only lets the app on screen read the clipboard, so this opens the companion's
@@ -244,16 +244,16 @@ export function initLinks(base) {
     const acts = el("div", { className: "lk-row" }, on);
     if (triedGrant) {
       const open = el("button", { className: "btn sm", type: "button", textContent: "Open the setting on the phone" });
-      open.onclick = () => sh("am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").then(() => toast("Turn on Droid Desk Companion on the phone"), showError);
+      open.onclick = () => sh("am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").then(() => toast("Turn on Andromon Companion on the phone"), showError);
       acts.append(open);
     }
     acts.append(later);
     box.replaceChildren(
       el("h3", { textContent: "Now playing on phone" }),
       el("p", { className: "sub", textContent: triedGrant
-        ? "The phone hasn't given Droid Desk Companion “Notification access” yet. Turn it on in the phone's settings, or try again."
+        ? "The phone hasn't given Andromon Companion “Notification access” yet. Turn it on in the phone's settings, or try again."
         : "See what the phone is playing and pause or skip it from here. Android shows other apps' players only to apps with “Notification access”, " +
-          "the same access the Notifications tab uses. Droid Desk turns it on for the companion app over the connection; your notifications aren't shown here unless you switch that tab on." }),
+          "the same access the Notifications tab uses. Andromon turns it on for the companion app over the connection; your notifications aren't shown here unless you switch that tab on." }),
       acts);
   }
 

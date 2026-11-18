@@ -1,6 +1,6 @@
-// Droid Desk — ReVanced patching on this computer (main process).
+// Andromon — ReVanced patching on this computer (main process).
 //
-// ReVanced (https://revanced.app) patches an app's APK to change how it behaves. Droid Desk doesn't
+// ReVanced (https://revanced.app) patches an app's APK to change how it behaves. Andromon doesn't
 // ship any of it: when the person asks, this file downloads ReVanced's own tools and runs them.
 //   - ReVanced CLI   a Java program (needs Java 17 or newer on this computer). One fixed version,
 //                    checked against the SHA-256 below after the download.
@@ -144,7 +144,7 @@ async function trustedKeys(keyringBytes) {
   for (const { tag, body } of packets(dearmor(keyringBytes))) {
     if (tag === 6) {
       primary = parseKey(body); sub = null;
-      if (!primary || primary.fingerprint !== KEY_FINGERPRINT) throw new Error("The signing key from revanced.app isn't the one Droid Desk expects.");
+      if (!primary || primary.fingerprint !== KEY_FINGERPRINT) throw new Error("The signing key from revanced.app isn't the one Andromon expects.");
       keys.push(primary);
     } else if (tag === 14) {
       sub = primary ? parseKey(body) : null;
@@ -221,13 +221,19 @@ function setupRevanced(handle, { userData, getWindow }) {
     patches: path.join(dir, "patches.rvp"),
     meta: path.join(dir, "patches.json"),
     list: path.join(dir, "patch-list.json"),
-    keystore: path.join(dir, "droiddesk.keystore"),
+    keystore: path.join(dir, "andromon.keystore"),
     input: path.join(work, "input.apk"),
     out: path.join(work, "patched.apk"),
     tmp: path.join(work, "tmp"),
     manager: path.join(dir, "manager.apk"),
     gmscore: path.join(dir, "gmscore.apk"),
   };
+  // The keystore made under the app's old name (Droid Desk) keeps signing, so apps patched before the
+  // rename still install as updates.
+  try {
+    const old = path.join(dir, "droiddesk.keystore");
+    if (!fs.existsSync(P.keystore) && fs.existsSync(old)) fs.renameSync(old, P.keystore);
+  } catch {}
   const emit = (ev) => { const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.send("rv:event", ev); };
   const exists = (f) => fsp.access(f).then(() => true, () => false);
   const readJson = async (f) => { try { return JSON.parse(await fsp.readFile(f, "utf8")); } catch { return null; } };
@@ -290,7 +296,7 @@ function setupRevanced(handle, { userData, getWindow }) {
   const allowed = (url) => ALLOWED.some((re) => re.test(url));
   async function getJson(url) {
     if (!allowed(url)) throw new Error("Download address not allowed");
-    const res = await net.fetch(url, { headers: { accept: "application/json", "user-agent": "DroidDesk" } });
+    const res = await net.fetch(url, { headers: { accept: "application/json", "user-agent": "Andromon" } });
     if (!res.ok) throw new Error(`Couldn't reach ${new URL(url).host} (HTTP ${res.status}).`);
     return res.json();
   }
@@ -310,7 +316,7 @@ function setupRevanced(handle, { userData, getWindow }) {
     } finally { if (dlAbort === ac) dlAbort = null; }
   }
   async function downloadTo(url, dest, what, limit, signal) {
-    const res = await net.fetch(url, { headers: { "user-agent": "DroidDesk" }, signal });
+    const res = await net.fetch(url, { headers: { "user-agent": "Andromon" }, signal });
     if (!res.ok || !res.body) throw new Error(`Couldn't download ${what} (HTTP ${res.status}).`);
     const total = Number(res.headers.get("content-length")) || 0;
     await fsp.mkdir(path.dirname(dest), { recursive: true });
@@ -360,7 +366,7 @@ function setupRevanced(handle, { userData, getWindow }) {
       try {
         if (!allowed(info.signature_download_url)) throw new Error("Download address not allowed");
         const [sig, keys] = await Promise.all([info.signature_download_url, "https://api.revanced.app/keys"].map(async (u) => {
-          const r = await net.fetch(u, { headers: { "user-agent": "DroidDesk" } });
+          const r = await net.fetch(u, { headers: { "user-agent": "Andromon" } });
           if (!r.ok) throw new Error(`Couldn't download the patches' signature (HTTP ${r.status}).`);
           return Buffer.from(await r.arrayBuffer());
         }));

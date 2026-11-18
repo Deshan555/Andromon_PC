@@ -1,6 +1,6 @@
-// Droid Desk — wireless ADB (Android 11+ "Wireless debugging"), main process.
+// Andromon — wireless ADB (Android 11+ "Wireless debugging"), main process.
 //
-// Pairing (once per phone): Droid Desk shows a QR code "WIFI:T:ADB;S:<name>;P:<password>;;".
+// Pairing (once per phone): Andromon shows a QR code "WIFI:T:ADB;S:<name>;P:<password>;;".
 // The phone's Settings › Developer options › Wireless debugging › "Pair device with QR code"
 // scans it, then advertises an mDNS service _adb-tls-pairing._tcp named <name>. We connect to it
 // over TLS 1.3 and run adb's pairing protocol: SPAKE2 (BoringSSL's Ed25519 variant) on the
@@ -91,7 +91,7 @@ function spake2Alice(password, myName, theirName) {
 }
 
 // ---------------- our adb key ----------------
-// Normally the same RSA key Droid Desk uses over USB (the renderer hands it over with setKey), so a
+// Normally the same RSA key Andromon uses over USB (the renderer hands it over with setKey), so a
 // phone that already trusts this computer over USB ("Always allow") accepts it over Wi‑Fi too, and
 // pairing adds that same key. A file key is only a fallback if the renderer hasn't sent one.
 let keyCache = null;
@@ -99,8 +99,8 @@ function setKey(pkcs8) {
   const privateKey = crypto.createPrivateKey({ key: Buffer.from(pkcs8), format: "der", type: "pkcs8" });
   const publicKey = crypto.createPublicKey(privateKey);
   if (publicKey.asymmetricKeyType !== "rsa" || publicKey.asymmetricKeyDetails?.modulusLength !== 2048) throw new Error("Unsupported key");
-  const id = createIdentity({ publicKey, privateKey }, "Droid Desk");
-  keyCache = { key: id.key, cert: id.cert, pubString: adbPublicKeyString(publicKey, `droiddesk@${os.hostname().replace(/\.local$/, "")}`) };
+  const id = createIdentity({ publicKey, privateKey }, "Andromon");
+  keyCache = { key: id.key, cert: id.cert, pubString: adbPublicKeyString(publicKey, `andromon@${os.hostname().replace(/\.local$/, "")}`) };
 }
 function adbKey(userData) {
   if (keyCache) return keyCache;
@@ -109,13 +109,13 @@ function adbKey(userData) {
   try { j = JSON.parse(fs.readFileSync(file, "utf8")); new crypto.X509Certificate(j.cert); } catch { j = null; }
   if (!j) {
     const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, publicExponent: 65537 });
-    const id = createIdentity(pair, "Droid Desk ADB");
+    const id = createIdentity(pair, "Andromon ADB");
     j = { key: id.key, cert: id.cert };
     fs.mkdirSync(userData, { recursive: true });
     fs.writeFileSync(file, JSON.stringify(j), { mode: 0o600 });
   }
   const pub = crypto.createPublicKey(j.key);
-  keyCache = { key: j.key, cert: j.cert, pubString: adbPublicKeyString(pub, `droiddesk@${os.hostname().replace(/\.local$/, "")}`) };
+  keyCache = { key: j.key, cert: j.cert, pubString: adbPublicKeyString(pub, `andromon@${os.hostname().replace(/\.local$/, "")}`) };
   return keyCache;
 }
 

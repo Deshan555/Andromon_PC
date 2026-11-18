@@ -250,7 +250,7 @@ export function initCalendar(h) {
     try { cals = await writableCalendars(); } catch (e) { close(); throw e; }
     const NEW = "__new__";
     const pick = el("select", {}, ...cals.map((c) => el("option", { value: String(c.id), textContent: `${c.name || "Calendar"}${c.account ? ` (${c.account})` : ""}` })),
-      el("option", { value: NEW, textContent: "A new calendar kept only on the phone (“Droid Desk”)" }));
+      el("option", { value: NEW, textContent: "A new calendar kept only on the phone (“Andromon”)" }));
     const preferred = cals.find((c) => c.primary) || cals[0];
     pick.value = preferred ? String(preferred.id) : NEW;
     const repeating = events.filter((e) => e.rrule).length;
@@ -294,7 +294,7 @@ export function initCalendar(h) {
         catch (e) {
           if (!/Unknown method/.test(e?.message)) throw e;
           ui.agenda.replaceChildren();
-          throw new Error("The Droid Desk Companion on the phone is too old for the Calendar. Remove it (Apps tab → dev.droiddesk.companion → Uninstall) and open this tab again, so Droid Desk installs the current one.");
+          throw new Error("The Andromon Companion on the phone is too old for the Calendar. Remove it (Apps tab → dev.andromon.companion → Uninstall) and open this tab again, so Andromon installs the current one.");
         }
       });
     },

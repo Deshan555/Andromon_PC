@@ -235,7 +235,7 @@ export function initPeople(h) {
     };
     d.body.append(
       el("p", { textContent: names + (list.length > 12 ? `, and ${list.length - 12} more` : "") }),
-      el("p", { className: "muted", textContent: "This can't be undone from Droid Desk." + (synced ? " Contacts that sync with an account (Google, for example) are removed from that account too." : "") + " Export a vCard first if you want a copy." }),
+      el("p", { className: "muted", textContent: "This can't be undone from Andromon." + (synced ? " Contacts that sync with an account (Google, for example) are removed from that account too." : "") + " Export a vCard first if you want a copy." }),
       el("div", { className: "toolbar", style: "margin:0" }, go, cancel));
     cancel.focus();
   }
@@ -272,7 +272,7 @@ export function initPeople(h) {
     closeBtn.onclick = finish;
     d.modal.addEventListener("click", (e) => { if (e.target === d.modal && !d.modal.dataset.busy) finish(); });
     if (!groups.length) {
-      d.body.append(el("p", { className: "muted", textContent: `No duplicates found among ${all.length} contacts. Droid Desk looks for the same phone number, the same e‑mail address, or exactly the same name.` }), closeBtn);
+      d.body.append(el("p", { className: "muted", textContent: `No duplicates found among ${all.length} contacts. Andromon looks for the same phone number, the same e‑mail address, or exactly the same name.` }), closeBtn);
       return;
     }
     const status = el("span", { className: "muted" });

@@ -1,4 +1,4 @@
-// Droid Desk — update check (main process). The release build keeps a manifest of the newest build at
+// Andromon — update check (main process). The release build keeps a manifest of the newest build at
 // MANIFEST_URL (latest.json on the "release" branch, written by scripts/release-manifest.js). This file
 // reads it, decides whether it is newer than the running app, picks the installer for this computer,
 // and can download that installer into the Downloads folder (SHA-256 checked) and open it.
@@ -65,7 +65,7 @@ function setupUpdater(handle, { readSettings, writeSettings, getWindow }) {
   const status = () => ({ current, auto: auto(), last, checkedAt: readSettings().updateCheckedAt || 0, downloaded: downloaded ? { name: downloaded.name } : null });
 
   async function fetchManifest() {
-    const res = await net.fetch(MANIFEST_URL, { headers: { "user-agent": "DroidDesk", accept: "application/json" }, cache: "no-store" });
+    const res = await net.fetch(MANIFEST_URL, { headers: { "user-agent": "Andromon", accept: "application/json" }, cache: "no-store" });
     if (res.status === 404) throw new Error("No release has been built yet.");
     if (!res.ok) throw new Error(`Couldn't reach GitHub to check for updates (HTTP ${res.status}).`);
     const text = await res.text();
@@ -97,12 +97,12 @@ function setupUpdater(handle, { readSettings, writeSettings, getWindow }) {
   async function download() {
     if (abort) throw new Error("The update is already downloading.");
     if (!last?.available || !file) throw new Error("There is no update to download for this computer.");
-    const f = file, name = path.basename(f.name), what = `Droid Desk ${last.version}`;
+    const f = file, name = path.basename(f.name), what = `Andromon ${last.version}`;
     const dir = app.getPath("downloads"), dest = path.join(dir, name), part = dest + ".part";
     const ac = abort = new AbortController();
     emit({ kind: "download", phase: "start", what, from: "github.com", total: f.size });
     try {
-      const res = await net.fetch(f.url, { headers: { "user-agent": "DroidDesk" }, signal: ac.signal });
+      const res = await net.fetch(f.url, { headers: { "user-agent": "Andromon" }, signal: ac.signal });
       if (res.status === 404) throw new Error("This version isn't published on GitHub yet. Try again later, or open the releases page.");
       if (!res.ok || !res.body) throw new Error(`Couldn't download the update (HTTP ${res.status}).`);
       await fsp.mkdir(dir, { recursive: true });

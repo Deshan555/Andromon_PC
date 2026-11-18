@@ -333,7 +333,7 @@ export function mount(root, ctx) {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   function reportJson(r) {
-    return { tool: "Droid Desk security scan", date: new Date(r.date).toISOString(), source: r.source, checkedOnPhone: !!r.phoneChecked,
+    return { tool: "Andromon security scan", date: new Date(r.date).toISOString(), source: r.source, checkedOnPhone: !!r.phoneChecked,
       app: r.info, counts: r.counts, findings: r.findings.map(({ id, sev, cat, title, what, fix, evidence }) => ({ id, severity: sev, category: cat, title, what, fix, evidence })) };
   }
   function reportHtml(r) {
@@ -354,7 +354,7 @@ h1{font-weight:400;margin:0 0 4px}h3{font-size:15px;margin:0 0 6px;font-weight:6
 <span>Built with</span><span>${esc(i.framework)}</span><span>Scanned</span><span>${esc(new Date(r.date).toLocaleString())}${r.phoneChecked ? " · checked on the phone" : ""}</span></div>
 <p class="c">${SEVERITIES.map((s) => `<span><b style="color:${colors[s]}">${r.counts[s]}</b> ${SEV_LABEL[s]}</span>`).join("")}</p>
 ${items || "<p>Nothing found.</p>"}
-<p><small>Made with Droid Desk. Code findings can come from libraries. Secrets are masked.</small></p></body></html>`;
+<p><small>Made with Andromon. Code findings can come from libraries. Secrets are masked.</small></p></body></html>`;
   }
 
   return {

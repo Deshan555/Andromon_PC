@@ -3,7 +3,7 @@
 // clean status bar, copy or save by itself) is set in Settings › Screenshot and kept in localStorage.
 import { icon } from "./fileicons.js";
 
-const KEY = "dd.shot";
+const KEY = "andromon.shot";
 export const shotPrefs = {
   FORMAT: [["png", "PNG (exact)"], ["jpeg", "JPEG (smaller)"], ["webp", "WebP (smallest)"]],
   SCALE: [["100", "Full size"], ["75", "75%"], ["50", "Half size"]],

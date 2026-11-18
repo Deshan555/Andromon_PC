@@ -1,5 +1,5 @@
-// Droid Desk — Settings page helpers (main process): where saved files go, and how much room the
-// things Droid Desk has downloaded take. The page never names a path: it asks for "the save folder"
+// Andromon — Settings page helpers (main process): where saved files go, and how much room the
+// things Andromon has downloaded take. The page never names a path: it asks for "the save folder"
 // or "the data folder", and a folder only changes through the system's folder picker.
 const { app, BrowserWindow, dialog, shell, session } = require("electron");
 const path = require("node:path");
@@ -26,7 +26,7 @@ function freeName(dir, name) {
 }
 
 function setupAppSettings(handle, { userData, readSettings, writeSettings, origin, getWindow }) {
-  const defaultDir = () => path.join(app.getPath("downloads"), "Droid Desk");
+  const defaultDir = () => path.join(app.getPath("downloads"), "Andromon");
   const save = () => { const s = readSettings(); return { ask: s.saveAsk !== false, dir: s.saveDir || defaultDir() }; };
 
   // Screenshots, recordings and exports are saved by the page as downloads. By default the system

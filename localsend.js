@@ -1,4 +1,4 @@
-// Droid Desk — Wi‑Fi file transfer that speaks the LocalSend protocol v2
+// Andromon — Wi‑Fi file transfer that speaks the LocalSend protocol v2
 // (https://github.com/localsend/protocol, Apache-2.0). Phones running the LocalSend app can send
 // files to this computer and receive files from it, with no USB cable or companion app.
 //
@@ -32,7 +32,7 @@ const DEVICE_TTL_MS = 10 * 60_000;
 // alive and reused, and a few files upload at once (the protocol allows parallel /upload calls).
 const UPLOAD_CONCURRENCY = 3;
 const IO_CHUNK = 1024 * 1024; // larger disk reads/writes than Node's 64 KB / 16 KB defaults
-// "Auto" uses a Direct link (Droid Desk Companion's temporary hotspot) only when it's worth leaving
+// "Auto" uses a Direct link (Andromon Companion's temporary hotspot) only when it's worth leaving
 // the current Wi‑Fi for a moment: big transfers over a link estimated to be slow.
 const AUTO_DIRECT_MIN_BYTES = 100e6;
 const AUTO_DIRECT_BELOW_MBPS = 6;
@@ -63,7 +63,7 @@ function oid(s) {
 const utcTime = (d) => der(0x17, Buffer.from(d.toISOString().replace(/[-:T]/g, "").slice(2, 14) + "Z"));
 
 // Self-signed certificate (and new RSA-2048 key unless [pair] is given). Also used by wadb.js.
-function createIdentity(pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }), commonName = "Droid Desk") {
+function createIdentity(pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }), commonName = "Andromon") {
   const { publicKey, privateKey } = pair;
   const sigAlg = seq(oid("1.2.840.113549.1.1.11"), der(0x05)); // sha256WithRSAEncryption, NULL params
   const name = seq(set(seq(oid("2.5.4.3"), der(0x0c, Buffer.from(commonName)))));
@@ -130,6 +130,10 @@ function readJson(req, limit = 4 * 1024 * 1024) {
   });
 }
 
+// The companion's extension object in LocalSend messages: "andromon", or "droiddesk" from a companion
+// installed under the app's old name.
+const ext = (m) => [m?.andromon, m?.droiddesk].find((x) => x && typeof x === "object") || null;
+
 class LocalSend {
   /**
    * @param {object} o
@@ -147,14 +151,14 @@ class LocalSend {
     this.pending = new Map(); // consent requests waiting for the UI
     this.outgoing = null;     // { cancelled, reqs:Set }
     this.linkCache = new Map(); // fingerprint -> { at, value }
-    this.alias = os.hostname().replace(/\.local$/i, "").slice(0, 60) || "Droid Desk";
+    this.alias = os.hostname().replace(/\.local$/i, "").slice(0, 60) || "Andromon";
   }
 
   get running() { return !!this.server; }
 
   info() {
     return {
-      alias: this.alias, version: PROTOCOL_VERSION, deviceModel: "Droid Desk", deviceType: "desktop",
+      alias: this.alias, version: PROTOCOL_VERSION, deviceModel: "Andromon", deviceType: "desktop",
       fingerprint: this.fingerprint, port: PORT, protocol: "https", download: false,
     };
   }
@@ -272,8 +276,9 @@ class LocalSend {
       protocol: m.protocol === "http" ? "http" : "https",
       alias: str(m.alias, 80) || "Unknown device",
       deviceModel: str(m.deviceModel, 80), deviceType: str(m.deviceType, 20),
-      // Droid Desk Companion adds a "droiddesk" object (other LocalSend apps don't).
-      companion: m.droiddesk && typeof m.droiddesk === "object" ? { directLink: m.droiddesk.directLink === true } : null,
+      // Andromon Companion adds an "andromon" object (other LocalSend apps don't); "droiddesk" is the same
+      // object from a companion installed under the app's old name.
+      companion: ext(m) ? { directLink: ext(m).directLink === true } : null,
       seen: Date.now(),
     };
     this.devices.set(fingerprint, dev);
@@ -438,7 +443,7 @@ class LocalSend {
 
   // ---------- client (sending) ----------
   request(dev, method, pathname, body, { timeout = 10_000, stream, length, onSocket, agent = false } = {}) {
-    if (dev.protocol !== "https") return Promise.reject(new Error(`${dev.alias} has encryption turned off. Turn on "Encryption" in LocalSend's settings to use it with Droid Desk.`));
+    if (dev.protocol !== "https") return Promise.reject(new Error(`${dev.alias} has encryption turned off. Turn on "Encryption" in LocalSend's settings to use it with Andromon.`));
     return new Promise((resolve, reject) => {
       const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
       const req = https.request({
@@ -486,12 +491,12 @@ class LocalSend {
       netlink.localLink(),
       dev.companion && dev.protocol === "https" ? this.request(dev, "GET", `${API}/info`, undefined, { timeout: 4000 }).catch(() => null) : null,
     ]);
-    const w = info?.json?.droiddesk?.wifi;
+    const w = ext(info?.json)?.wifi;
     const phone = w && typeof w === "object" ? {
       band: str(w.band, 10) || null, linkMbps: Number(w.linkMbps) || null, txMbps: Number(w.txMbps) || null,
       rssi: Number.isFinite(Number(w.rssi)) ? Number(w.rssi) : null,
     } : null;
-    if (info?.json?.droiddesk && dev.companion) dev.companion.directLink = info.json.droiddesk.directLink === true;
+    if (ext(info?.json) && dev.companion) dev.companion.directLink = ext(info.json).directLink === true;
     const value = { pc, phone, estimateMBps: netlink.estimateMBps(pc, phone) };
     this.linkCache.set(dev.fingerprint, { at: Date.now(), value });
     return value;
@@ -555,7 +560,7 @@ class LocalSend {
 
   /**
    * Sends files to a device. [method]: "lan" — over the current Wi‑Fi (works with any
-   * LocalSend-compatible app); "direct" — Droid Desk Companion's Direct link; "auto" — Direct link
+   * LocalSend-compatible app); "direct" — Andromon Companion's Direct link; "auto" — Direct link
    * for big transfers when the current Wi‑Fi looks slow, otherwise "lan".
    */
   async sendFiles(fingerprint, filePaths, method = "auto") {
@@ -581,14 +586,14 @@ class LocalSend {
     };
     const stage = (extra) => this.emit({ ...base(), received: sent, ...extra });
     try {
-      if (method === "direct" && !dev.companion) throw new Error(`Direct link needs Droid Desk Companion on ${dev.alias}. Choose "Same Wi‑Fi" to send to this device.`);
-      if (method === "direct" && !dev.companion.directLink) throw new Error(`Direct link is off or unavailable on ${dev.alias}. Check the Receive screen in Droid Desk Companion, or choose "Same Wi‑Fi".`);
+      if (method === "direct" && !dev.companion) throw new Error(`Direct link needs Andromon Companion on ${dev.alias}. Choose "Same Wi‑Fi" to send to this device.`);
+      if (method === "direct" && !dev.companion.directLink) throw new Error(`Direct link is off or unavailable on ${dev.alias}. Check the Receive screen in Andromon Companion, or choose "Same Wi‑Fi".`);
       const wantDirect = await this.useDirect(dev, total, method);
       stage({ waiting: true, direct: wantDirect });
       const prep = await this.request(dev, "POST", `${API}/prepare-upload`, {
         info: this.info(),
         files: Object.fromEntries(files.map((f) => [f.id, { id: f.id, fileName: f.fileName, size: f.size, fileType: f.fileType, metadata: { modified: f.modified } }])),
-        ...(wantDirect ? { droiddesk: { directLink: true } } : {}),
+        ...(wantDirect ? { andromon: { directLink: true }, droiddesk: { directLink: true } } : {}), // old name too, for an older companion
       }, { timeout: CONSENT_TIMEOUT_MS + 45_000 });
       if (out.cancelled) throw new Error("Cancelled");
       if (prep.status === 204) return { sent: 0, skipped: files.length };
@@ -600,7 +605,7 @@ class LocalSend {
       out.sessionId = sessionId;
 
       if (wantDirect) {
-        const dl = prep.json.droiddesk;
+        const dl = ext(prep.json);
         if (dl?.directLink && typeof dl.directLink === "object") {
           try {
             const j = await this.directJoin(dev, dl.directLink, out, stage);

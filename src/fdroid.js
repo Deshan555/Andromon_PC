@@ -16,7 +16,7 @@ const PLAY = "com.android.vending";
 
 export function initFdroid(base) {
   const { $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, getAdb } = base;
-  const api = globalThis.droidDesk?.fdroid || null;
+  const api = globalThis.andromon?.fdroid || null;
   const s = {
     status: null,
     q: "", category: "", sort: "updated", view: "all", // view: "all" | "phone" | "updates"
@@ -108,7 +108,7 @@ export function initFdroid(base) {
     progressTo = (ev) => { if (ev.pkg === pkg) onStep(`Downloading… ${fmtSize(ev.done)}${ev.total ? ` of ${fmtSize(ev.total)}` : ""}`); };
     let got;
     try { got = await api.fetch(pkg, code); } finally { progressTo = null; }
-    const remote = `/data/local/tmp/droiddesk-fd-${Date.now()}.apk`;
+    const remote = `/data/local/tmp/andromon-fd-${Date.now()}.apk`;
     let off = 0;
     const stream = new ReadableStream({
       async pull(c) {
@@ -165,7 +165,7 @@ export function initFdroid(base) {
   async function load() {
     const root = $("fdRoot");
     if (!api) {
-      root.replaceChildren(el("div", { className: "card" }, h2("F-Droid"), para("The catalogue is downloaded and checked by a program on this computer, so it's only available in the Droid Desk desktop app.")));
+      root.replaceChildren(el("div", { className: "card" }, h2("F-Droid"), para("The catalogue is downloaded and checked by a program on this computer, so it's only available in the Andromon desktop app.")));
       return;
     }
     if (s.working) return; // keep the running download's progress on screen
@@ -191,10 +191,10 @@ export function initFdroid(base) {
     $("fdRoot").replaceChildren(el("div", { className: "card" },
       h2("Free and open-source apps"),
       para("F-Droid is a catalogue of several thousand free and open-source Android apps: no ads from the store, no account, and every app is built from its public source code. " +
-        "Droid Desk downloads F-Droid's catalogue to this computer, lets you search it, and installs the apps you choose on the phone over the cable or Wi‑Fi."),
+        "Andromon downloads F-Droid's catalogue to this computer, lets you search it, and installs the apps you choose on the phone over the cable or Wi‑Fi."),
       el("div", { className: "toolbar", style: "margin:0" }, get), progress,
       el("p", { className: "muted small", style: "margin:14px 0 0" },
-        "F-Droid is an independent community project (f-droid.org); Droid Desk isn't part of it. The catalogue and the apps are downloaded only from f-droid.org. " +
+        "F-Droid is an independent community project (f-droid.org); Andromon isn't part of it. The catalogue and the apps are downloaded only from f-droid.org. " +
         "The catalogue is checked against F-Droid's signature, and every app against the catalogue, before anything is used.")));
   }
 

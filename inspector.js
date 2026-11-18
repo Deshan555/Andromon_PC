@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Droid Desk — API inspector (App testing › API calls). Main process only.
+// Andromon — API inspector (App testing › API calls). Main process only.
 //
 // An HTTP proxy on 127.0.0.1 that the phone uses as its system proxy (through an `adb reverse`
 // set up by the page). It forwards every request and keeps a copy for display:
@@ -79,10 +79,10 @@ function signCert({ subject, issuer, publicKey, signKey, notBefore, notAfter, ex
   return seq(tbs, SIG_ALG, bitString(signature));
 }
 
-const CA_NAME = "Droid Desk API inspector CA";
+const CA_NAME = "Andromon API inspector CA";
 function createCa() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const nm = name(CA_NAME, "Droid Desk");
+  const nm = name(CA_NAME, "Andromon");
   const ski = keyId(publicKey);
   const now = Date.now();
   const certDer = signCert({
@@ -321,7 +321,7 @@ class Inspector {
     } catch {
       if (!secure && req.url.startsWith("/")) { // someone opened the proxy itself
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-        res.end("Droid Desk API inspector is running. Point the phone's proxy here.\n");
+        res.end("Andromon API inspector is running. Point the phone's proxy here.\n");
         return;
       }
       res.writeHead(400); res.end(); return;
@@ -351,7 +351,7 @@ class Inspector {
       finished = true;
       e.error = errText(err); e.end = now(); this.touch(e);
       if (!res.headersSent) {
-        try { res.writeHead(502, { "content-type": "text/plain; charset=utf-8", "x-droiddesk-error": "1" }); res.end(`Droid Desk proxy: ${e.error}\n`); } catch {}
+        try { res.writeHead(502, { "content-type": "text/plain; charset=utf-8", "x-andromon-error": "1" }); res.end(`Andromon proxy: ${e.error}\n`); } catch {}
       } else { try { res.destroy(); } catch {} }
       try { up.destroy(); } catch {}
     };
@@ -457,7 +457,7 @@ class Inspector {
         if (/alert|unknown ca|certificate|bad_certificate|handshake/i.test(msg) && !t.__ddRecorded) {
           t.__ddRecorded = true;
           this.newEntry({ kind: "tls-error", method: "CONNECT", scheme: "https", host: hp.host, port: hp.port, path: "", url: `${hp.host}:${hp.port}`,
-            error: "The app refused Droid Desk's certificate (it doesn't trust the CA, or it pins its certificate).", end: now() });
+            error: "The app refused Andromon's certificate (it doesn't trust the CA, or it pins its certificate).", end: now() });
         }
         try { t.destroy(); } catch {}
       });

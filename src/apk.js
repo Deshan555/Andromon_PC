@@ -1,4 +1,4 @@
-// Droid Desk — reads app details out of .apk files and split-APK bundles (.apks / .xapk / .apkm)
+// Andromon — reads app details out of .apk files and split-APK bundles (.apks / .xapk / .apkm)
 // before they are installed: name, icon, package, version, SDK levels, permissions and splits.
 //
 // An APK is a zip. AndroidManifest.xml inside it is "binary XML" (AXML), and labels/icons point into

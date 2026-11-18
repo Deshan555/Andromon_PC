@@ -41,7 +41,7 @@ export function mount(root, ctx) {
   const addBtn = el("button", { className: "btn primary sm", type: "button", textContent: "Add another phone (USB)" });
   addBtn.onclick = async () => {
     clearError();
-    if (!ctx.openExtraUsbPhone) { showError("Adding phones needs the Droid Desk desktop app."); return; }
+    if (!ctx.openExtraUsbPhone) { showError("Adding phones needs the Andromon desktop app."); return; }
     ctx.busy(addBtn, true, "Connecting…");
     try {
       const a = await ctx.openExtraUsbPhone(addBtn);

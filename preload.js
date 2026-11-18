@@ -1,4 +1,4 @@
-// Droid Desk — preload. Exposes a small, fixed API to the sandboxed UI for Wi‑Fi transfer
+// Andromon — preload. Exposes a small, fixed API to the sandboxed UI for Wi‑Fi transfer
 // (LocalSend protocol, implemented in localsend.js in the main process). No Node.js APIs leak through.
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
@@ -10,7 +10,7 @@ const call = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch((e
 // The phone's Android level and CPU types, for choosing an app version that fits (F-Droid page).
 const fdPhone = (p) => (p && Number(p.sdk) > 0 ? { sdk: Number(p.sdk), abis: Array.from(p.abis || [], String) } : null);
 
-contextBridge.exposeInMainWorld("droidDesk", {
+contextBridge.exposeInMainWorld("andromon", {
   // Stops any adb server on this PC so WebUSB can claim the phone.
   adb: { release: () => call("adb:release") },
   // Screen mirror › Keep on top: the window stays above other windows.
@@ -152,7 +152,7 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("fd:event", h);
     },
   },
-  // Settings page: where saved files go, and the size of what Droid Desk has downloaded (appsettings.js).
+  // Settings page: where saved files go, and the size of what Andromon has downloaded (appsettings.js).
   app: {
     info: () => call("app:info"),
     openData: () => call("app:openData"),
@@ -180,7 +180,7 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("upd:event", h);
     },
   },
-  // Settings › This computer: the tools Droid Desk can use (Java, adb…) and whether they are installed (requirements.js).
+  // Settings › This computer: the tools Andromon can use (Java, adb…) and whether they are installed (requirements.js).
   system: {
     requirements: (force) => call("sys:requirements", !!force),
     openPage: (id) => call("sys:openPage", String(id)),
@@ -198,7 +198,7 @@ contextBridge.exposeInMainWorld("droidDesk", {
     stop: () => call("wifi:stop"),
     scan: () => call("wifi:scan"),
     // Opens a native file picker in the main process and sends the chosen files.
-    // method: "auto" | "lan" (same Wi‑Fi) | "direct" (Droid Desk Companion's Direct link)
+    // method: "auto" | "lan" (same Wi‑Fi) | "direct" (Andromon Companion's Direct link)
     pickAndSend: (fingerprint, method) => call("wifi:pickAndSend", String(fingerprint), String(method || "")),
     // Files dropped onto the window: only their paths cross the bridge.
     sendFiles: (fingerprint, files, method) => call("wifi:sendPaths", String(fingerprint),
@@ -220,10 +220,10 @@ contextBridge.exposeInMainWorld("droidDesk", {
 
 // Port-forwarding connections (devnet) go to the page the same way.
 ipcRenderer.on("devnet:port", (e, meta) => {
-  window.postMessage({ source: "droiddesk-devnet", meta }, window.location.origin, e.ports);
+  window.postMessage({ source: "andromon-devnet", meta }, window.location.origin, e.ports);
 });
 
 // Hand the wireless-ADB MessagePort to the page (ports can't cross contextBridge directly).
 ipcRenderer.on("wadb:port", (e, meta) => {
-  window.postMessage({ source: "droiddesk-wadb", meta }, window.location.origin, e.ports);
+  window.postMessage({ source: "andromon-wadb", meta }, window.location.origin, e.ports);
 });

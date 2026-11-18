@@ -1,6 +1,6 @@
 {
-  "name": "droid-desk",
-  "productName": "Droid Desk",
+  "name": "andromon",
+  "productName": "Andromon",
   "version": "0.1.0",
   "description": "Android phone manager for Windows, macOS and Linux (ADB over USB)",
   "main": "main.js",
@@ -31,8 +31,8 @@
     "qrcode-generator": "1.4.4"
   },
   "build": {
-    "appId": "dev.droiddesk.app",
-    "productName": "Droid Desk",
+    "appId": "dev.andromon.app",
+    "productName": "Andromon",
     "files": [
       "main.js",
       "preload.js",
@@ -95,14 +95,14 @@
       "include": "build/installer.nsh",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Droid Desk",
-      "uninstallDisplayName": "Droid Desk",
+      "shortcutName": "Andromon",
+      "uninstallDisplayName": "Andromon",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "Droid-Desk-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Andromon-Setup-${version}-${arch}.${ext}"
     },
-    "artifactName": "Droid-Desk-${version}-${arch}.${ext}",
-    "copyright": "Droid Desk",
+    "artifactName": "Andromon-${version}-${arch}.${ext}",
+    "copyright": "Andromon",
     "dmg": {
       "title": "Install ${productName}",
       "background": "build/background.png",
@@ -141,7 +141,7 @@
       ],
       "category": "Utility",
       "icon": "build/icon.png",
-      "executableName": "droid-desk",
+      "executableName": "andromon",
       "synopsis": "Android phone manager",
       "maintainer": "Deshan555 <Deshan555@users.noreply.github.com>",
       "syncDesktopName": true
@@ -154,5 +154,5 @@
     }
   },
   "homepage": "https://github.com/Deshan555/Andromon_PC",
-  "desktopName": "droid-desk.desktop"
+  "desktopName": "andromon.desktop"
 }

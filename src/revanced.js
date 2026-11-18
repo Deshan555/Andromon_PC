@@ -4,7 +4,7 @@
 // page: what is installed, which app, which patches, progress, install.
 //
 // The app to patch comes from the phone (when it is installed there as one full APK) or from an
-// .apk file the person drops here. Droid Desk never downloads the app itself.
+// .apk file the person drops here. Andromon never downloads the app itself.
 //
 // Everything read from the phone or from ReVanced's lists is untrusted: it goes in with
 // textContent, never innerHTML.
@@ -32,7 +32,7 @@ const byVersion = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 
 export function initRevanced(base) {
   const { $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, appIdent, getAdb } = base;
-  const api = globalThis.droidDesk?.revanced || null;
+  const api = globalThis.andromon?.revanced || null;
   const s = {
     status: null, patches: null, apps: [], // apps: [{ pkg, patches, versions, best }]
     phone: null,                           // { serial, installed: Map pkg -> { version, paths }, maker }
@@ -111,7 +111,7 @@ export function initRevanced(base) {
 
   // Sends a file kept by the main process ("out", "manager", "gmscore") to the phone and installs it.
   async function installFromPc(which, size, label, onStep) {
-    const remote = `/data/local/tmp/droiddesk-rv-${Date.now()}.apk`;
+    const remote = `/data/local/tmp/andromon-rv-${Date.now()}.apk`;
     let off = 0;
     const stream = new ReadableStream({
       async pull(c) {
@@ -153,7 +153,7 @@ export function initRevanced(base) {
   async function load(force = false) {
     const root = $("rvRoot");
     if (!api) {
-      root.replaceChildren(el("div", { className: "card" }, h2("ReVanced"), para("Patching runs a program on this computer, so it's only available in the Droid Desk desktop app.")));
+      root.replaceChildren(el("div", { className: "card" }, h2("ReVanced"), para("Patching runs a program on this computer, so it's only available in the Andromon desktop app.")));
       return;
     }
     if (s.working) return; // a download or patch is running: keep its progress on screen
@@ -181,7 +181,7 @@ export function initRevanced(base) {
     const badge = el("span", { className: `badge ${ready ? "on" : "neutral"}`, textContent: ready ? "Ready" : "Not set up" });
     card.append(el("div", { className: "toolbar", style: "justify-content:space-between;margin-bottom:8px" }, el("h2", { style: "margin:0", textContent: "ReVanced patcher" }), badge));
     card.append(para("ReVanced changes an app by patching its APK: for example YouTube without ads and with background play. " +
-      "Droid Desk runs ReVanced's own patcher on this computer and installs the result on the phone."));
+      "Andromon runs ReVanced's own patcher on this computer and installs the result on the phone."));
 
     const rows = el("div", { className: "grid", style: "margin-bottom:14px" });
     const stat = (k, v) => el("div", { className: "stat" }, el("div", { className: "k", textContent: k }), el("div", { className: "v", textContent: v }));
@@ -219,8 +219,8 @@ export function initRevanced(base) {
     }
     card.append(bar, progress);
     card.append(el("p", { className: "muted small", style: "margin:14px 0 0" },
-      "ReVanced is an independent open-source project (revanced.app); Droid Desk isn't part of it. Its tools are downloaded only from revanced.app and github.com/ReVanced, " +
-      "and the patches are checked against ReVanced's signature. Droid Desk never downloads the apps themselves. " +
+      "ReVanced is an independent open-source project (revanced.app); Andromon isn't part of it. Its tools are downloaded only from revanced.app and github.com/ReVanced, " +
+      "and the patches are checked against ReVanced's signature. Andromon never downloads the apps themselves. " +
       "A patched app isn't supported by its maker and may go against that app's terms of use."));
     return card;
   }
