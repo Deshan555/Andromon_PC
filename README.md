@@ -186,6 +186,7 @@ cd pc
 npm install
 npm start          # builds src/app.js -> renderer/app.js, then opens the desktop app
 npm run web        # same UI in Chrome/Edge at http://localhost:8000 (no Electron)
+npm run build:web  # the web version, ready to upload, in dist/web/ (and dist/andromon-web.zip)
 npm run build:companion   # rebuild the companion (Andromon-android cloned next to this repo as ../android) and copy the APK to renderer/companion.apk
 npm run build:uihelper    # rebuild uihelper/ into renderer/ui-helper.jar (needs a JDK and the Android SDK)
 ```
