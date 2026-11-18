@@ -4506,6 +4506,30 @@ function renderMethod() {
   $("wifiMethodNote").textContent = METHOD_NOTES[wifiState.method] || "";
 }
 
+// "Show code": a QR code with this computer's addresses, for Andromon Companion's Send › Scan code
+// when the phone doesn't find the computer by itself (networks that block discovery). It only
+// carries the addresses and the port; the phone still checks who answers there before sending.
+let wifiCodeOpen = false;
+function renderWifiCode() {
+  const s = wifiState, btn = $("wifiCodeBtn"), box = $("wifiCode");
+  const ips = s.running ? (s.addresses || []) : [];
+  if (!ips.length) wifiCodeOpen = false;
+  btn.disabled = !ips.length;
+  btn.textContent = wifiCodeOpen ? "Hide code" : "Show code";
+  box.hidden = !wifiCodeOpen;
+  if (!wifiCodeOpen) { box.replaceChildren(); return; }
+  const text = `andromon://send?ip=${ips.join(",")}&port=${s.port || 53317}`;
+  if (box.dataset.text === text && box.firstChild) return;
+  box.dataset.text = text;
+  const img = qrImage(text);
+  img.alt = "Code with this computer's address";
+  box.replaceChildren(img, el("ol", { className: "small" },
+    el("li", {}, "On the phone, open ", el("b", { textContent: "Andromon Companion" }), " and tap ", el("b", { textContent: "Receive" }), " in the bottom bar."),
+    el("li", {}, "Switch to ", el("b", { textContent: "Send" }), " and tap ", el("b", { textContent: "Scan code" }), "."),
+    el("li", {}, "Point the camera at this code. This computer then appears under “Send to”."),
+    el("li", { className: "muted" }, `Or type the address yourself: ${ips.join(" or ")}`)));
+}
+
 function renderWifi() {
   const s = wifiState;
   $("wifiSwitch").set(s.running);
@@ -4514,6 +4538,7 @@ function renderWifi() {
     : "Off. Turn on to send and receive files over Wi‑Fi.";
   $("wifiScan").disabled = !s.running;
   $("wifiFolder").textContent = s.saveDir || "";
+  renderWifiCode();
   renderMethod();
   const pc = s.running ? s.link?.pc : null;
   $("wifiLink").hidden = !pc;
@@ -4659,6 +4684,7 @@ if (wifiApi) {
   $("wifiScan").addEventListener("click", () => { wifiApi.scan().catch(showError); toast("Looking for devices…"); setTimeout(refreshWifiLink, 3000); });
   for (const b of document.querySelectorAll('[data-panel="wifi"] .to-settings')) b.addEventListener("click", () => show("settings"));
   $("wifiOpen").addEventListener("click", () => wifiApi.openFolder().catch(showError));
+  $("wifiCodeBtn").addEventListener("click", () => { wifiCodeOpen = !wifiCodeOpen; renderWifiCode(); });
   wifiApi.onEvent((ev) => {
     switch (ev.type) {
       case "devices": {

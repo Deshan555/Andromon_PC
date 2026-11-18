@@ -164,6 +164,8 @@ The **SD card recovery** page (Files & media, works without a phone) recovers de
 
 ### Wi‑Fi transfer (LocalSend)
 
+**Show code:** when a phone running Andromon Companion doesn't find this computer by itself (some networks block discovery), click **Show code** on the Wi‑Fi transfer page and scan it on the phone under Receive › Send › Scan code. The code is `andromon://send?ip=<this computer's addresses>&port=53317`; it carries no secret, and the phone still checks the certificate of whoever answers.
+
 - Off by default. Nothing listens on the network until you turn it on, and the listener stops when you turn it off or close the window.
 - HTTPS only. Andromon makes its own self-signed RSA-2048 certificate (stored in the app's data folder as `localsend-identity.json`). When sending, it pins the phone's certificate to the fingerprint the phone announced, and refuses on a mismatch. Phones with LocalSend's "Encryption" turned off are listed but can't be used.
 - Every incoming transfer needs **Accept** in the window (auto-declined after 60 s). Uploads must match the session, a random per-file token and the sender's IP, and can't exceed the size announced up front. File names are sanitised and kept inside the download folder (default `Downloads/Andromon`, changeable).
