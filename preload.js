@@ -158,6 +158,7 @@ contextBridge.exposeInMainWorld("andromon", {
   // Settings page: where saved files go, and the size of what Andromon has downloaded (appsettings.js).
   app: {
     info: () => call("app:info"),
+    computer: () => call("app:computer"),
     openData: () => call("app:openData"),
     saveOpen: () => call("app:saveOpen"),
     saveAsk: (ask) => call("app:saveAsk", !!ask),

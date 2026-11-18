@@ -1785,7 +1785,7 @@ const COMPANION_PKG = "dev.andromon.companion";
 // The same app installed under the product's old name (Droid Desk Companion); replaced by the one above.
 const LEGACY_COMPANION_PKG = "dev.droiddesk.companion";
 const COMPANION_SOCKET = "andromon_companion";
-const COMPANION_VERSION = 29; // keep in sync with versionCode in android/app/build.gradle.kts
+const COMPANION_VERSION = 32; // keep in sync with versionCode in android/app/build.gradle.kts
 let companionInfo = null;
 
 class CompanionUnavailable extends Error {
@@ -1811,8 +1811,19 @@ async function companionCallRaw(method, params) {
   }
 }
 
+// The companion's PC link screen names the computer it is linked to: told once per phone connection.
+// Companions before version 32 answer "Unknown method", which is fine.
+const helloSent = new WeakSet();
+function sayHello() {
+  const a = adb;
+  if (!a || helloSent.has(a)) return;
+  helloSent.add(a);
+  const me = globalThis.andromon?.app?.computer?.() || Promise.resolve({ name: "", os: /Mac/.test(navigator.platform) ? "macOS" : /Win/.test(navigator.platform) ? "Windows" : "Linux", app: "web" });
+  me.then((c) => companionCall("link.hello", { computer: c.name || "", os: c.os || "", app: `Andromon ${c.app || ""}`.trim() })).catch((e) => { if (e instanceof CompanionUnavailable) helloSent.delete(a); }); // not running yet: try again next call
+}
 // Call the companion, restarting it once if it stopped (it exits after 15 idle minutes).
 async function cc(method, params) {
+  sayHello();
   try { return await companionCall(method, params); }
   catch (e) {
     if (!(e instanceof CompanionUnavailable)) throw e;
@@ -1824,6 +1835,7 @@ async function cc(method, params) {
 async function companionStatus() {
   try {
     const info = await companionCall("info");
+    if (info.version >= COMPANION_VERSION) sayHello();
     return { state: info.version >= COMPANION_VERSION ? "ready" : "outdated", info };
   } catch (e) { if (!(e instanceof CompanionUnavailable)) throw e; }
   const path = (await sh(`pm path ${COMPANION_PKG}`)).trim();
@@ -2597,7 +2609,12 @@ async function startCallAlerts() {
   } catch (e) {
     if (!live()) return;
     if (e?.outdated) setCallAlertState("outdated");
-    else setCallAlertState("error", e?.message || String(e));
+    else {
+      setCallAlertState("error", e?.message || String(e));
+      // Often the companion was just stopping or starting: try again a little later, as long as
+      // this phone is still the one connected and nothing else restarted the alerts meanwhile.
+      setTimeout(() => { if (live() && callAlerts.state === "error") startCallAlerts(); }, 15_000);
+    }
   }
 }
 
@@ -2819,6 +2836,7 @@ function renderNotifCard() {
   if (!notifs.on) text = "Off. Turn on in Settings to see the phone's notifications here (WhatsApp, SMS, email…) and answer them from this computer. This gives Andromon Companion “Notification access” on the phone.";
   else if (!adb) text = "Connect a phone to see its notifications.";
   else if (callAlerts.state === "missing" || callAlerts.state === "outdated") text = callAlerts.state === "missing" ? "Needs the Andromon Companion app on the phone." : "Needs a newer Andromon Companion on the phone.";
+  else if (!st && callAlerts.state === "error") text = `Couldn't reach Andromon Companion on the phone${callAlerts.detail ? ` (${callAlerts.detail})` : ""}. Trying again shortly…`;
   else if (!st) text = "Starting…";
   else if (!st.access) text = "The phone hasn't given Andromon Companion “Notification access” yet.";
   else text = "On. New notifications pop up here; reply, use their buttons or dismiss them on the phone.";

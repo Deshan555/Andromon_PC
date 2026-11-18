@@ -54,6 +54,12 @@ function setupAppSettings(handle, { userData, readSettings, writeSettings, origi
   };
 
   handle("app:info", () => info());
+  // This computer's name and system, which the phone's companion shows on its PC link screen.
+  handle("app:computer", () => ({
+    name: require("node:os").hostname().replace(/\.local$/i, "").slice(0, 80),
+    os: { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] || process.platform,
+    app: require("electron").app.getVersion(),
+  }));
   handle("app:openData", () => open(userData));
   handle("app:saveOpen", () => open(save().dir));
   handle("app:saveAsk", (_e, ask) => { writeSettings({ saveAsk: !!ask }); return save(); });
