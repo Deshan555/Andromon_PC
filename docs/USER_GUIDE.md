@@ -4,7 +4,7 @@ Andromon manages an Android phone from a Windows or macOS computer: messages, co
 
 The companion app on the phone has its own guide: [Andromon Companion user guide](https://github.com/Deshan555/Andromon-android/blob/main/docs/USER_GUIDE.md).
 
-The screenshots were taken with an Android 12 emulator and made-up sample data.
+The screenshots were taken with the Mac app in full screen, connected to a real phone (Samsung Galaxy S20, Android 13), with **Blur personal data** turned on (Settings › Accessibility). The photo thumbnails were blurred as well.
 
 ## Contents
 
