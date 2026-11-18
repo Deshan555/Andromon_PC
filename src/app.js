@@ -216,6 +216,47 @@ if (!AdbDaemonWebUsbDeviceManager.BROWSER) {
   showError("WebUSB is not available here. Use the Andromon desktop app, or open this page in desktop Chrome/Edge from http://localhost.");
 }
 
+// ---------- running as a web page (npm run web): what to install first, and how to set up ----------
+// The desktop app brings everything with it. In a browser a few things have to be in place first,
+// and they differ per system, so the welcome card spells them out for the computer this runs on.
+if (!globalThis.andromon) {
+  const ua = navigator.userAgent;
+  const os = /Windows/i.test(ua) ? "win" : /Mac OS X|Macintosh/i.test(ua) ? "mac" : /CrOS/i.test(ua) ? "cros" : /Linux/i.test(ua) ? "linux" : "other";
+  const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noopener noreferrer" });
+  const li = (...kids) => el("li", {}, ...kids);
+  const code = (t) => el("code", { textContent: t });
+  const b = (t) => el("b", { textContent: t });
+  const first = [
+    li(b("Google Chrome or Microsoft Edge"), " on this computer. Firefox and Safari can't reach a phone over USB.",
+      AdbDaemonWebUsbDeviceManager.BROWSER ? " This browser is fine." : " This browser can't, so open the page in one of those."),
+  ];
+  if (os === "win") first.push(li(b("The phone's USB driver. "), "Windows only lets the browser use the phone once its driver is installed. Get it from the phone's maker (Samsung, Xiaomi, Motorola…) or use Google's: ",
+    a("USB drivers for Android phones", "https://developer.android.com/studio/run/oem-usb"), "."));
+  else if (os === "linux") first.push(li(b("Permission to use the phone over USB. "), "On Debian or Ubuntu run ", code("sudo apt install android-sdk-platform-tools-common"),
+    " (other systems: the ", code("android-udev"), " package), then unplug the phone and plug it in again. ",
+    a("More about this", "https://developer.android.com/studio/run/device#setting-up"), "."));
+  else if (os === "mac" || os === "cros") first.push(li(b("Nothing else. "), os === "mac" ? "A Mac needs no driver for Android phones." : "A Chromebook needs no driver for Android phones."));
+  first.push(
+    li(b("No other program holding the phone. "), "If Android Studio, the Android SDK tools or scrcpy are installed, close them and run ", code("adb kill-server"),
+      " in a terminal. Only one program at a time can use the phone's USB connection."),
+    li(b("Nothing to install on the phone by hand. "), "The first time a tool needs it, Andromon puts its small helper app, Andromon Companion, on the phone and tells you."));
+  const setup = [
+    li("On the phone open ", b("Settings › About phone"), " and tap ", b("Build number"), " 7 times. This shows the developer options."),
+    li("Open ", b("Settings › System › Developer options"), " and turn on ", b("USB debugging"), ". On Xiaomi phones also turn on ", b("Install via USB"), "."),
+    li("Plug the phone into this computer with a USB cable that carries data (some cables only charge). If the phone asks what the cable is for, pick ", b("File transfer"), "."),
+    li("Click ", b("Connect phone"), " (the plug button at the top right), pick your phone in the list and click ", b("Connect"), "."),
+    li("On the phone, tick ", b("Always allow from this computer"), " and tap ", b("Allow"), ". The Overview opens when it is connected."),
+  ];
+  $("intro").replaceChildren(
+    el("h2", { textContent: "Set up Andromon in your browser" }),
+    el("div", { className: "muted", textContent: "This page talks to the phone directly over USB. Two short lists get you there: what this computer needs first, then how to connect." }),
+    el("h3", { style: "margin:18px 0 0", textContent: "1. Install first" }),
+    el("ol", { className: "steps" }, ...first),
+    el("h3", { style: "margin:18px 0 0", textContent: "2. Set up and connect" }),
+    el("ol", { className: "steps" }, ...setup),
+    el("p", { className: "muted", style: "margin-bottom:0", textContent: "Connecting over Wi‑Fi, Wi‑Fi file transfer, F-Droid, ReVanced, backups and SD card recovery need the Andromon desktop app; everything else works here." }));
+}
+
 // The header's Connect phone button is an icon: while it works, a spinner takes the icon's place and
 // what it is doing ("Connecting…") goes in its tooltip and its name for screen readers.
 const connectBtnUi = (() => {
