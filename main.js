@@ -285,7 +285,8 @@ function setupWifi() {
     if (!url.startsWith(ORIGIN + "/")) throw new Error("Not allowed");
     return fn(event, ...args);
   });
-  handle("adb:release", () => releaseAdb());
+  handle("adb:release", (_e, serial) => releaseAdb(typeof serial === "string" ? serial : ""));
+  handle("adb:guard", (event, on, serial) => guardAdb(event.sender, !!on, typeof serial === "string" ? serial : ""));
   // Screen mirror › Keep on top
   handle("win:setOnTop", (event, on) => { BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(!!on); return !!on; });
   setupWadb(handle);
@@ -299,7 +300,7 @@ function setupWifi() {
   fdroid = setupFdroid(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // F-Droid page
   setupAppSettings(handle, { userData: app.getPath("userData"), readSettings, writeSettings, origin: ORIGIN, getWindow: () => mainWindow }); // Settings page
   setupUpdater(handle, { readSettings, writeSettings, getWindow: () => mainWindow }); // update check (Settings › About)
-  setupRequirements(handle, { findJava: revanced.findJava, adbCandidates, minJava: revanced.minJava }); // Settings › This computer
+  setupRequirements(handle, { findJava: revanced.findJava, adbCandidates, minJava: revanced.minJava, readSettings, writeSettings, getWindow: () => mainWindow }); // Settings › This computer
   setupRecovery(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // SD card recovery page (PhotoRec)
   const method = (m) => (["auto", "lan", "direct"].includes(m) ? m : readSettings().wifiMethod || "auto");
   handle("wifi:status", () => ({ ...wifi.status(), method: method() }));
@@ -611,7 +612,9 @@ function run(cmd, args, timeout = 8000) {
   return new Promise((resolve) => execFile(cmd, args, { timeout, windowsHide: true },
     (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || "") + String(stderr || "") })));
 }
+// Every adb on this computer, the one chosen in Settings › This computer first.
 function adbCandidates() {
+  const custom = readSettings().adbPath;
   const win = process.platform === "win32";
   const exe = win ? "adb.exe" : "adb";
   const home = os.homedir();
@@ -623,19 +626,121 @@ function adbCandidates() {
     path.join(home, "scoop/shims"), "C:\\platform-tools", path.join(process.env.ProgramData || "C:\\ProgramData", "chocolatey/bin"));
   else dirs.push(path.join(home, "Android/Sdk/platform-tools"), "/usr/local/bin", "/usr/bin");
   dirs.push(...(process.env.PATH || "").split(path.delimiter).filter(Boolean));
-  return [...new Set(dirs.map((d) => path.join(d, exe)))].filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+  return [...new Set([...(typeof custom === "string" && custom ? [custom] : []), ...dirs.map((d) => path.join(d, exe))])]
+    .filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
 }
-async function releaseAdb() {
-  let killServer = false;
-  for (const bin of adbCandidates()) {
-    if ((await run(bin, ["kill-server"])).ok) { killServer = true; break; }
+// The programs that have this phone's ADB interface open (USB class ff/42/01), as [{ pid, name }].
+// macOS lists them in the IORegistry, Linux in /proc. Windows has no cheap way: [] there.
+async function adbHolders(serial) {
+  if (!serial) return [];
+  const found = new Map();
+  if (process.platform === "darwin") {
+    const { out } = await run("ioreg", ["-r", "-c", "IOUSBHostDevice", "-l", "-w0"], 8000);
+    // Walk the tree: a device ("USB Serial Number"), its ADB interface, and the user clients under it.
+    let devSerial = null, inAdb = false, adbDepth = -1, cls = null, sub = null, depth = 0;
+    for (const line of out.split("\n")) {
+      const node = line.match(/^([ |]*)\+-o (.*?)  <class (\w+)/);
+      if (node) {
+        depth = node[1].length;
+        if (node[3] === "IOUSBHostDevice") { devSerial = null; inAdb = false; }
+        if (inAdb && depth <= adbDepth) inAdb = false;
+        if (node[3] === "IOUSBHostInterface") { cls = sub = null; adbDepth = depth; inAdb = false; }
+        continue;
+      }
+      const prop = line.match(/"([^"]+)" = (.*)$/);
+      if (!prop) continue;
+      const [, k, v] = prop;
+      if (k === "USB Serial Number" && devSerial === null) devSerial = v.replace(/^"|"$/g, "");
+      if (k === "bInterfaceClass") cls = Number(v);
+      if (k === "bInterfaceSubClass") sub = Number(v);
+      if ((k === "bInterfaceClass" || k === "bInterfaceSubClass") && cls === 255 && sub === 66 && devSerial === serial) inAdb = true;
+      const who = k === "IOUserClientCreator" && inAdb && v.match(/pid (\d+), (.*?)"?$/);
+      if (who) found.set(Number(who[1]), who[2]);
+    }
+  } else if (process.platform === "linux") {
+    let node = null;
+    for (const d of fs.readdirSync("/sys/bus/usb/devices")) {
+      const base = path.join("/sys/bus/usb/devices", d);
+      try {
+        if (fs.readFileSync(path.join(base, "serial"), "utf8").trim() !== serial) continue;
+        const bus = Number(fs.readFileSync(path.join(base, "busnum"), "utf8")), dev = Number(fs.readFileSync(path.join(base, "devnum"), "utf8"));
+        node = `/dev/bus/usb/${String(bus).padStart(3, "0")}/${String(dev).padStart(3, "0")}`;
+        break;
+      } catch {}
+    }
+    if (node) for (const pid of fs.readdirSync("/proc").filter((x) => /^\d+$/.test(x))) {
+      try {
+        const fdDir = `/proc/${pid}/fd`;
+        if (fs.readdirSync(fdDir).some((fd) => { try { return fs.readlinkSync(path.join(fdDir, fd)) === node; } catch { return false; } }))
+          found.set(Number(pid), fs.readFileSync(`/proc/${pid}/comm`, "utf8").trim());
+      } catch {} // other users' processes can't be read, and can't be closed by us either
+    }
   }
-  await new Promise((r) => setTimeout(r, 400));
-  // Whatever is still running (a server that ignored kill-server, or one whose adb isn't on this PC's PATH).
+  // Never this app itself (WebUSB lives in its main process, helpers are its children).
+  const ours = new Set([process.pid]);
+  const { out: ps } = await run("ps", ["-A", "-o", "pid=,ppid="], 5000);
+  const tree = ps.trim().split("\n").map((l) => l.trim().split(/\s+/).map(Number));
+  for (let grew = true; grew;) { grew = false; for (const [pid, ppid] of tree) if (ours.has(ppid) && !ours.has(pid)) { ours.add(pid); grew = true; } }
+  // Nor another copy of Andromon (the installed app next to one run from source): it is the person's own.
+  // "droid ?desk": an older copy installed under the app's previous name
+  const self = new RegExp(`^(andromon|droid ?desk|electron|${path.basename(process.execPath, ".exe").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(\\.exe)?$`, "i");
+  return [...found].filter(([pid, name]) => !ours.has(pid) && !self.test(name)).map(([pid, name]) => ({ pid, name }));
+}
+// A browser holding the phone is a WebADB page in one of its tabs: closing the whole browser would lose the
+// person's tabs, so it is only named and they close that tab themselves.
+const BROWSER_RE = /chrom|edge|brave|opera|vivaldi|arc|firefox|safari|yandex/i;
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+// Takes the phone away from every other program using its USB debugging connection: the adb servers of
+// the Android SDK / Android Studio / scrcpy / Vysor..., and any other tool that opened it. Returns what it closed.
+async function releaseAdb(serial) {
+  const holders = await adbHolders(serial).catch(() => []);
+  const browsers = [...new Set(holders.filter((h) => BROWSER_RE.test(h.name)).map((h) => h.name))];
+  const targets = holders.filter((h) => !BROWSER_RE.test(h.name));
+  let killServer = false;
+  // An adb server is asked to stop first, so its clients (Android Studio, scrcpy) see a clean shutdown.
+  if (!targets.length || targets.some((h) => /^adb(\.exe)?$/i.test(h.name))) {
+    for (const bin of adbCandidates()) {
+      if ((await run(bin, ["kill-server"])).ok) { killServer = true; break; }
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const closed = new Set();
+  for (const h of targets) {
+    if (!alive(h.pid)) { closed.add(h.name); continue; }
+    try { process.kill(h.pid, "SIGTERM"); } catch { continue; } // someone else's process: not ours to close
+    for (let i = 0; i < 10 && alive(h.pid); i++) await new Promise((r) => setTimeout(r, 100));
+    if (alive(h.pid)) try { process.kill(h.pid, "SIGKILL"); } catch {}
+    closed.add(h.name);
+  }
+  // Whatever is still running (a server that ignored kill-server, one whose adb isn't on this PC's PATH,
+  // or Windows, where the holders can't be listed).
   const forced = process.platform === "win32"
     ? (await run("taskkill", ["/F", "/T", "/IM", "adb.exe"])).ok
     : (await run("pkill", ["-x", "adb"])).ok;
-  return { killServer, forced };
+  if (forced || killServer) closed.add("adb");
+  return { closed: [...closed], browsers, killServer, forced };
+}
+// While a phone is connected, adb started by another program (Android Studio restarts it, scrcpy, a
+// terminal) is closed again every few seconds, so it can't reach the phone over USB or Wi‑Fi.
+// Andromon itself never runs adb: it talks to the phone directly (WebUSB, wadb.js).
+let adbGuard = null; // { timer, wc, off }
+function stopAdbGuard() {
+  if (!adbGuard) return;
+  clearInterval(adbGuard.timer);
+  for (const ev of ["did-navigate", "render-process-gone", "destroyed"]) adbGuard.wc.removeListener(ev, adbGuard.off);
+  adbGuard = null;
+}
+async function guardAdb(wc, on, serial) {
+  stopAdbGuard();
+  if (!on) return { on: false };
+  const sweep = () => (process.platform === "win32"
+    ? run("tasklist", ["/FI", "IMAGENAME eq adb.exe", "/NH"], 4000).then((r) => /adb\.exe/i.test(r.out) && run("taskkill", ["/F", "/IM", "adb.exe"]))
+    : run("pkill", ["-x", "adb"], 4000));
+  const off = () => stopAdbGuard(); // the page reloaded or closed: no connected phone left to guard
+  adbGuard = { timer: setInterval(sweep, 4000), wc, off };
+  for (const ev of ["did-navigate", "render-process-gone", "destroyed"]) wc.on(ev, off);
+  return { on: true, ...(await releaseAdb(serial)) };
 }
 
 app.whenReady().then(async () => {
@@ -651,7 +756,7 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on("before-quit", () => { wifi?.stop(); devnetStopAll(); inspector?.stop().catch(() => {}); revanced?.stop(); fdroid?.stop(); });
+app.on("before-quit", () => { stopAdbGuard(); wifi?.stop(); devnetStopAll(); inspector?.stop().catch(() => {}); revanced?.stop(); fdroid?.stop(); });
 
 app.on("window-all-closed", () => {
   wifi?.stop(); // never leave a network listener running without a window to ask for consent

@@ -165,8 +165,13 @@ export function initSettings(ctx) {
   }
 
   function phoneLinkSection() {
-    const rows = [row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
-      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; }))];
+    const rows = [];
+    if (ctx.usbAuto) rows.push(row("Connect when a phone is plugged in", "Connects as soon as a phone's USB cable is plugged in, and to a phone already plugged in when Andromon opens",
+      makeSwitch(ctx.usbAuto.get(), (on) => ctx.usbAuto.set(on))));
+    if (ctx.adbTakeover) rows.push(row("Keep other programs off the phone", "While a phone is connected, Andromon closes adb in other programs (Android SDK, Android Studio, scrcpy) so only it uses the phone",
+      makeSwitch(ctx.adbTakeover.get(), (on) => ctx.adbTakeover.set(on))));
+    rows.push(row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
+      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; })));
     if (ctx.wifiAuto) rows.push(row("Connect over Wi‑Fi automatically", "Connect to a phone you've paired as soon as it appears on the network",
       makeSwitch(ctx.wifiAuto.get(), (on) => ctx.wifiAuto.set(on))));
     rows.push(row("Turn on the phone RAM manager automatically", "Starts its helper on the phone each time a phone connects (see the Shizuku page)",
@@ -312,6 +317,10 @@ export function initSettings(ctx) {
       const buttons = [];
       if (it.install) buttons.push(action("Install", "Installing…", async () => { data.sys = await api.system.install(it.id); toast(`${it.name} is installed`); }, "primary"));
       if (it.page && it.state !== "ok") buttons.push(action(it.install ? "Download page" : "Get it", "Opening…", () => api.system.openPage(it.id)));
+      if (it.choose && api.system.adbChoose) {
+        buttons.push(action(it.custom ? "Change…" : "Choose adb…", "Choosing…", async () => { const s = await api.system.adbChoose(); if (s) { data.sys = s; toast("Andromon will use this adb"); } }));
+        if (it.custom) buttons.push(action("Find it by itself", "Resetting…", async () => { data.sys = await api.system.adbReset(); }));
+      }
       return el("div", { className: "set-row" },
         el("div", { className: "set-text" }, el("b", {}, it.name, " ", el("span", { className: `badge ${cls}`, textContent: label })),
           el("div", { className: "sub", textContent: it.why }), el("div", { className: "sub set-path", textContent: it.detail, title: it.detail })),

@@ -47,7 +47,7 @@ The screenshots were taken with an Android 12 emulator and made-up sample data.
 
 1. On the phone: **Settings › About phone**, tap **Build number** 7 times. This switches on Developer options.
 2. **Settings › System › Developer options**: turn on **USB debugging**.
-3. Plug in the cable, click **Connect phone** (the plug button at the top right), pick the phone, then tap **Allow** on the phone. Tick "Always allow from this computer" to skip this next time.
+3. Plug in the cable, click **Connect phone** (the plug button at the top right), pick the phone, then tap **Allow** on the phone. Tick "Always allow from this computer" to skip this next time. After the first time, Andromon connects by itself as soon as the phone is plugged in, or when it opens with the phone already plugged in. While the phone is connected, Andromon closes adb in other programs (Android SDK, Android Studio, scrcpy) so nothing else can use the phone. Both can be turned off in **Settings › Phone link**.
 
 ### Without a cable (Android 11 and newer)
 
@@ -340,7 +340,9 @@ Runs any `adb shell` command and shows its output. The chips under the box are r
 | **Appearance** | Mode | Light, dark, or the same as the computer. |
 | | Colour theme | Lime, Ocean, Sunset, Violet or Graphite: the colour of highlights, cards and the logo. |
 | | Collapse the sidebar | Shows only icons (also Ctrl/⌘ + B). |
-| **Phone link** | Call alerts | Incoming calls pop up on the computer. |
+| **Phone link** | Connect when a phone is plugged in | Connects without a click when a phone's cable is plugged in, and to a phone already plugged in when Andromon opens. A phone you disconnect yourself isn't connected again until it is unplugged. |
+| | Keep other programs off the phone | Desktop app. While a phone is connected, closes adb run by other programs (Android SDK, Android Studio, scrcpy, a terminal) and keeps closing it if it starts again. Never closes a browser (a WebADB tab is named so you can close it) or another copy of Andromon. Turn it off if you use Android Studio or `adb` alongside Andromon. |
+| | Call alerts | Incoming calls pop up on the computer. |
 | | Notification pop-ups | A pop-up for each new phone notification (when Notifications is on). |
 | | Connect over Wi‑Fi automatically | Connects to a paired phone as soon as it appears on the network. |
 | **Screen mirror** | Picture quality, Show, sound, screen off, frame rate | The defaults used each time mirroring starts; the same choices as on the mirror page. |

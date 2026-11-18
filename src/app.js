@@ -62,10 +62,16 @@ function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
+// The browser's own words when a USB read or write to the phone fails half-way.
+const isUsbTransferError = (e) => /transfer(In|Out)|transfer error has occurred/i.test(String(e?.message || e));
 function showError(e) {
   console.error(e);
   const box = $("errBox");
-  box.textContent = e instanceof Error ? e.message : String(e);
+  box.textContent = isUsbTransferError(e)
+    ? "The USB connection to the phone was interrupted. Usually another program took the phone over (Android Studio, " +
+      "an adb server, scrcpy): close it, run “adb kill-server” in a terminal, then connect again. A loose cable, " +
+      "a USB hub, or changing the phone's USB mode while connected does the same."
+    : e instanceof Error ? e.message : String(e);
   box.hidden = false;
 }
 function clearError() { $("errBox").hidden = true; }
@@ -226,19 +232,91 @@ $("connectBtn").addEventListener("click", async () => {
   try {
     const device = await AdbDaemonWebUsbDeviceManager.BROWSER.requestDevice();
     if (!device) return; // picker cancelled
+    if (usbConnecting) return toast("Already connecting to a phone…");
+    usbHeldBack.delete(device.serial); // asked for by hand: plugging it in again connects it again too
     connectBtnUi.start("Connecting…");
-    const connection = await connectUsb(device, connectBtnUi);
-    $("authBox").hidden = false;
-    const transport = await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore });
-    $("authBox").hidden = true;
-    startSession(transport, "Connected to " + device.serial);
+    usbConnecting = true;
+    startSession(await openUsbPhone(device, connectBtnUi), "Connected to " + device.serial);
   } catch (e) {
-    $("authBox").hidden = true;
     showError(e);
   } finally {
+    usbConnecting = false;
     connectBtnUi.stop();
   }
 });
+// Opens a USB phone and signs in to it (the phone may ask "Allow USB debugging?"). Returns the transport.
+// `release`: when another adb server holds the phone, stop it and try again (see connectUsb).
+let usbConnecting = false; // a USB connect is under way (button, plug-in or reconnect): one at a time
+async function openUsbPhone(device, btn, { release = true } = {}) {
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const connection = await connectUsb(device, btn, release);
+      $("authBox").hidden = false;
+      try { return await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore }); }
+      catch (e) {
+        // A phone left half-way through an earlier session (a reloaded page, another program) often fails
+        // the first read; opening the USB connection again clears it.
+        if (attempt || !isUsbTransferError(e)) throw e;
+        try { await device.raw.close(); } catch {}
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+  } finally {
+    $("authBox").hidden = true;
+  }
+}
+
+// ---------- connecting by itself when a phone is plugged in ----------
+// A phone plugged in (or already plugged in when the app opens) is connected without a click, and while
+// any phone is connected, adb run by other programs (the Android SDK, Android Studio, scrcpy) is closed so
+// only this app uses the phone. Both can be turned off in Settings › Phone link.
+const USB_AUTO_KEY = "andromon.usbAuto", TAKEOVER_KEY = "andromon.adbTakeover", LAST_USB_KEY = "andromon.lastUsb";
+const flagOn = (k) => { try { return localStorage.getItem(k) !== "0"; } catch { return true; } };
+const setFlag = (k, on) => { try { localStorage.setItem(k, on ? "1" : "0"); } catch {} return !!on; };
+const adbRelease = globalThis.andromon?.adb || null; // desktop app only
+// Serials disconnected on purpose: not taken again until they are unplugged.
+const usbHeldBack = new Set();
+async function autoConnectUsb(raw = null) {
+  const usb = AdbDaemonWebUsbDeviceManager.BROWSER;
+  const rejoining = rejoin?.via === "usb";
+  if (!usb || adb || usbConnecting || wadbUi.attempting || (!flagOn(USB_AUTO_KEY) && !rejoining)) return;
+  let list = (await usb.getDevices().catch(() => []))
+    .filter((d) => !d.raw.opened && !usbHeldBack.has(d.serial) && (!raw || d.raw === raw));
+  if (rejoining && !flagOn(USB_AUTO_KEY)) list = list.filter((d) => d.serial === rejoin.serial);
+  if (!list.length || adb || usbConnecting) return;
+  let last = null; try { last = localStorage.getItem(LAST_USB_KEY); } catch {}
+  const device = list.find((d) => d.serial === rejoin?.serial) || list.find((d) => d.serial === last) || list[0];
+  usbConnecting = true;
+  clearError();
+  connectBtnUi.start("Connecting…");
+  try {
+    // With "Keep other programs off the phone" off, a phone that another adb server holds is left to it.
+    const transport = await openUsbPhone(device, connectBtnUi, { release: flagOn(TAKEOVER_KEY) });
+    if (adb) { transport.close().catch(() => {}); return; }
+    startSession(transport, `Connected to ${device.raw.productName || device.serial}`);
+  } catch (e) {
+    if (e instanceof AdbDaemonWebUsbDevice.DeviceBusyError)
+      toast("Another program is using the phone. Click Connect phone to take it over.");
+    else showError(e);
+  } finally {
+    usbConnecting = false;
+    connectBtnUi.stop();
+  }
+}
+if (navigator.usb) {
+  navigator.usb.addEventListener("connect", (e) => { setTimeout(() => autoConnectUsb(e.device).catch(console.warn), 700); });
+  navigator.usb.addEventListener("disconnect", (e) => { if (e.device?.serialNumber) usbHeldBack.delete(e.device.serialNumber); });
+}
+// While a phone is connected (USB or Wi‑Fi), the main process keeps closing other programs' adb.
+let takeoverOn = false;
+function syncTakeover() {
+  const want = !!adb && flagOn(TAKEOVER_KEY);
+  if (!adbRelease?.guard || want === takeoverOn) return;
+  takeoverOn = want;
+  adbRelease.guard(want, adb?.serial).then((r) => {
+    if (want && r?.closed?.length) toast(`Closed ${r.closed.join(", ")} so only Andromon uses the phone`);
+  }).catch(() => {});
+}
 let connectedVia = null; // "usb" | "wifi"
 const phoneVia = new WeakMap(); // Adb -> "usb" | "wifi"
 
@@ -270,11 +348,16 @@ async function swapMainPhone(next) {
 function startSession(transport, message, via = "usb") {
   const a = adb = transport instanceof Adb ? transport : new Adb(transport);
   connectedVia = via; phoneVia.set(a, via);
+  if (via === "usb") try { localStorage.setItem(LAST_USB_KEY, a.serial); } catch {}
+  closingOnPurpose = false;
+  if (rejoin) { rejoin.stopped = true; rejoin = null; } // connected (by hand or by the reconnect): nothing left to retry
+  renderRejoin();
   // Only the phone in use ends the session; others open in Developer › Phones handle their own.
   const lost = () => { if (adb === a) onDisconnected(); };
   a.disconnected.then(lost, lost);
   setConnected(true);
   toast(message);
+  syncTakeover();
   show(current);
   renderWadbIntro(); renderWadbSetup();
   startCallAlerts();
@@ -371,6 +454,7 @@ async function wadbConnect(target, btn) {
   try {
     const { transport, meta } = await wadbOpen(target);
     closeWadb();
+    lastWifiTarget = target?.serial ? { serial: String(target.serial) } : { host: meta.host, port: meta.port };
     startSession(transport, `Connected over Wi‑Fi to ${transport.banner.model || meta.host}`, "wifi");
   } catch (e) {
     showError(target?.serial && /refused|closed/i.test(e.message)
@@ -487,6 +571,7 @@ async function setupWireless(status, box) {
     const sw = el("button", { className: "btn primary", textContent: "Switch to Wi‑Fi now", type: "button" });
     sw.onclick = async () => {
       busy(sw, true, "Switching…");
+      closingOnPurpose = true;
       try { await adb?.close(); } catch {}
       onDisconnected();
       await wait(800);
@@ -630,23 +715,25 @@ if (wadbApi) {
 
 // Another adb server (SDK, Android Studio, scrcpy...) holding the phone's USB interface is the
 // usual reason a connect fails. In the desktop app, stop it and try again.
-async function connectUsb(device, btn) {
+async function connectUsb(device, btn, release = true) {
   const isBusy = (e) => e instanceof AdbDaemonWebUsbDevice.DeviceBusyError;
   try { return await device.connect(); }
-  catch (e) { if (!isBusy(e)) throw e; }
+  catch (e) { if (!isBusy(e) || !release) throw e; }
   if (!window.andromon?.adb)
     throw new Error("The phone's USB debugging connection is in use by another program. Run `adb kill-server` (or close Android Studio / scrcpy / other phone tools) and try again.");
   btn.textContent = "Stopping other adb…";
-  await window.andromon.adb.release().catch(() => {});
+  const freed = await window.andromon.adb.release(device.serial).catch(() => null);
   btn.textContent = "Connecting…";
   for (let i = 0; i < 5; i++) {
     await wait(500 + i * 300);
     try {
       const connection = await device.connect();
-      toast("Stopped another adb server that was using the phone");
+      toast(freed?.closed?.length ? `Closed ${freed.closed.join(", ")}, which was using the phone` : "Stopped another adb server that was using the phone");
       return connection;
     } catch (e) { if (!isBusy(e)) throw e; }
   }
+  if (freed?.browsers?.length)
+    throw new Error(`A web page open in ${freed.browsers.join(", ")} is using the phone (a WebADB tool). Close that tab and try again.`);
   throw new Error("The phone's USB debugging connection is still in use. Andromon stopped adb, but another program took the phone back. Close Android Studio, scrcpy or other phone tools and try again.");
 }
 
@@ -655,17 +742,76 @@ $("disconnectBtn").addEventListener("click", async () => {
   // Stop the companion's foreground service so its notification goes away.
   if (companionInfo) await Promise.race([companionCall("stop").catch(() => {}), wait(1500)]);
   if (devtools) await Promise.race([Promise.all([devtools.beforeDisconnect(), apptesting?.beforeDisconnect()]), wait(2500)]);
+  closingOnPurpose = true;
+  if (connectedVia === "usb" && adb) usbHeldBack.add(adb.serial); // still plugged in: don't connect it straight back
   try { await adb?.close(); } catch {}
   onDisconnected();
 });
 
 function onDisconnected() {
   if (!adb) return;
+  // Dropped by itself (cable, Wi‑Fi, a sleeping phone), or closed here on purpose?
+  const dropped = !closingOnPurpose, via = connectedVia, serial = adb.serial, view = current;
+  closingOnPurpose = false;
   if (connectedVia === "wifi") wadbUi.quietUntil = Date.now() + 60_000; // don't jump straight back in
   connectedVia = null;
   setTimeout(() => { renderWadbIntro(); renderWadbSetup(); }, 0);
   resetSessionState();
-  setConnected(false); toast("Phone disconnected"); if (!offlineViews[current]) show("overview"); else if (current === "fdroid") show("fdroid");
+  setConnected(false);
+  toast(dropped ? "The connection to the phone dropped. Reconnecting…" : "Phone disconnected");
+  if (!offlineViews[current]) show("overview"); else if (current === "fdroid") show("fdroid");
+  if (dropped && via) startRejoin(via, serial, view);
+}
+
+// ---------- reconnecting by itself after the link dropped ----------
+// A link that ends without the person asking (a loose cable, the phone asleep or briefly off the
+// Wi‑Fi) is opened again as soon as the phone is back, and the tool that was open comes back too.
+let closingOnPurpose = false; // set right before this app closes the link itself
+let lastWifiTarget = null;    // what the Wi‑Fi link in use was opened with
+let rejoin = null;            // the running attempt: { via, serial, view, stopped }
+function renderRejoin() {
+  const box = $("rejoinBox");
+  if (!rejoin || adb) { box.hidden = true; return; }
+  const job = rejoin;
+  const stop = el("button", { className: "btn sm", type: "button", textContent: "Stop trying" });
+  stop.onclick = () => { job.stopped = true; if (rejoin === job) rejoin = null; renderRejoin(); };
+  box.replaceChildren(el("div", { className: "toolbar", style: "margin:0;justify-content:space-between" },
+    el("div", {}, el("b", { textContent: "The connection to the phone dropped" }),
+      el("div", { className: "sub", textContent: job.via === "wifi"
+        ? "Reconnecting over Wi‑Fi… Wake the phone and keep it on the same Wi‑Fi as this computer."
+        : "Reconnecting… Check the USB cable and unlock the phone." })),
+    stop));
+  box.hidden = false;
+}
+async function startRejoin(via, serial, view) {
+  if (via === "wifi" && !lastWifiTarget) return;
+  const job = rejoin = { via, serial, view, stopped: false };
+  renderRejoin();
+  const live = () => !job.stopped && rejoin === job;
+  const until = Date.now() + (via === "wifi" ? 5 : 3) * 60_000;
+  for (let n = 0; live() && !adb && Date.now() < until; n++) {
+    await wait(n === 0 ? 1500 : via === "wifi" ? Math.min(15_000, 3000 * n) : 2500);
+    if (!live() || adb) break;
+    let transport = null;
+    try {
+      if (via === "wifi") {
+        if (wadbUi.attempting) continue;
+        wadbUi.attempting = true;
+        try { transport = (await wadbOpen(lastWifiTarget, 20_000)).transport; } finally { wadbUi.attempting = false; }
+      } else {
+        // The phone was already allowed in this app, so no picker is needed to find it again.
+        const device = (await AdbDaemonWebUsbDeviceManager.BROWSER.getDevices()).find((d) => d.serial === serial);
+        if (!device || usbConnecting) continue;
+        usbConnecting = true;
+        try { transport = await openUsbPhone(device, connectBtnUi, { release: flagOn(TAKEOVER_KEY) }); } finally { usbConnecting = false; }
+      }
+    } catch (e) { console.warn("reconnect", e); continue; }
+    if (!live() || adb) { transport.close().catch(() => {}); break; }
+    startSession(transport, "Reconnected to the phone", via);
+    if (view && view !== current && !$("nav").querySelector(`button[data-view="${view}"]`)?.disabled) show(view);
+    return;
+  }
+  if (rejoin === job) { rejoin = null; renderRejoin(); if (!adb) toast("Couldn't reconnect to the phone"); }
 }
 // Forgets everything that belongs to the phone in use (on disconnect, and when switching phones).
 function resetSessionState() {
@@ -677,6 +823,7 @@ function resetSessionState() {
   apptesting?.onDisconnected();
   stopCallAlerts(); resetNotifs();
   adb = null; companionInfo = null; resetAppIcons();
+  setTimeout(syncTakeover, 0); // later, so switching phones (reset, then a new session) keeps it running
   people?.reset(); calendarTab?.onDisconnected(); backup?.onDisconnected(); mmsList = []; mmsThumbs.clear(); mmsWant.length = 0;
   smsList = null; threads = []; currentThread = null; contactsCache = null; contactNames = new Map(); callsCache = null;
   debloat = { ...debloat, phone: null };
@@ -2428,7 +2575,9 @@ async function streamCallEvents(gen) {
   const watchdog = setInterval(async () => {
     if (checking || Date.now() - lastSeen < 50_000) return;
     checking = true;
-    const ok = await Promise.race([sh("echo ok").then((o) => /ok/.test(o), () => false), wait(8000).then(() => false)]);
+    // Two tries: a phone with its screen off can take a while to wake its Wi‑Fi for the first one.
+    const ask = (ms) => Promise.race([sh("echo ok").then((o) => /ok/.test(o), () => false), wait(ms).then(() => false)]);
+    const ok = (await ask(8000)) || (adb === phone && await ask(15_000));
     checking = false;
     if (adb !== phone || gen !== callAlerts.gen) return;
     if (ok) { lastSeen = Date.now(); socket.close().catch(() => {}); return; } // link fine, stream stuck: reopen it
@@ -4584,4 +4733,8 @@ settingsUi = initSettings({
   },
   notifPopups: { get: () => notifs.popups, set: (on) => { notifs.popups = !!on; lsSet("andromon.notifPopups", notifs.popups); renderNotifCard(); } },
   wifiAuto: wadbApi ? { get: () => !!wadbUi.auto, set: async (on) => { wadbUi.auto = await wadbApi.setAuto(on); if (wadbUi.auto) maybeAutoConnect(); return wadbUi.auto; } } : null,
+  usbAuto: navigator.usb ? { get: () => flagOn(USB_AUTO_KEY), set: (on) => { setFlag(USB_AUTO_KEY, on); if (on) autoConnectUsb().catch(console.warn); return !!on; } } : null,
+  adbTakeover: adbRelease?.guard ? { get: () => flagOn(TAKEOVER_KEY), set: (on) => { setFlag(TAKEOVER_KEY, on); syncTakeover(); return !!on; } } : null,
 });
+// A phone already plugged in when the app opens is connected straight away.
+autoConnectUsb().catch(console.warn);

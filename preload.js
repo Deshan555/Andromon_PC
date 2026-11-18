@@ -11,8 +11,10 @@ const call = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch((e
 const fdPhone = (p) => (p && Number(p.sdk) > 0 ? { sdk: Number(p.sdk), abis: Array.from(p.abis || [], String) } : null);
 
 contextBridge.exposeInMainWorld("andromon", {
-  // Stops any adb server on this PC so WebUSB can claim the phone.
-  adb: { release: () => call("adb:release") },
+  // release(serial) closes the programs (adb servers and others) holding the phone so WebUSB can claim it.
+  // guard(true, serial) does that and keeps closing adb started by other programs while a phone is
+  // connected; guard(false) stops it. Both resolve to { closed: [names], browsers: [names], ... }.
+  adb: { release: (serial) => call("adb:release", String(serial || "")), guard: (on, serial) => call("adb:guard", !!on, String(serial || "")) },
   // Screen mirror › Keep on top: the window stays above other windows.
   win: { setOnTop: (on) => call("win:setOnTop", !!on) },
   // Wireless debugging (wadb.js). The ADB byte stream itself arrives as a MessagePort, forwarded
@@ -203,6 +205,8 @@ contextBridge.exposeInMainWorld("andromon", {
     requirements: (force) => call("sys:requirements", !!force),
     openPage: (id) => call("sys:openPage", String(id)),
     install: (id) => call("sys:install", String(id)),
+    adbChoose: () => call("sys:adbChoose"),
+    adbReset: () => call("sys:adbReset"),
   },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),
