@@ -1355,6 +1355,9 @@ export function initAutotest(env) {
       stopRecording(); cancelPick(); render();
     },
     stopHelper,
+    // Also used by "Blur personal data" for screenshots (./shotblur.js): the on-screen elements, and whether
+    // the helper is already running (reading is then quick; otherwise the first read starts it).
+    readScreen, helperUp: () => !!(helper?.alive && helper.adb === getAdb()),
     capturePointer, captureKey, capturePaste, captureWheel,
     _debug: { readScreen, tests: () => tests, ui, getHelper, ask, settle, flattenXml, findOne, pickTarget, buildReport, buildJUnit, parseTouchDevices, touchTracker, panelToScreen },
   };

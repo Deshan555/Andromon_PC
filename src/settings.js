@@ -255,7 +255,8 @@ export function initSettings(ctx) {
       row("Picture size", "A smaller picture is quicker to share", select(t.SCALE, String(p.scale), (v) => t.set({ scale: Number(v) }))),
       row("Clean status bar", "For the capture only, the phone shows 12:00, a full battery and no notification icons", makeSwitch(p.clean, (on) => { t.set({ clean: on }); return on; })),
       row("Copy each screenshot", "Puts the picture on this computer's clipboard as soon as it is taken", makeSwitch(p.copy, (on) => { t.set({ copy: on }); return on; })),
-      row("Save each screenshot", "Saves the file as soon as it is taken (see Saving files for where)", makeSwitch(p.save, (on) => { t.set({ save: on }); return on; })));
+      row("Save each screenshot", "Saves the file as soon as it is taken (see Saving files for where)", makeSwitch(p.save, (on) => { t.set({ save: on }); return on; })),
+      row("Blur personal data", "Hides phone numbers, IMEI, messages, names, emails, addresses and Wi‑Fi names in screenshots and in the mirror's saved or copied frames. Only text Android can read out is found: pictures, games and some web pages aren't covered", makeSwitch(p.blur, (on) => { t.set({ blur: on }); return on; })));
   }
 
   function shellSection() {

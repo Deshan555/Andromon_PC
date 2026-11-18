@@ -1,6 +1,7 @@
 // Screenshot page: capture the phone's screen now or after a countdown, then copy, save, rotate or delete
 // the picture; the captures of this session stay in a strip below. How a capture is made (format, size,
-// clean status bar, copy or save by itself) is set in Settings › Screenshot and kept in localStorage.
+// clean status bar, copy or save by itself, blur personal data) is set in Settings › Screenshot and kept in
+// localStorage. Blurring is done by ./shotblur.js, which the mirror's Save frame / Copy frame use too.
 import { icon } from "./fileicons.js";
 
 const KEY = "andromon.shot";
@@ -10,9 +11,13 @@ export const shotPrefs = {
   get() {
     let p = {}; try { p = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
     const one = (list, v, d) => (list.some(([id]) => id === String(v)) ? String(v) : d);
-    return { format: one(this.FORMAT, p.format, "png"), scale: Number(one(this.SCALE, p.scale, "100")), clean: p.clean === true, copy: p.copy === true, save: p.save === true };
+    return { format: one(this.FORMAT, p.format, "png"), scale: Number(one(this.SCALE, p.scale, "100")), clean: p.clean === true, copy: p.copy === true, save: p.save === true, blur: p.blur === true };
   },
-  set(patch) { try { localStorage.setItem(KEY, JSON.stringify({ ...this.get(), ...patch })); } catch {} this.changed?.(); },
+  set(patch) {
+    try { localStorage.setItem(KEY, JSON.stringify({ ...this.get(), ...patch })); } catch {}
+    this.changed?.();
+    globalThis.dispatchEvent?.(new Event("andromon:shotprefs")); // the Blur buttons here, on the mirror and in Settings
+  },
   changed: null,
 };
 
@@ -28,7 +33,7 @@ const DEMO_ON = [
 ].join(" >/dev/null 2>&1; ") + " >/dev/null 2>&1";
 const DEMO_OFF = "am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1";
 
-export function initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb }) {
+export function initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb, shotBlur }) {
   const root = $("shotRoot");
   const shots = []; // newest first: { blob, url, w, h, at, name }
   let current = null, busyNow = false, countdown = 0;
@@ -57,17 +62,29 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
   const info = el("span", { className: "muted small sh-info" });
   const summary = el("span", { className: "muted small" });
   const settings = el("button", { className: "btn sm", type: "button", textContent: "Change in Settings" });
+  // Blur personal data (./shotblur.js), on or off with one click; the same setting as in Settings › Screenshot.
+  const blurBtn = el("button", { className: "btn sm sh-blur", type: "button" }, icon("eye-off"), el("span"));
+  const renderBlur = () => {
+    const on = shotPrefs.get().blur;
+    blurBtn.classList.toggle("on", on); blurBtn.setAttribute("aria-pressed", String(on));
+    blurBtn.lastChild.textContent = on ? "Blur personal data: on" : "Blur personal data: off";
+    blurBtn.title = on ? "Phone numbers, IMEI, messages, names, emails, addresses and Wi‑Fi names are blurred in new screenshots. Click to turn off"
+      : "Click to blur phone numbers, IMEI, messages, names, emails, addresses and Wi‑Fi names in new screenshots";
+  };
+  blurBtn.onclick = () => { shotPrefs.set({ blur: !shotPrefs.get().blur }); toast?.(shotPrefs.get().blur ? "New screenshots will be blurred" : "New screenshots won't be blurred"); };
+  addEventListener("andromon:shotprefs", renderBlur);
+  renderBlur();
   settings.onclick = () => show("settings");
   const stage = el("div", { className: "sh-stage" });
   const strip = el("div", { className: "sh-strip", hidden: true });
   root.replaceChildren(el("div", { className: "card sh" },
     el("div", { className: "sh-bar" }, capture, timers, el("span", { className: "sp" }), acts),
-    el("div", { className: "sh-bar sh-sub" }, info, el("span", { className: "sp" }), summary, settings),
+    el("div", { className: "sh-bar sh-sub" }, info, el("span", { className: "sp" }), summary, blurBtn, settings),
     stage, strip));
 
   function renderSummary() {
     const p = shotPrefs.get(), label = (list, v) => list.find(([id]) => id === String(v))?.[1] || "";
-    summary.textContent = [label(shotPrefs.FORMAT, p.format).replace(/ \(.*/, ""), p.scale === 100 ? "full size" : `${p.scale}%`, p.clean ? "clean status bar" : "", p.copy ? "copies itself" : "", p.save ? "saves itself" : ""].filter(Boolean).join(" · ");
+    summary.textContent = [label(shotPrefs.FORMAT, p.format).replace(/ \(.*/, ""), p.scale === 100 ? "full size" : `${p.scale}%`, p.clean ? "clean status bar" : "", p.blur ? "personal data blurred" : "", p.copy ? "copies itself" : "", p.save ? "saves itself" : ""].filter(Boolean).join(" · ");
   }
   shotPrefs.changed = renderSummary;
 
@@ -79,7 +96,8 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
       stage.replaceChildren(img);
     } else stage.replaceChildren(el("div", { className: "sh-empty" }, icon("image"), el("b", { textContent: "No screenshot yet" }),
       el("div", { className: "muted small", textContent: "Take one now, or use a countdown to open a menu on the phone first." })));
-    info.textContent = current ? `${current.w}×${current.h} · ${fmtSize(current.blob.size)} · ${new Date(current.at).toLocaleTimeString()}` : "";
+    const blurNote = !current ? "" : current.blurred > 0 ? ` · ${current.blurred} area${current.blurred > 1 ? "s" : ""} blurred` : current.blurred < 0 ? " · not blurred" : "";
+    info.textContent = current ? `${current.w}×${current.h} · ${fmtSize(current.blob.size)} · ${new Date(current.at).toLocaleTimeString()}${blurNote}` : "";
     strip.hidden = shots.length < 2;
     strip.replaceChildren(...shots.map((s) => {
       const t = el("button", { className: "sh-thumb" + (s === current ? " on" : ""), type: "button", title: new Date(s.at).toLocaleTimeString() }, el("img", { src: s.url, alt: "" }));
@@ -116,13 +134,20 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
     try {
       for (countdown = delay; countdown > 0; countdown--) { render(); await wait(1000); }
       countdown = 0; capture.querySelector("span").textContent = "Capturing…";
-      if (prefs.clean) { await sh(DEMO_ON); await wait(500); }
-      let bytes;
-      try { bytes = await shBytes("screencap -p"); }
-      finally { if (prefs.clean) await sh(DEMO_OFF).catch(() => {}); }
-      if (!bytes?.length) throw new Error("The phone sent no picture. Its screen may be showing protected content.");
-      const { blob, w, h } = await convert(new Blob([bytes], { type: "image/png" }), prefs);
+      const grab = async () => {
+        if (prefs.clean) { await sh(DEMO_ON); await wait(500); }
+        let bytes;
+        try { bytes = await shBytes("screencap -p"); }
+        finally { if (prefs.clean) await sh(DEMO_OFF).catch(() => {}); }
+        if (!bytes?.length) throw new Error("The phone sent no picture. Its screen may be showing protected content.");
+        return new Blob([bytes], { type: "image/png" });
+      };
+      // Blur personal data: on the full-size picture, before it is resized or converted (./shotblur.js).
+      const got = prefs.blur ? await shotBlur.capture(grab, { verb: "Keep" }) : { blob: await grab(), blurred: 0 };
+      if (!got) return;
+      const { blob, w, h } = await convert(got.blob, prefs);
       const s = add(blob, w, h, prefs.format);
+      s.blurred = got.blurred;
       if (prefs.copy) await copy(s, true);
       if (prefs.save) save(s);
     } finally {

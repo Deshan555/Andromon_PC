@@ -22,6 +22,7 @@ import { initDropdowns } from "./dropdown.js";
 import { initFiles } from "./files.js";
 import { icon } from "./fileicons.js";
 import { initScreenshot, shotPrefs } from "./screenshot.js";
+import { initShotBlur } from "./shotblur.js";
 import { initShell, shellPrefs } from "./shell.js";
 import { initKnowledge } from "./knowledge.js";
 import { initShizuku } from "./shizuku.js";
@@ -3188,7 +3189,8 @@ const MIRROR_KEYS = [
   ["Media and brightness", [["prev", "Previous", "Previous track", "skip-back"], ["next", "Next", "Next track", "skip-forward"], ["play", "Play / pause", "Play or pause", "play"],
     ["rotate", "Rotate", "Rotate the phone's screen", "rotate-ccw"], ["bdown", "Dimmer", "Brightness down", "sun-dim"], ["bup", "Brighter", "Brightness up", "sun"]]],
   ["View", [["full", "Full screen", "Fill this computer's screen", "maximize"], ["zoom", "Actual size", "Show the picture at its real size, or fit it to the window", "zoom-in"],
-    ["ontop", "Keep on top", "Keep this window above other windows while mirroring", "pin"]]],
+    ["ontop", "Keep on top", "Keep this window above other windows while mirroring", "pin"],
+    ["blurshot", "Blur frames", "Blur personal data in saved and copied frames (on or off; the same as Settings › Screenshot)", "eye-off"]]],
   ["Capture", [["shot", "Save frame", "Save the current picture as a PNG file", "camera"], ["copyframe", "Copy frame", "Copy the current picture to this computer's clipboard", "copy"],
     ["paste", "Paste", "Paste this computer's clipboard text on the phone", "clipboard-paste"], ["audio", "Mute", "Mute or unmute the phone's sound on this computer", "headphones"]]],
 ];
@@ -3225,7 +3227,7 @@ function mirrorUi(on) {
   }
   $("mirrorKeys").querySelector('[data-k="audio"]').hidden = true;
   recUi(null);
-  for (const b of mirrorButtons()) b.disabled = !on;
+  for (const b of mirrorButtons()) b.disabled = !on && b.dataset.k !== "blurshot";
   $("mirrorIdle").hidden = on; $("mirrorStage").hidden = !on;
   $("mirrorRoot").classList.toggle("on", on);
   if (!on) { $("mirrorInfo").textContent = "Not mirroring"; keyLabel($("mirrorScreenToggle"), "Screen off"); $("mirrorScreenToggle").classList.remove("on"); }
@@ -3670,6 +3672,15 @@ document.addEventListener("paste", (e) => {
 // --- toolbar ---
 $("mirrorStart").addEventListener("click", () => startMirror().catch(showError));
 $("mirrorStop").addEventListener("click", () => stopMirror());
+// Settings › Screenshot › Blur personal data, for the Screenshot page and Save frame / Copy frame (./shotblur.js).
+// The phone's screen is read with Test automation's reader (set up at the end of this file).
+const shotBlur = initShotBlur({ el, toast, readScreen: () => autotest.readScreen(), helperUp: () => autotest.helperUp() });
+/** The mirrored picture as a PNG, blurred when asked (the camera is not the phone's screen); null = nothing to use. */
+async function mirrorFrame(verb) {
+  const m = mirror; if (!m) return null;
+  if (!shotPrefs.get().blur || mirrorPrefs.get().source !== "screen") return m.decoder.snapshot();
+  return (await shotBlur.capture(() => m.decoder.snapshot(), { verb }))?.blob || null;
+}
 const KEY_BUTTONS = {
   back: pressBack,
   home: () => pressKey(AndroidKeyCode.AndroidHome),
@@ -3681,7 +3692,7 @@ const KEY_BUTTONS = {
   rotate: () => mirror?.controller?.rotateDevice(),
   screen: () => setPhoneScreen(mirror?.screenOff),
   shot: async () => {
-    const blob = await mirror?.decoder.snapshot();
+    const blob = await mirrorFrame("Save");
     if (blob) download(blob, `mirror-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
   },
   record: () => (mirror?.rec ? stopRecording(mirror) : startRecording()),
@@ -3699,8 +3710,9 @@ const KEY_BUTTONS = {
     await globalThis.andromon?.win?.setOnTop(on);
     b.classList.toggle("on", on);
   },
+  blurshot: () => { shotPrefs.set({ blur: !shotPrefs.get().blur }); toast(shotPrefs.get().blur ? "Saved and copied frames will be blurred" : "Saved and copied frames won't be blurred"); },
   copyframe: async () => {
-    const blob = await mirror?.decoder.snapshot(); if (!blob) return;
+    const blob = await mirrorFrame("Copy"); if (!blob) return;
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     toast("Picture copied");
   },
@@ -3711,6 +3723,13 @@ const KEY_BUTTONS = {
   },
 };
 const mirrorKey = (k) => $("mirrorKeys").querySelector(`[data-k="${k}"]`);
+// The Blur frames key shows whether Blur personal data is on, wherever it was switched.
+function renderBlurKey() {
+  const b = mirrorKey("blurshot"), on = shotPrefs.get().blur;
+  b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+}
+addEventListener("andromon:shotprefs", renderBlurKey);
+renderBlurKey();
 // Each control's tooltip names its shortcut, refreshed when mirroring starts (they may have changed).
 function labelShortcuts() {
   const map = loadShortcuts();
@@ -3731,9 +3750,9 @@ $("mirrorType").addEventListener("submit", (e) => {
   mirror.controller.setClipboard({ sequence: 0n, paste: true, content: text }).then(() => { $("mirrorText").value = ""; }, showError);
 });
 for (const strip of [$("mirrorNav"), $("mirrorKeys")]) strip.addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-k]"); if (!b || !mirror) return;
+  const b = e.target.closest("button[data-k]"); if (!b || (!mirror && b.dataset.k !== "blurshot")) return; // Blur frames can be set before mirroring
   Promise.resolve(KEY_BUTTONS[b.dataset.k]?.()).catch(showError);
-  if (b.dataset.k !== "full" && b.dataset.k !== "paste") mc.focus();
+  if (mirror && b.dataset.k !== "full" && b.dataset.k !== "paste") mc.focus();
 });
 
 // The Screenshot page lives in ./screenshot.js (set up at the end of this file).
@@ -4959,7 +4978,7 @@ backup = initBackup({
 // The header stays in place while a page scrolls; its height tells sticky parts of a page where to stop.
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
 // ---------- screenshot page (see ./screenshot.js) ----------
-shotTab = initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb: () => adb });
+shotTab = initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb: () => adb, shotBlur });
 // ---------- files page (see ./files.js) ----------
 filesTab = initFiles({ $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, getAdb: () => adb, LinuxFileType });
 // ---------- dropdown menus: every <select> gets the app's own menu (see ./dropdown.js) ----------
