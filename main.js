@@ -226,6 +226,37 @@ function allowWebUsb() {
   });
 }
 
+// ---------- start-up splash: the logo and a progress bar (renderer/splash.html) until the main window is ready ----------
+let splash = null, splashShownAt = 0;
+function showSplash() {
+  splash = new BrowserWindow({
+    width: 480, height: 300, frame: false, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    show: false, center: true, skipTaskbar: true, title: "Andromon", backgroundColor: "#111317",
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
+  });
+  splash.once("ready-to-show", () => { if (!splash) return; splash.show(); splashShownAt = Date.now(); });
+  splash.on("closed", () => { splash = null; });
+  splash.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  splash.webContents.on("will-navigate", (e) => e.preventDefault());
+  splash.loadURL(`${ORIGIN}/splash.html?v=${encodeURIComponent(app.getVersion())}`);
+  // Never stand in the way: if the main window hasn't shown after 25 s, show it anyway.
+  setTimeout(() => { if (splash) closeSplash(() => { if (mainWindow && !mainWindow.isVisible()) mainWindow.show(); }); }, 25_000);
+}
+function splashStep(p, text) {
+  if (!splash || splash.webContents.isLoading()) return;
+  splash.webContents.executeJavaScript(`globalThis.splashStep?.(${Number(p)}, ${JSON.stringify(text)})`).catch(() => {});
+}
+/** Fills the bar, then shows the main window (`then`) and closes the splash. */
+function closeSplash(then) {
+  if (!splash) return then();
+  const s = splash; splash = null;
+  if (!splashShownAt || s.isDestroyed()) { then(); if (!s.isDestroyed()) s.destroy(); return; }
+  if (!s.webContents.isLoading()) s.webContents.executeJavaScript(`globalThis.splashStep?.(1, "Ready")`).catch(() => {});
+  // Long enough to see the bar reach the end, without holding up a fast start.
+  const wait = Math.max(450, 1200 - (Date.now() - splashShownAt));
+  setTimeout(() => { then(); setTimeout(() => { if (!s.isDestroyed()) s.destroy(); }, 200); }, wait);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1180,
@@ -245,7 +276,11 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
-  win.once("ready-to-show", () => win.show());
+  // The splash (if it is up) follows the main window's loading, and makes way once it can be shown.
+  win.webContents.once("did-start-loading", () => splashStep(0.4, "Loading the interface…"));
+  win.webContents.once("dom-ready", () => splashStep(0.75, "Setting up…"));
+  win.once("ready-to-show", () => closeSplash(() => win.show()));
+  win.webContents.once("did-fail-load", () => closeSplash(() => { if (!win.isDestroyed()) win.show(); }));
 
   // Keep navigation inside the app; open external links in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -769,9 +804,11 @@ app.whenReady().then(async () => {
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);
   if (process.platform === "win32") app.setAppUserModelId("dev.andromon.app"); // needed for notifications
   serveRenderer();
+  showSplash();
   await migrateLegacyWebData(); // once, after an update from Droid Desk
   allowWebUsb();
   setupWifi();
+  splashStep(0.25, "Getting ready…");
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

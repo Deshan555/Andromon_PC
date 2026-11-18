@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Andromon's start-up splash (main.js showSplash): the logo and a progress bar while the main window loads. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'">
+<title>Andromon</title>
+<style>
+  @font-face { font-family: "Poppins"; src: url("fonts/poppins_regular.ttf") format("truetype"); font-weight: 400; }
+  html, body { margin: 0; height: 100%; }
+  body { background: radial-gradient(120% 90% at 50% 0%, #1d2016 0%, #111317 62%); color: #f1f1ef; font: 13px/1.4 "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid; place-items: center; overflow: hidden; user-select: none; -webkit-app-region: drag; cursor: default; }
+  main { width: 340px; display: grid; justify-items: center; }
+  .logo { width: 300px; height: auto; display: block; animation: rise .6s cubic-bezier(.22, 1, .36, 1) both; }
+  .track { width: 260px; height: 6px; margin-top: 30px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .fill { position: relative; height: 100%; width: 100%; border-radius: inherit; background: linear-gradient(90deg, #9cd237, #e3f786);
+    transform-origin: 0 50%; transform: scaleX(0); transition: transform .45s cubic-bezier(.22, 1, .36, 1); overflow: hidden; }
+  .fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); transform: translateX(-100%); animation: shine 1.4s ease-in-out infinite; }
+  .status { margin-top: 12px; min-height: 18px; color: #a7a9a3; font-size: 12px; }
+  .ver { position: fixed; bottom: 12px; left: 0; right: 0; text-align: center; color: #6c6e69; font-size: 11px; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+  @keyframes shine { to { transform: translateX(100%); } }
+  @media (prefers-reduced-motion: reduce) { .logo, .fill::after { animation: none; } .fill { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="img/logo.webp" alt="Andromon" width="600" height="202" draggable="false">
+  <div class="track" role="progressbar" aria-label="Starting Andromon" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill"></div></div>
+  <div class="status" aria-live="polite">Starting…</div>
+</main>
+<div class="ver"></div>
+<script src="splash.js"></script>
+</body>
+</html>
