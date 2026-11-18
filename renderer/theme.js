@@ -1,7 +1,8 @@
 // Applies the saved appearance before the page paints (the page's CSP allows no inline script).
 // Mode: data-theme="light" | "dark", or none to follow the system. Colour theme: data-accent.
 // Accessibility (Settings › Accessibility) sets data-text, data-contrast, data-motion, data-bold,
-// data-focus, data-links and data-font; the styles for them are at the end of index.html.
+// data-focus, data-links, data-font, data-zoom (app zoom), data-buttons (button size) and data-icons
+// (icon-only buttons, src/iconbuttons.js); the styles for them are at the end of index.html.
 (function () {
   var root = document.documentElement;
   var get = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -12,6 +13,7 @@
   } catch (e) {}
 
   var SIZES = ["100", "115", "130", "150"];
+  var ZOOMS = ["67", "75", "80", "90", "100", "110", "125", "150", "175", "200"];
   var media = function (q) { try { return window.matchMedia(q); } catch (e) { return null; } };
   var moreContrast = media("(prefers-contrast: more)"), lessMotion = media("(prefers-reduced-motion: reduce)");
   // "system" (or nothing saved) follows the computer's own setting.
@@ -26,8 +28,14 @@
     flag("data-focus", get("andromon.a11y.focus") === "on", "strong");
     flag("data-links", get("andromon.a11y.links") === "on", "underline");
     flag("data-font", get("andromon.a11y.font") === "plain", "plain");
+    var zoom = get("andromon.a11y.zoom"), buttons = get("andromon.a11y.buttons");
+    flag("data-zoom", ZOOMS.indexOf(zoom) >= 0 && zoom !== "100", zoom);
+    flag("data-buttons", buttons === "small" || buttons === "smallest", buttons);
+    var icons = get("andromon.a11y.icons") === "on";
+    flag("data-icons", icons, "");
+    if (window.ddIconButtons) window.ddIconButtons(icons); // set by the app once it has loaded
   }
   apply();
   [moreContrast, lessMotion].forEach(function (m) { if (m && m.addEventListener) m.addEventListener("change", apply); });
-  window.ddA11y = { apply: apply, SIZES: SIZES };
+  window.ddA11y = { apply: apply, SIZES: SIZES, ZOOMS: ZOOMS };
 })();

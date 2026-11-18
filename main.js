@@ -256,6 +256,23 @@ function createWindow() {
     if (!url.startsWith(ORIGIN)) e.preventDefault();
   });
 
+  // ⌘/Ctrl + − 0 change Settings › Accessibility › App zoom instead of Chromium's own zoom (which
+  // the macOS menu would apply on top of it). Ctrl + scroll wheel does the same.
+  win.webContents.on("before-input-event", (e, input) => {
+    if (input.type !== "keyDown" || input.alt || !(process.platform === "darwin" ? input.meta : input.control)) return;
+    const dir = { "=": 1, "+": 1, "-": -1, "_": -1, "0": 0 }[input.key];
+    if (dir === undefined) return;
+    e.preventDefault();
+    win.webContents.send("win:zoomKey", dir);
+  });
+  let lastWheelZoom = 0; // one step per wheel gesture, not one per wheel tick
+  win.webContents.on("zoom-changed", (_e, way) => {
+    if (Date.now() - lastWheelZoom < 250) return;
+    lastWheelZoom = Date.now();
+    win.webContents.send("win:zoomKey", way === "in" ? 1 : -1);
+  });
+  win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(1)); // undo any zoom left from before
+
   win.loadURL(`${ORIGIN}/index.html`);
   mainWindow = win;
   win.on("closed", () => { if (mainWindow === win) mainWindow = null; });

@@ -4,6 +4,7 @@
 
 import pkg from "../package.json";
 import { shortcutEditor } from "./shortcuts.js";
+import { setIconButtons } from "./iconbuttons.js";
 
 export const THEMES = [
   { id: "lime", label: "Lime", colors: ["#e3f786", "#9cd237"] },
@@ -15,8 +16,10 @@ export const THEMES = [
 const MODES = [["system", "Same as computer"], ["light", "Light"], ["dark", "Dark"]];
 const TEXT_SIZES = [["100", "Default"], ["115", "Large"], ["130", "Larger"], ["150", "Largest"]];
 const FOLLOW = [["system", "Same as computer"], ["on", "On"], ["off", "Off"]];
+const ZOOMS = ["67", "75", "80", "90", "100", "110", "125", "150", "175", "200"]; // same list as renderer/theme.js
+const BUTTON_SIZES = [["default", "Default"], ["small", "Small"], ["smallest", "Smallest"]];
 // Accessibility settings and their defaults. renderer/theme.js reads the same keys before the page paints.
-const A11Y = { text: "100", contrast: "system", motion: "system", bold: "off", focus: "off", links: "off", font: "poppins" };
+const A11Y = { text: "100", zoom: "100", buttons: "default", icons: "off", contrast: "system", motion: "system", bold: "off", focus: "off", links: "off", font: "poppins" };
 
 export function initSettings(ctx) {
   const { $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick } = ctx;
@@ -51,6 +54,28 @@ export function initSettings(ctx) {
     toast("Accessibility settings are back to their defaults");
   }
   const a11yChanged = () => Object.keys(A11Y).some((k) => a11y(k) !== A11Y[k]);
+  // Icon buttons: theme.js's apply() switches them on and off from now on.
+  globalThis.ddIconButtons = setIconButtons;
+  setIconButtons(a11y("icons") === "on");
+
+  // App zoom: ⌘ + / ⌘ − / ⌘ 0 (Ctrl on Windows and Linux) step through ZOOMS. In the desktop app
+  // the main process catches these keys before Chromium's own zoom and sends them here.
+  function stepZoom(dir) {
+    const cur = ZOOMS.indexOf(a11y("zoom")), at = cur < 0 ? ZOOMS.indexOf("100") : cur;
+    const next = dir === 0 ? "100" : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, at + dir))];
+    if (next === ZOOMS[at] && dir !== 0) return;
+    set("andromon.a11y.zoom", next);
+    globalThis.ddA11y?.apply();
+    if (ready && !panel.hidden) render();
+    toast(`Zoom ${next}%`);
+  }
+  api.win?.onZoomKey?.(stepZoom);
+  addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const dir = { "=": 1, "+": 1, "-": -1, "_": -1, "0": 0 }[e.key];
+    if (dir === undefined) return;
+    e.preventDefault(); stepZoom(dir);
+  });
 
   // ---------- sidebar: full, or a narrow rail of icons ----------
   const railBtn = $("railBtn");
@@ -152,8 +177,13 @@ export function initSettings(ctx) {
 
   function accessibilitySection() {
     const sw = (k, on = "on", off = "off") => makeSwitch(a11y(k) === on, (v) => { setA11y(k, v ? on : off); return v; });
+    const mod = /Mac/.test(navigator.platform) ? "⌘" : "Ctrl";
     const rows = [
       row("Text size", "Makes text, icons and buttons bigger together", select(TEXT_SIZES, a11y("text"), (v) => setA11y("text", v))),
+      row("App zoom", `Makes the whole window bigger or smaller. Also ${mod} + and ${mod} −, and ${mod} 0 to go back to 100%`,
+        select(ZOOMS.map((z) => [z, z === "100" ? "100% (default)" : z + "%"]), ZOOMS.includes(a11y("zoom")) ? a11y("zoom") : "100", (v) => setA11y("zoom", v))),
+      row("Button size", "Smaller buttons leave more room for everything else", select(BUTTON_SIZES, a11y("buttons"), (v) => setA11y("buttons", v))),
+      row("Icon buttons", "Buttons show an icon instead of words. Point at a button, or move to it with Tab, to see its name. Buttons with no matching icon keep their words", sw("icons")),
       row("High contrast", "Darker text, visible edges around cards and buttons, solid backgrounds", select(FOLLOW, a11y("contrast"), (v) => setA11y("contrast", v))),
       row("Bold text", "Thicker letters everywhere", sw("bold")),
       row("Plain font", "The computer's own font instead of Poppins. Some people find it easier to read", sw("font", "plain", "poppins")),

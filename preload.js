@@ -16,7 +16,11 @@ contextBridge.exposeInMainWorld("andromon", {
   // connected; guard(false) stops it. Both resolve to { closed: [names], browsers: [names], ... }.
   adb: { release: (serial) => call("adb:release", String(serial || "")), guard: (on, serial) => call("adb:guard", !!on, String(serial || "")) },
   // Screen mirror › Keep on top: the window stays above other windows.
-  win: { setOnTop: (on) => call("win:setOnTop", !!on) },
+  // onZoomKey(cb): ⌘/Ctrl + − 0, caught in the main process; cb gets 1, -1 or 0 (back to 100%).
+  win: {
+    setOnTop: (on) => call("win:setOnTop", !!on),
+    onZoomKey: (cb) => { ipcRenderer.on("win:zoomKey", (_e, dir) => cb(Number(dir) || 0)); },
+  },
   // Settings › Phone link › Share the clipboard: this computer's clipboard (text only).
   clip: { read: () => call("clip:read"), write: (text) => call("clip:write", String(text ?? "")) },
   // Wireless debugging (wadb.js). The ADB byte stream itself arrives as a MessagePort, forwarded
