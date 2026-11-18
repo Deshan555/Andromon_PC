@@ -197,6 +197,13 @@ npm run dist:mac   # -> dist/Andromon-0.1.0-arm64.dmg and -x64.dmg   (run on a M
 npm run dist:win   # -> dist/Andromon-Setup-0.1.0-*.exe (x64 + ARM64) (best run on Windows)
 npm run dist:linux # -> dist/Andromon-0.1.0-x86_64.AppImage and -amd64.deb (x64)
 ```
+**Build, sign and check in one go** (`build/release.py`, needs Python 3.9+ and OpenSSL 3):
+
+```sh
+python3 build/release.py
+```
+It asks its questions in the terminal (no arguments): whether to pull the newest code from GitHub, which systems (macOS, Windows, Linux) and CPU types (arm64, x64) to build for, and the folder for the installers (`../builds`). Then it builds, writes `SHA256SUMS.txt`, makes the release key the first time (private half in `~/.andromon`, public half `build/release-signing-key.pub.pem`), signs the checksums (`SHA256SUMS.txt.sig`, Ed25519) and checks every installer: checksum, signature, version, CPU type, stamped commit, code signing. The menu can also only check or only sign a folder. The release signature says the files are the ones you built; it is not Apple's or Microsoft's code signing (see **Signed builds** below), which electron-builder does during the build when `CSC_LINK` is set. Without a certificate the macOS app gets an ad-hoc signature. [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md) explains every build script step by step.
+
 The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icns` / `.ico` by electron-builder), the Windows setup wizard's pictures (`installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`) and its welcome texts (`installer.nsh`), and the macOS disk image's background (`background.png`, `@2x`). The Windows wizard's pages: Welcome › install for me or for everyone › folder › installing › Finish (with "Run Andromon"), plus desktop and Start menu shortcuts and an uninstaller that keeps settings. Add `build/license.txt` to get a licence page.
 
 
