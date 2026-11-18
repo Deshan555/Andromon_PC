@@ -171,6 +171,8 @@ export function initSettings(ctx) {
       makeSwitch(ctx.usbAuto.get(), (on) => ctx.usbAuto.set(on))));
     if (ctx.adbTakeover) rows.push(row("Keep other programs off the phone", "While a phone is connected, Andromon closes adb in other programs (Android SDK, Android Studio, scrcpy) so only it uses the phone",
       makeSwitch(ctx.adbTakeover.get(), (on) => ctx.adbTakeover.set(on))));
+    if (ctx.clipShare) rows.push(row("Share the clipboard", "Text copied on this computer can be pasted on the phone, and the other way round, while the phone is connected. Needs Andromon Companion",
+      makeSwitch(ctx.clipShare.get(), (on) => ctx.clipShare.set(on))));
     rows.push(row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
       makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; })));
     if (ctx.wifiAuto) rows.push(row("Connect over Wi‑Fi automatically", "Connect to a phone you've paired as soon as it appears on the network",

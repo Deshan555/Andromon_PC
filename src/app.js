@@ -32,6 +32,7 @@ import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
 import { createProgress, countBytes } from "./progress.js";
 import { initMirrorDrop } from "./mirrordrop.js";
+import { initClipSync } from "./clipsync.js";
 import { loadShortcuts, comboOf, usableCombo, comboLabel } from "./shortcuts.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
@@ -317,6 +318,9 @@ const USB_AUTO_KEY = "andromon.usbAuto", TAKEOVER_KEY = "andromon.adbTakeover", 
 const flagOn = (k) => { try { return localStorage.getItem(k) !== "0"; } catch { return true; } };
 const setFlag = (k, on) => { try { localStorage.setItem(k, on ? "1" : "0"); } catch {} return !!on; };
 const adbRelease = globalThis.andromon?.adb || null; // desktop app only
+// The clipboard shared both ways while a phone is connected (./clipsync.js). Off until switched on.
+const CLIP_KEY = "andromon.clipShare";
+const clipSync = initClipSync({ getAdb: () => adb, toast, isOn: () => { try { return localStorage.getItem(CLIP_KEY) === "1"; } catch { return false; } } });
 // Serials disconnected on purpose: not taken again until they are unplugged.
 const usbHeldBack = new Set();
 async function autoConnectUsb(raw = null) {
@@ -353,6 +357,7 @@ if (navigator.usb) {
 // While a phone is connected (USB or Wi‑Fi), the main process keeps closing other programs' adb.
 let takeoverOn = false;
 function syncTakeover() {
+  clipSync.sync(); // the shared clipboard follows the connection the same way
   const want = !!adb && flagOn(TAKEOVER_KEY);
   if (!adbRelease?.guard || want === takeoverOn) return;
   takeoverOn = want;
@@ -4922,6 +4927,7 @@ settingsUi = initSettings({
   notifPopups: { get: () => notifs.popups, set: (on) => { notifs.popups = !!on; lsSet("andromon.notifPopups", notifs.popups); renderNotifCard(); } },
   wifiAuto: wadbApi ? { get: () => !!wadbUi.auto, set: async (on) => { wadbUi.auto = await wadbApi.setAuto(on); if (wadbUi.auto) maybeAutoConnect(); return wadbUi.auto; } } : null,
   usbAuto: navigator.usb ? { get: () => flagOn(USB_AUTO_KEY), set: (on) => { setFlag(USB_AUTO_KEY, on); if (on) autoConnectUsb().catch(console.warn); return !!on; } } : null,
+  clipShare: clipSync.available ? { get: () => localStorage.getItem(CLIP_KEY) === "1", set: (on) => { setFlag(CLIP_KEY, on); clipSync.sync(); return !!on; } } : null,
   adbTakeover: adbRelease?.guard ? { get: () => flagOn(TAKEOVER_KEY), set: (on) => { setFlag(TAKEOVER_KEY, on); syncTakeover(); return !!on; } } : null,
 });
 // A phone already plugged in when the app opens is connected straight away.

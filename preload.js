@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("andromon", {
   adb: { release: (serial) => call("adb:release", String(serial || "")), guard: (on, serial) => call("adb:guard", !!on, String(serial || "")) },
   // Screen mirror › Keep on top: the window stays above other windows.
   win: { setOnTop: (on) => call("win:setOnTop", !!on) },
+  // Settings › Phone link › Share the clipboard: this computer's clipboard (text only).
+  clip: { read: () => call("clip:read"), write: (text) => call("clip:write", String(text ?? "")) },
   // Wireless debugging (wadb.js). The ADB byte stream itself arrives as a MessagePort, forwarded
   // below to the page with window.postMessage.
   wadb: {

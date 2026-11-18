@@ -2,7 +2,7 @@
 // The UI in renderer/ talks ADB to the phone over WebUSB (Chromium built into Electron).
 // This file only creates the window, serves the UI from a secure app:// origin,
 // and answers Chromium's WebUSB permission + device-chooser requests.
-const { app, BrowserWindow, protocol, net, session, dialog, shell, Menu, ipcMain, MessageChannelMain, Notification, nativeImage } = require("electron");
+const { app, BrowserWindow, protocol, net, session, dialog, shell, Menu, ipcMain, MessageChannelMain, Notification, nativeImage, clipboard } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -289,6 +289,11 @@ function setupWifi() {
   handle("adb:guard", (event, on, serial) => guardAdb(event.sender, !!on, typeof serial === "string" ? serial : ""));
   // Screen mirror › Keep on top
   handle("win:setOnTop", (event, on) => { BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(!!on); return !!on; });
+  // Settings › Phone link › Share the clipboard: this computer's clipboard text, read and written
+  // here so it works while the window is in the background (the page's own clipboard needs focus).
+  // (Awaited: newer Electron versions may answer with a promise.)
+  handle("clip:read", async () => String((await clipboard.readText()) ?? "").slice(0, 1024 * 1024));
+  handle("clip:write", async (_e, text) => { await clipboard.writeText(String(text ?? "").slice(0, 1024 * 1024)); return true; });
   setupWadb(handle);
   setupNotify(handle);
   setupDevnet(handle);
