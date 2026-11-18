@@ -36,6 +36,7 @@ import { initStorageMap } from "./storagemap.js";
 import { initBattery } from "./battery.js";
 import { initFolderSync } from "./foldersync.js";
 import { initClipSync } from "./clipsync.js";
+import { initRepair } from "./repair.js";
 import { loadShortcuts, comboOf, usableCombo, comboLabel } from "./shortcuts.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
@@ -60,6 +61,7 @@ let recoveryTab = null; // SD card recovery page (./recovery.js)
 let storageTab = null; // Storage map page (./storagemap.js)
 let batteryTab = null; // Battery health page (./battery.js)
 let folderSync = null; // Folder sync page, and the pairs that sync when a phone connects (./foldersync.js)
+let repairTab = null; // Repair page: jobs, reports and tests for repair shops (./repair.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
 let shizukuCard = null; // The Shizuku page (./shizuku.js), set up at the end of this file
 let downloads = null; // the download manager (./downloads.js), set up at the end of this file
@@ -159,12 +161,28 @@ const settingsLink = (text = "Change in Settings") => {
   return b;
 };
 
+// ---------- Repair desk (./repair.js) ----------
+// Hidden in this build: its sidebar entry is removed and the page can't be opened. Set to true to bring it back.
+const REPAIR_ENABLED = false;
+if (!REPAIR_ENABLED) document.querySelector('.ngroup[data-group="repair"]')?.remove();
+
+// ---------- technician mode (Repair): the customer's personal pages are hidden ----------
+const PRIVATE_VIEWS = new Set(["messages", "contacts", "calls", "calendar", "notifs", "photos", "music", "files", "storage", "sync", "backup"]);
+const PRIVACY_KEY = "andromon.repair.privacy";
+const privacyOn = () => { if (!REPAIR_ENABLED) return false; try { return localStorage.getItem(PRIVACY_KEY) === "1"; } catch { return false; } };
+function setPrivacy(on) {
+  try { localStorage.setItem(PRIVACY_KEY, on ? "1" : "0"); } catch {}
+  document.querySelector(".app").classList.toggle("privacy", !!on);
+  if (on && PRIVATE_VIEWS.has(current)) show("repair");
+  return !!on;
+}
+
 // ---------- navigation ----------
 let current = "overview";
 const loaders = { overview: loadOverview, backup: () => backup?.renderCard(), shizuku: () => Promise.all([shizukuCard?.render(), renderRamCard()]), apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
   messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), storage: () => storageTab.load(), sync: () => folderSync.load(), battery: () => batteryTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
-const offlineViews = { wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load(), recovery: () => recoveryTab.load() };
+const offlineViews = { repair: () => repairTab.load(), wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load(), recovery: () => recoveryTab.load() };
 let settingsUi = null;
 // The sidebar's tools are in groups. A group folds when its heading is clicked; which ones are folded is remembered.
 const NAV_FOLD_KEY = "andromon.navClosed";
@@ -192,7 +210,7 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], storage: ["What fills ", "your phone"], sync: ["Folder ", "sync"], battery: ["Battery ", "health"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], storage: ["What fills ", "your phone"], repair: ["Repair ", "desk"], sync: ["Folder ", "sync"], battery: ["Battery ", "health"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
@@ -200,6 +218,9 @@ function setTitle(view) {
   document.title = `${$("nav").querySelector(`[data-view="${view}"]`).textContent} · Andromon`;
 }
 function show(view) {
+  if (view === "repair" && !REPAIR_ENABLED) view = "overview";
+  if (privacyOn() && PRIVATE_VIEWS.has(view)) { toast("Technician mode is on: the customer's personal pages are hidden. Switch it off on the Repair page."); return; }
+  repairTab?.onShow(view);
   if (view !== "mirror" && view !== "tests" && mirror) stopMirror("Mirroring stopped");
   autotest?.onShow(view);
   devtools?.onShow(view);
@@ -383,8 +404,18 @@ async function openExtraUsbPhone(btn) {
   const transport = await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore });
   const a = new Adb(transport);
   phoneVia.set(a, "usb");
+  addExtraPhone(a);
   return a;
 }
+// Phones open besides the main one (Developer › Phones), for Repair's Bench and Transfer.
+const extraPhones = new Set();
+function addExtraPhone(a) {
+  if (!a || a === adb || extraPhones.has(a)) return;
+  extraPhones.add(a);
+  const gone = () => extraPhones.delete(a);
+  a.disconnected.then(gone, gone);
+}
+const allPhones = () => [adb, ...extraPhones].filter(Boolean);
 // Makes `next` (an open Adb) the phone the whole app works with. The previous one stays open and is returned.
 async function swapMainPhone(next) {
   const prev = adb;
@@ -395,7 +426,9 @@ async function swapMainPhone(next) {
     if (devtools) await Promise.race([Promise.all([devtools.beforeDisconnect(), apptesting?.beforeDisconnect()]), wait(2500)]);
     resetSessionState();
   }
+  extraPhones.delete(next);
   startSession(next, `Now using ${next.banner?.model || next.serial}`, phoneVia.get(next) || "usb");
+  if (prev) addExtraPhone(prev);
   return prev;
 }
 // `transport` may also be an already open Adb (a phone made the main one in Developer › Phones).
@@ -420,6 +453,7 @@ function startSession(transport, message, via = "usb") {
   devtools?.onConnected();
   links?.onConnected();
   backup?.onConnected();
+  repairTab?.onConnected();
   folderSync?.onConnected().catch(console.warn);
   apptesting?.onConnected();
 }
@@ -879,7 +913,7 @@ function resetSessionState() {
   stopCallAlerts(); resetNotifs();
   adb = null; companionInfo = null; resetAppIcons();
   setTimeout(syncTakeover, 0); // later, so switching phones (reset, then a new session) keeps it running
-  people?.reset(); calendarTab?.onDisconnected(); backup?.onDisconnected(); folderSync?.onDisconnected(); mmsList = []; mmsThumbs.clear(); mmsWant.length = 0;
+  people?.reset(); calendarTab?.onDisconnected(); backup?.onDisconnected(); folderSync?.onDisconnected(); repairTab?.onDisconnected(); mmsList = []; mmsThumbs.clear(); mmsWant.length = 0;
   smsList = null; threads = []; currentThread = null; contactsCache = null; contactNames = new Map(); callsCache = null;
   debloat = { ...debloat, phone: null };
   resetMedia();
@@ -4884,6 +4918,13 @@ try { if (localStorage.getItem("andromon.debug")) window.ddRevanced = revancedTa
 recoveryTab = initRecovery({ $, el, toast, showError, clearError, fmtSize });
 storageTab = initStorageMap({ $, el, sh, shQuote, fmtSize, toast, showError, armedClick, spinner });
 batteryTab = initBattery({ $, el, sh, cc, companionReady: companionAvailable, showError, spinner });
+repairTab = !REPAIR_ENABLED ? null : initRepair({
+  $, el, toast, showError, clearError, armedClick, fmtSize, busy, makeSwitch, sh, shQuote, withSync, download, track, cc,
+  getAdb: () => adb, companionReady: companionAvailable, allPhones, phoneName: (a) => a.banner?.model || a.serial, showView: (v) => show(v),
+  qrImage: (text) => { const img = qrImage(text); img.alt = "QR code"; return img; },
+  shopName: () => { try { return localStorage.getItem("andromon.repair.shop") || ""; } catch { return ""; } },
+  privacy: { get: privacyOn, set: setPrivacy },
+});
 folderSync = initFolderSync({ $, el, sh, shQuote, withSync, getSerial: () => adb?.serial || "", fmtSize, fmtDate, toast, showError, armedClick, makeSwitch });
 fdroidTab = initFdroid({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, getAdb: () => adb });
 
@@ -4930,6 +4971,7 @@ downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 // ---------- settings tab: appearance, sidebar and a few switches (see ./settings.js) ----------
 // With "Ask where to save each file" off, the main process saves downloads itself and says so here.
 globalThis.andromon?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
+document.querySelector(".app").classList.toggle("privacy", privacyOn()); // technician mode, as left last time
 settingsUi = initSettings({
   $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick, companionVersion: COMPANION_VERSION, scrcpyVersion: SCRCPY_VERSION,
   mirror: mirrorPrefs, shot: shotPrefs, shell: shellPrefs,
