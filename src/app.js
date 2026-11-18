@@ -31,6 +31,7 @@ import { initPeople } from "./people.js";
 import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
 import { createProgress, countBytes } from "./progress.js";
+import { initMirrorDrop } from "./mirrordrop.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
 const $ = (id) => document.getElementById(id);
@@ -3636,6 +3637,11 @@ const KEY_BUTTONS = {
   },
 };
 const mirrorKey = (k) => $("mirrorKeys").querySelector(`[data-k="${k}"]`);
+// Files dropped on the phone's screen: apps are installed, other files copied (./mirrordrop.js).
+initMirrorDrop({
+  $, el, toast, showError, fmtSize, sh, shQuote, withSync, cc, isMirroring: () => !!mirror,
+  openPackageFiles, selectSplits, getDeviceFacts, runInstall,
+});
 // The text box under the phone's screen: whatever is typed there is pasted on the phone, in any language.
 $("mirrorType").addEventListener("submit", (e) => {
   e.preventDefault();
