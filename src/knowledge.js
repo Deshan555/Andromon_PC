@@ -86,6 +86,13 @@ const PAGES = {
     tips: ["Both devices must be on the same Wi‑Fi, except with Direct link."],
     tour: [["#wifiSwitch", "On or off", "While on, this computer can be found by phones on the same network."], ["#wifiMethodName", "Transfer method", "Auto, Same Wi‑Fi or Direct link."], ["#wifiFolder", "Received files", "Where files from the phone are saved."]],
   },
+  storage: {
+    name: "Storage map",
+    intro: "See what fills the phone, folder by folder, and free space by deleting what you don't need.",
+    how: ["The top card shows Android's own count: apps, photos, videos, music, downloads and the rest.", "The map shows the phone's storage as boxes sized by what each folder or file takes. Click a folder to go into it; the path above takes you back.", "The lists show the biggest items in the open folder and the biggest files below it. Delete asks for a second click."],
+    tips: ["Folders that Android and apps need (DCIM, Download, Android…) can't be deleted as a whole: open them and delete what's inside.", "Deleted files are gone: there is no recycle bin on the phone. Back up first if in doubt."],
+    tour: [["#storageRoot > .card:first-child", "By kind", "Android's own count of what takes the space."], [".sm-map", "The map", "Bigger box, more space. Click a folder to open it."], [".sm-lists", "Biggest items", "Delete what you don't need."]],
+  },
   recovery: {
     name: "SD card recovery",
     intro: "Bring back deleted photos, videos and files from a memory card or USB stick in this computer.",

@@ -32,6 +32,7 @@ import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
 import { createProgress, countBytes } from "./progress.js";
 import { initMirrorDrop } from "./mirrordrop.js";
+import { initStorageMap } from "./storagemap.js";
 import { initClipSync } from "./clipsync.js";
 import { loadShortcuts, comboOf, usableCombo, comboLabel } from "./shortcuts.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
@@ -54,6 +55,7 @@ let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
 let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
 let recoveryTab = null; // SD card recovery page (./recovery.js)
+let storageTab = null; // Storage map page (./storagemap.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
 let shizukuCard = null; // The Shizuku page (./shizuku.js), set up at the end of this file
 let downloads = null; // the download manager (./downloads.js), set up at the end of this file
@@ -156,7 +158,7 @@ const settingsLink = (text = "Change in Settings") => {
 // ---------- navigation ----------
 let current = "overview";
 const loaders = { overview: loadOverview, backup: () => backup?.renderCard(), shizuku: () => Promise.all([shizukuCard?.render(), renderRamCard()]), apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
-  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
+  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), storage: () => storageTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
 const offlineViews = { wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load(), recovery: () => recoveryTab.load() };
 let settingsUi = null;
@@ -186,7 +188,7 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], storage: ["What fills ", "your phone"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
@@ -4501,6 +4503,7 @@ $("muDups").addEventListener("click", async () => {
 
 function resetMedia() {
   closeViewer(); stopSong();
+  storageTab?.reset();
   for (const st of [media.photos, media.music]) { st.items = []; st.loaded = false; st.sel.clear(); st.dups = null; }
   thumbs.clear(); thumbWant.clear();
   for (const u of songCache.values()) URL.revokeObjectURL(u);
@@ -4854,6 +4857,7 @@ try { if (localStorage.getItem("andromon.debug")) window.ddRevanced = revancedTa
 
 // ---------- F-Droid page (see ./fdroid.js) ----------
 recoveryTab = initRecovery({ $, el, toast, showError, clearError, fmtSize });
+storageTab = initStorageMap({ $, el, sh, shQuote, fmtSize, toast, showError, armedClick, spinner });
 fdroidTab = initFdroid({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, getAdb: () => adb });
 
 // ---------- phone links (see ./links.js) ----------
