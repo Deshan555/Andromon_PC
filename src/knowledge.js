@@ -93,6 +93,13 @@ const PAGES = {
     tips: ["Folders that Android and apps need (DCIM, Download, Android…) can't be deleted as a whole: open them and delete what's inside.", "Deleted files are gone: there is no recycle bin on the phone. Back up first if in doubt."],
     tour: [["#storageRoot > .card:first-child", "By kind", "Android's own count of what takes the space."], [".sm-map", "The map", "Bigger box, more space. Click a folder to open it."], [".sm-lists", "Biggest items", "Delete what you don't need."]],
   },
+  sync: {
+    name: "Folder sync",
+    intro: "Keep a folder on this computer and one on the phone the same, one way or both ways.",
+    how: ["Add a folder pair: pick the folder on this computer, then type the phone folder (like /sdcard/Documents).", "Choose the direction: computer → phone, phone → computer, or both ways (the newer copy wins).", "Click Sync now, or switch on “Sync when the phone connects”."],
+    tips: ["Files replaced or removed on this computer go to its Trash, so they can be brought back. On the phone they are gone.", "If a sync would remove more than half of a folder's files, it stops and asks you to check instead."],
+    tour: [["#syncRoot .btn.primary", "Add a pair", "Pick the folder on this computer first."], [".fs-pair", "A pair", "Both folders, the direction and when it syncs."]],
+  },
   battery: {
     name: "Battery health",
     intro: "How worn the battery is, its charge cycles and condition, and the charge over the last days.",

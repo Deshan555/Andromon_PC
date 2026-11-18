@@ -5,9 +5,12 @@
 //   "backup"  where "Back up this phone" writes its dated folders          (remembered)
 //   "photos"  where new photos are copied when a phone connects             (remembered)
 //   "restore" the folder of a backup.json opened with "Restore from a backup…" (this session only)
+//   "sync:<id>" a computer folder kept the same as a phone folder by Folder sync      (remembered)
 // Every path the UI sends is relative to one of them, is checked segment by segment, and can never
 // leave that folder. Files are written as "<name>.ddpart" and renamed when complete, so a copy that
-// was cut off is never mistaken for a finished one. Nothing here deletes or overwrites a finished file.
+// was cut off is never mistaken for a finished one. Nothing here deletes or overwrites a finished file,
+// except in a sync folder: there a file that sync replaces or removes goes to the computer's Trash
+// (Recycle Bin), so it can still be brought back.
 const { dialog, shell, BrowserWindow, safeStorage } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -27,9 +30,14 @@ function setupBackupFs(handle, { userData, readSettings, writeSettings }) {
   const open = new Map();  // id -> { fh, tmp, final, bytes, sender }
   let nextId = 1;
 
+  const syncId = (kind) => (/^sync:[a-z0-9]{1,16}$/.test(kind) ? kind.slice(5) : null);
   const rootOf = (kind) => {
-    if (!KINDS.has(kind)) throw new Error("Unknown folder");
+    if (!KINDS.has(kind) && !syncId(kind)) throw new Error("Unknown folder");
     let r = roots.get(kind);
+    if (!r && syncId(kind)) {
+      const saved = (readSettings().syncDirs || {})[syncId(kind)];
+      if (typeof saved === "string" && path.isAbsolute(saved)) { r = saved; roots.set(kind, r); }
+    }
     if (!r && SETTING[kind]) {
       const saved = readSettings()[SETTING[kind]];
       if (typeof saved === "string" && path.isAbsolute(saved)) { r = saved; roots.set(kind, r); }
@@ -88,17 +96,36 @@ function setupBackupFs(handle, { userData, readSettings, writeSettings }) {
   handle("bfs:get", (_e, kind) => info(String(kind)));
   handle("bfs:choose", async (event, kind) => {
     kind = String(kind);
-    if (!SETTING[kind]) throw new Error("Unknown folder");
+    if (!SETTING[kind] && !syncId(kind)) throw new Error("Unknown folder");
     const win = BrowserWindow.fromWebContents(event.sender);
     let current; try { current = rootOf(kind); } catch {}
     const r = await dialog.showOpenDialog(win, {
-      title: kind === "backup" ? "Keep phone backups in" : "Copy new photos to",
+      title: kind === "backup" ? "Keep phone backups in" : kind === "photos" ? "Copy new photos to" : "Keep this folder the same as the phone's",
       properties: ["openDirectory", "createDirectory"], defaultPath: current,
     });
     if (r.canceled || !r.filePaths[0]) return null;
     roots.set(kind, r.filePaths[0]);
-    writeSettings({ [SETTING[kind]]: r.filePaths[0] });
+    if (syncId(kind)) writeSettings({ syncDirs: { ...(readSettings().syncDirs || {}), [syncId(kind)]: r.filePaths[0] } });
+    else writeSettings({ [SETTING[kind]]: r.filePaths[0] });
     return info(kind);
+  });
+  // Folder sync: a pair was removed, so its folder is no longer reachable from the page.
+  handle("bfs:forget", (_e, kind) => {
+    kind = String(kind); const id = syncId(kind);
+    if (!id) throw new Error("Unknown folder");
+    const dirs = { ...(readSettings().syncDirs || {}) }; delete dirs[id];
+    writeSettings({ syncDirs: dirs }); roots.delete(kind);
+    return true;
+  });
+  // Folder sync: a file removed on the phone (or replaced) goes to the Trash here, never just deleted.
+  handle("bfs:trash", async (_e, kind, rel) => {
+    kind = String(kind);
+    if (!syncId(kind)) throw new Error("Only sync folders can have files removed");
+    const file = resolve(kind, rel);
+    if (file === rootOf(kind)) throw new Error("Invalid file name");
+    if (!fs.existsSync(file)) return false;
+    await shell.trashItem(file);
+    return true;
   });
   // "Restore from a backup…": the person picks a backup.json; its folder becomes the "restore" root.
   handle("bfs:pickBackup", async (event) => {
@@ -161,16 +188,17 @@ function setupBackupFs(handle, { userData, readSettings, writeSettings }) {
     return buf.length;
   });
   // Large files in pieces: open -> write… -> close (or abort).
-  handle("bfs:open", async (event, kind, rel) => {
+  handle("bfs:open", async (event, kind, rel, opts) => {
     if (open.size >= MAX_OPEN) throw new Error("Too many files open");
     const final = resolve(String(kind), rel);
-    if (fs.existsSync(final)) throw new Error("That file already exists");
+    const replace = !!opts?.replace && !!syncId(String(kind)); // only sync replaces, and its old copy goes to the Trash
+    if (!replace && fs.existsSync(final)) throw new Error("That file already exists");
     await fsp.mkdir(path.dirname(final), { recursive: true });
     const tmp = final + ".ddpart";
     const fh = await fsp.open(tmp, "w");
     const id = nextId++;
     watch(event.sender);
-    open.set(id, { fh, tmp, final, bytes: 0, sender: event.sender });
+    open.set(id, { fh, tmp, final, bytes: 0, sender: event.sender, replace });
     return id;
   });
   handle("bfs:write", async (_e, id, data) => {
@@ -184,7 +212,10 @@ function setupBackupFs(handle, { userData, readSettings, writeSettings }) {
   handle("bfs:close", async (_e, id, opts) => {
     const h = await dropHandle(Number(id), false);
     if (!h) throw new Error("File isn't open");
-    if (fs.existsSync(h.final)) { await fsp.unlink(h.tmp).catch(() => {}); throw new Error("That file already exists"); }
+    if (fs.existsSync(h.final)) {
+      if (!h.replace) { await fsp.unlink(h.tmp).catch(() => {}); throw new Error("That file already exists"); }
+      await shell.trashItem(h.final).catch(() => fsp.unlink(h.final));
+    }
     await fsp.rename(h.tmp, h.final);
     await setTime(h.final, opts?.mtime);
     return h.bytes;
