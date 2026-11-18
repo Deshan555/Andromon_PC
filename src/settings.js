@@ -12,6 +12,10 @@ export const THEMES = [
   { id: "graphite", label: "Graphite", colors: ["#dcdcd8", "#6c6d70"] },
 ];
 const MODES = [["system", "Same as computer"], ["light", "Light"], ["dark", "Dark"]];
+const TEXT_SIZES = [["100", "Default"], ["115", "Large"], ["130", "Larger"], ["150", "Largest"]];
+const FOLLOW = [["system", "Same as computer"], ["on", "On"], ["off", "Off"]];
+// Accessibility settings and their defaults. renderer/theme.js reads the same keys before the page paints.
+const A11Y = { text: "100", contrast: "system", motion: "system", bold: "off", focus: "off", links: "off", font: "poppins" };
 
 export function initSettings(ctx) {
   const { $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick } = ctx;
@@ -31,6 +35,21 @@ export function initSettings(ctx) {
     if (a !== "lime") root.dataset.accent = a; else delete root.dataset.accent;
     set("andromon.accent", a); render();
   }
+
+  // ---------- accessibility ----------
+  const a11y = (k) => get("andromon.a11y." + k, A11Y[k]);
+  function setA11y(k, v) {
+    set("andromon.a11y." + k, v);
+    globalThis.ddA11y?.apply();
+    render();
+  }
+  function resetA11y() {
+    for (const k of Object.keys(A11Y)) { try { localStorage.removeItem("andromon.a11y." + k); } catch {} }
+    globalThis.ddA11y?.apply();
+    render();
+    toast("Accessibility settings are back to their defaults");
+  }
+  const a11yChanged = () => Object.keys(A11Y).some((k) => a11y(k) !== A11Y[k]);
 
   // ---------- sidebar: full, or a narrow rail of icons ----------
   const railBtn = $("railBtn");
@@ -129,6 +148,21 @@ export function initSettings(ctx) {
     if (ctx.downloads.active(src).length) busy(b, true, "Downloading…");
     return b;
   };
+
+  function accessibilitySection() {
+    const sw = (k, on = "on", off = "off") => makeSwitch(a11y(k) === on, (v) => { setA11y(k, v ? on : off); return v; });
+    const rows = [
+      row("Text size", "Makes text, icons and buttons bigger together", select(TEXT_SIZES, a11y("text"), (v) => setA11y("text", v))),
+      row("High contrast", "Darker text, visible edges around cards and buttons, solid backgrounds", select(FOLLOW, a11y("contrast"), (v) => setA11y("contrast", v))),
+      row("Bold text", "Thicker letters everywhere", sw("bold")),
+      row("Plain font", "The computer's own font instead of Poppins. Some people find it easier to read", sw("font", "plain", "poppins")),
+      row("Reduce motion", "No sliding, fading or pulsing. Loading circles still turn, slowly", select(FOLLOW, a11y("motion"), (v) => setA11y("motion", v))),
+      row("Strong focus outline", "A thick, bright ring around whatever the keyboard is on. Move with Tab and Shift + Tab", sw("focus")),
+      row("Underline links", "So links stand out without relying on colour", sw("links")),
+    ];
+    if (a11yChanged()) rows.push(row("Back to defaults", "Undo all the changes on this card", group(action("Reset", "Resetting…", async () => resetA11y()))));
+    return section("Accessibility", ...rows);
+  }
 
   function phoneLinkSection() {
     const rows = [row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
@@ -335,6 +369,7 @@ export function initSettings(ctx) {
         row("Colour theme", "The accent colour of cards, highlights and the logo", swatches),
         row("Collapse the sidebar", "Show only icons. Shortcut: Ctrl/⌘ + B", makeSwitch(isRail(), (on) => { setRail(on); return on; }))),
     ];
+    parts.push(accessibilitySection());
     parts.push(phoneLinkSection(), notificationsSection());
     parts.push(mirrorSection());
     parts.push(screenshotSection());

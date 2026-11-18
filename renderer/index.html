@@ -985,6 +985,55 @@
   .dev-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13px; }
   .dev-kv > :nth-child(odd) { color: var(--muted); }
   .dev-kv > :nth-child(even) { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+  /* ---------- accessibility (Settings › Accessibility; renderer/theme.js sets these before paint) ---------- */
+  /* Text size: everything grows together (text, icons, spacing), so nothing overlaps. */
+  :root[data-text="115"] { zoom: 1.15; }
+  :root[data-text="130"] { zoom: 1.3; }
+  :root[data-text="150"] { zoom: 1.5; }
+  /* Plain font: the computer's own, often easier to read than Poppins. */
+  :root[data-font="plain"] { --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  /* More contrast: darker secondary text, visible edges, solid cards. */
+  :root[data-contrast="more"] {
+    --text: #000000; --ink: #000000; --muted: #333436; --faint: #545558; --border: #77787b;
+    --surface: #ffffff; --glass: #ffffff; --glass-strong: #ffffff; --chip: rgba(0,0,0,.13);
+    --nav-bg: #000000; --nav-icon: #f0f0f0; --good: #3a6106; --danger: #b3221d; --warn-ink: #4a3800;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-contrast="more"]:not([data-theme="light"]) {
+      --bg: #000000; --surface: #161718; --text: #ffffff; --ink: #ffffff; --muted: #dadbdd; --faint: #b4b5b8; --border: #8a8b8f;
+      --glass: #1d1e20; --glass-strong: #26272a; --chip: rgba(255,255,255,.18); --nav-bg: #161718; --nav-icon: #f0f0f0;
+      --good: #b9ec6a; --danger: #ff7a73;
+    }
+  }
+  :root[data-contrast="more"][data-theme="dark"] {
+    --bg: #000000; --surface: #161718; --text: #ffffff; --ink: #ffffff; --muted: #dadbdd; --faint: #b4b5b8; --border: #8a8b8f;
+    --glass: #1d1e20; --glass-strong: #26272a; --chip: rgba(255,255,255,.18); --nav-bg: #161718; --nav-icon: #f0f0f0;
+    --good: #b9ec6a; --danger: #ff7a73;
+  }
+  :root[data-contrast="more"] :is(.card, .btn:not(.primary), input, select, textarea, ol.steps li) { box-shadow: inset 0 0 0 1px var(--border); }
+  :root[data-contrast="more"] .switch:not([aria-checked="true"]) { box-shadow: inset 0 0 0 2px var(--muted); }
+  :root[data-contrast="more"] .switch:not([aria-checked="true"])::after { background: var(--muted); box-shadow: none; }
+  :root[data-contrast="more"] ::placeholder { color: var(--muted); opacity: 1; }
+  /* Bold text */
+  :root[data-bold] body, :root[data-bold] body * { font-weight: 500 !important; }
+  :root[data-bold] :is(b, strong, th, h1, h2, h3, .btn, nav button.active, nav button.nhead) { font-weight: 600 !important; }
+  /* Reduce motion: no sliding, fading or pulsing. Spinners keep turning, slowly, so work still shows. */
+  :root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+  }
+  :root[data-motion="reduce"] .spin { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
+  :root[data-motion="reduce"] .dl-wait > i { animation: none !important; width: 100%; opacity: .5; }
+  :root[data-motion="reduce"] .bar.indet > i { animation: none !important; width: 100% !important; opacity: .35; }
+  /* Strong focus outline: a thick ring around whatever the keyboard is on, everywhere. */
+  :root[data-focus="strong"] { --focus-ring: #1557d6; }
+  @media (prefers-color-scheme: dark) { :root[data-focus="strong"]:not([data-theme="light"]) { --focus-ring: #ffd23f; } }
+  :root[data-focus="strong"][data-theme="dark"] { --focus-ring: #ffd23f; }
+  :root[data-focus="strong"] :focus-visible { outline: 3px solid var(--focus-ring) !important; outline-offset: 2px !important; }
+  :root[data-focus="strong"] nav :focus-visible { outline-color: #ffd23f !important; outline-offset: -3px !important; } /* inside: the scrolling list would cut it off */
+  /* Underline links */
+  :root[data-links="underline"] a { text-decoration: underline !important; text-underline-offset: 2px; }
 </style>
 <script src="theme.js"></script>
 <link rel="stylesheet" href="wifiradar.css">

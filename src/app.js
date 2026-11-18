@@ -1125,7 +1125,7 @@ async function openAppDetail(a) {
   const box = $("appDetail");
   box.hidden = false;
   box.replaceChildren(loadingBox(`Loading ${appMeta.get(a.pkg)?.label || a.pkg}…`));
-  box.scrollIntoView({ block: "start", behavior: "smooth" });
+  box.scrollIntoView({ block: "start", behavior: document.documentElement.dataset.motion === "reduce" ? "auto" : "smooth" });
   const info = parsePackageDump(await sh(`dumpsys package ${shQuote(a.pkg)}`), a.pkg);
   if (selectedApp !== a) return;
   if (info.versionName) a.version = info.versionName;
@@ -1318,7 +1318,7 @@ async function previewInstall(files) {
   };
   box.replaceChildren(head, stats, warnBox, permBox, el("div", { className: "toolbar", style: "margin:16px 0 0" }, go, cancel));
   box.hidden = false;
-  box.scrollIntoView({ block: "start", behavior: "smooth" });
+  box.scrollIntoView({ block: "start", behavior: document.documentElement.dataset.motion === "reduce" ? "auto" : "smooth" });
 }
 
 async function runInstall({ pkg, pick }, progress) {
