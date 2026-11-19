@@ -505,7 +505,9 @@ export function mount(root, ctx) {
     if (res.body == null) {
       if (/^image\//i.test(res.type) && res.bodyBase64) {
         const bytes = Uint8Array.from(atob(res.bodyBase64), (c) => c.charCodeAt(0));
-        return el("img", { className: "at-img", src: URL.createObjectURL(new Blob([bytes], { type: res.type })), alt: "Image in the answer" });
+        const img = el("img", { className: "at-img", src: URL.createObjectURL(new Blob([bytes], { type: res.type })), alt: "Image in the answer" });
+        img.onload = img.onerror = () => URL.revokeObjectURL(img.src); // drawn again from the same answer each time
+        return img;
       }
       return el("p", { className: "muted", textContent: `Binary answer (${res.type || "unknown type"}, ${ctx.fmtSize(res.decodedSize)}).` });
     }

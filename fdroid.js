@@ -255,10 +255,27 @@ function setupFdroid(handle, { userData, getWindow }) {
   const exists = (f) => fsp.access(f).then(() => true, () => false);
 
   // ----- the catalogue in memory -----
-  let cat = null, byPkg = new Map(), loading = null;
+  // Parsed, it takes 60–100 MB, so it's only kept while the F-Droid page is being used: after a few
+  // minutes without a call it's let go, and read from disk again when next needed. A short summary
+  // (what Settings shows) stays, so Settings doesn't load it.
+  const IDLE_MS = 3 * 60_000;
+  let cat = null, byPkg = new Map(), loading = null, idle = null, meta = null;
+  const summarize = (c) => ({
+    timestamp: c.timestamp, fetchedAt: c.fetchedAt, apps: c.apps.length,
+    categories: Object.entries(c.categories).map(([id, x]) => ({ id, name: x.name })).sort((a, b) => a.name.localeCompare(b.name)),
+    antiFeatures: c.antiFeatures,
+    screenshots: c.format >= 2, // false: a catalogue from before screenshots were kept
+  });
+  function keepAwhile() {
+    clearTimeout(idle);
+    idle = setTimeout(() => { if (busy || loading) keepAwhile(); else { cat = null; byPkg = new Map(); } }, IDLE_MS);
+    idle.unref?.();
+  }
   function use(c) {
     cat = c; byPkg = new Map();
+    meta = c ? summarize(c) : null;
     if (!c) return;
+    keepAwhile();
     for (const a of c.apps) {
       byPkg.set(a.pkg, a);
       // Lower-case copies for searching; not written to disk.
@@ -266,7 +283,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     }
   }
   function load() {
-    if (cat) return Promise.resolve(cat);
+    if (cat) { keepAwhile(); return Promise.resolve(cat); }
     return loading ||= (async () => {
       try {
         const c = JSON.parse(await fsp.readFile(P.catalog, "utf8"));
@@ -338,16 +355,9 @@ function setupFdroid(handle, { userData, getWindow }) {
   }
 
   async function status() {
-    await load();
-    return {
-      catalog: cat ? {
-        timestamp: cat.timestamp, fetchedAt: cat.fetchedAt, apps: cat.apps.length,
-        categories: Object.entries(cat.categories).map(([id, c]) => ({ id, name: c.name })).sort((a, b) => a.name.localeCompare(b.name)),
-        antiFeatures: cat.antiFeatures,
-        screenshots: cat.format >= 2, // false: a catalogue from before screenshots were kept
-      } : null,
-      busy,
-    };
+    if (cat) meta = summarize(cat); // fetchedAt may have changed
+    else if (!meta) await load();
+    return { catalog: meta, busy };
   }
 
   // Downloads F-Droid's index when it is newer than the one here. Returns status() plus `changed`.

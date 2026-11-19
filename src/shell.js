@@ -221,6 +221,9 @@ export function initShell({ $, el, toast, showError, sh, download, getAdb }) {
     try { e.text = String(await sh(cmd)).replace(/\s+$/, ""); }
     catch (err) { e.error = err?.message || String(err); }
     e.ms = Math.round(performance.now() - t0); e.running = false;
+    // Past 20 MB of output in all (a few big dumpsys runs), the oldest entries go; the newest always stays.
+    let size = entries.reduce((n, x) => n + x.text.length, 0);
+    while (size > 20 * 1024 * 1024 && entries.length > 1 && entries[0] !== e) size -= entries.shift().text.length;
     renderOut();
   }
   form.addEventListener("submit", (ev) => { ev.preventDefault(); const cmd = input.value; input.select(); run(cmd); });

@@ -25,6 +25,7 @@ const path = require("node:path");
 
 const MAX_ENTRIES = 2000;
 const MAX_BODY = 2 * 1024 * 1024; // kept per body (raw and decoded)
+const MAX_KEPT = 200 * 1024 * 1024; // all kept bodies together; the oldest calls are dropped past this
 const HOP = new Set(["connection", "proxy-connection", "keep-alive", "proxy-authorization", "proxy-authenticate", "te", "trailer", "upgrade"]);
 
 // ---------------------------------------------------------------- DER / X.509
@@ -134,11 +135,15 @@ function splitHostPort(s, defPort) {
 const errText = (e) => (e?.code ? `${e.code}: ${e.message}` : String(e?.message || e));
 
 // Collects up to MAX_BODY bytes of a body while counting all of it.
+// `owner` (the inspector) counts what every body keeps, so the total can be held under MAX_KEPT.
 class Body {
-  constructor() { this.parts = []; this.kept = 0; this.size = 0; }
+  constructor(owner) { this.parts = []; this.kept = 0; this.size = 0; this.owner = owner; }
   add(c) {
     this.size += c.length;
-    if (this.kept < MAX_BODY) { const take = c.subarray(0, MAX_BODY - this.kept); this.parts.push(Buffer.from(take)); this.kept += take.length; }
+    if (this.kept < MAX_BODY) {
+      const take = c.subarray(0, MAX_BODY - this.kept); this.parts.push(Buffer.from(take)); this.kept += take.length;
+      this.owner?.kept(take.length);
+    }
   }
   get truncated() { return this.size > this.kept; }
   buffer() { return this.parts.length === 1 ? this.parts[0] : Buffer.concat(this.parts); }
@@ -251,16 +256,26 @@ class Inspector {
     await new Promise((r) => s.close(() => r()));
     return this.status();
   }
-  clear() { this.entries.clear(); this.dirty.clear(); this.emit({ type: "cleared" }); return true; }
+  clear() { for (const e of this.entries.values()) { if (e.reqBody) e.reqBody.owner = null; if (e.resBody) e.resBody.owner = null; } this.entries.clear(); this.keptBytes = 0; this.dirty.clear(); this.emit({ type: "cleared" }); return true; }
 
   // ---- entries
+  // Bytes held in bodies. Past MAX_KEPT the oldest calls go, as they do past MAX_ENTRIES.
+  kept(n) {
+    this.keptBytes = (this.keptBytes || 0) + n;
+    while (this.keptBytes > MAX_KEPT && this.entries.size > 1) this.dropOldest();
+  }
+  dropOldest() {
+    const first = this.entries.keys().next().value;
+    const e = this.entries.get(first);
+    this.entries.delete(first);
+    this.keptBytes -= (e?.reqBody?.kept || 0) + (e?.resBody?.kept || 0);
+    if (e?.reqBody) e.reqBody.owner = null; // a call still running no longer counts
+    if (e?.resBody) e.resBody.owner = null;
+  }
   newEntry(fields) {
     const e = { id: ++this.seq, time: now(), status: 0, error: "", reqHeaders: [], resHeaders: [], reqBody: null, resBody: null, ...fields };
     this.entries.set(e.id, e);
-    if (this.entries.size > MAX_ENTRIES) {
-      const first = this.entries.keys().next().value;
-      this.entries.delete(first);
-    }
+    if (this.entries.size > MAX_ENTRIES) this.dropOldest();
     this.touch(e);
     return e;
   }
@@ -331,7 +346,7 @@ class Inspector {
     const e = this.newEntry({
       kind: "http", method: req.method, scheme: isHttps ? "https" : "http", host: target.hostname.replace(/^\[|\]$/g, ""), port,
       path: target.pathname + target.search, url: target.href, httpVersion: req.httpVersion, decrypted: secure,
-      reqHeaders: req.rawHeaders.slice(), reqBody: new Body(), resBody: null,
+      reqHeaders: req.rawHeaders.slice(), reqBody: new Body(this), resBody: null,
       tls: secure ? { client: { protocol: req.socket.getProtocol?.() || "", cipher: req.socket.getCipher?.()?.name || "", sni: req.socket.servername || "" } } : null,
     });
     const headers = [];
@@ -361,7 +376,7 @@ class Inspector {
     });
     up.on("response", (ur) => {
       e.firstByte = now(); e.status = ur.statusCode; e.statusText = ur.statusMessage || "";
-      e.resHeaders = ur.rawHeaders.slice(); e.resBody = new Body();
+      e.resHeaders = ur.rawHeaders.slice(); e.resBody = new Body(this.entries.has(e.id) ? this : null); // not counted if the call was already dropped
       if (isHttps && ur.socket?.getPeerCertificate) {
         try {
           const pc = ur.socket.getPeerCertificate();

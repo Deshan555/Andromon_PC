@@ -259,11 +259,18 @@ function show(view) {
   if (view === "repair" && !REPAIR_ENABLED) view = "overview";
   if (privacyOn() && PRIVATE_VIEWS.has(view)) { toast("Technician mode is on: the customer's personal pages are hidden. Switch it off on the Repair page."); return; }
   repairTab?.onShow(view);
+  if (view !== "apps") dropPendingInstall();
   if (view !== "mirror" && view !== "tests" && mirror) stopMirror("Mirroring stopped");
   autotest?.onShow(view);
   devtools?.onShow(view);
   apptesting?.onShow(view);
   if (view !== "photos") closeViewer();
+  // Photos and Music are drawn afresh each time they open; their tiles (thousands of pictures after
+  // scrolling a big gallery) aren't kept in the background.
+  if (current !== view && (current === "photos" || current === "music")) {
+    $(current === "photos" ? "phGrid" : "muBody").replaceChildren();
+    thumbObserver.disconnect();
+  }
   current = view;
   for (const b of $("nav").querySelectorAll("button[data-view]")) {
     b.classList.toggle("active", b.dataset.view === view);
@@ -948,6 +955,7 @@ function resetSessionState() {
   devtools?.onDisconnected();
   links?.onDisconnected();
   apptesting?.onDisconnected();
+  dropPendingInstall();
   stopCallAlerts(); resetNotifs();
   adb = null; companionInfo = null; resetAppIcons();
   setTimeout(syncTakeover, 0); // later, so switching phones (reset, then a new session) keeps it running
@@ -1518,6 +1526,13 @@ async function getDeviceFacts() {
 }
 
 let pendingInstall = null;
+// The picked APKs (and any game data) are held in memory until they're installed or set aside: also on
+// leaving the Apps page and on disconnect, as they can be hundreds of MB.
+function dropPendingInstall() {
+  if (!pendingInstall || pendingInstall.installing) return;
+  pendingInstall = null;
+  $("installPreview").hidden = true; $("installPreview").replaceChildren();
+}
 async function previewInstall(files) {
   if (!adb) return;
   clearError();
@@ -1589,12 +1604,13 @@ async function previewInstall(files) {
   const go = el("button", { className: "btn primary", textContent: installed ? (installed.versionCode === info.versionCode ? "Reinstall" : "Update") : "Install", type: "button" });
   go.onclick = async () => {
     const job = pendingInstall; if (!job) return;
+    job.installing = true;
     busy(go, true, "Installing…"); cancel.disabled = true;
     const bar = createProgress({ el, fmtSize });
     go.parentElement.before(bar.node); bar.node.style.marginTop = "14px";
     try { await runInstall(job, (t, done, total) => bar.update(t, done, total)); box.hidden = true; pendingInstall = null; }
     catch (e) { showError(e); }
-    finally { bar.node.remove(); if (go.isConnected) { busy(go, false); cancel.disabled = false; } }
+    finally { job.installing = false; bar.node.remove(); if (go.isConnected) { busy(go, false); cancel.disabled = false; } }
   };
   box.replaceChildren(head, stats, warnBox, permBox, el("div", { className: "toolbar", style: "margin:16px 0 0" }, go, cancel));
   box.hidden = false;
@@ -3349,7 +3365,9 @@ async function startMirror(level) {
   client.output.pipeTo(new WritableStream({ write(line) { log.push(line); if (log.length > 40) log.shift(); console.debug("[scrcpy]", line); } })).catch(() => {});
 
   const canvas = $("mirrorCanvas");
-  const renderer = WebGLVideoFrameRenderer.isSupported ? new WebGLVideoFrameRenderer(canvas) : new BitmapVideoFrameRenderer(canvas);
+  // One renderer for the canvas, kept across mirror starts: a new one would leave the old one's
+  // program and texture (holding the last picture) in the canvas's graphics context.
+  const renderer = mirrorRenderer ??= WebGLVideoFrameRenderer.isSupported ? new WebGLVideoFrameRenderer(canvas) : new BitmapVideoFrameRenderer(canvas);
   const video = await client.videoStream;
   const decoder = new WebCodecsVideoDecoder({ codec: video.metadata.codec, renderer });
   const controller = client.controller;
@@ -3493,6 +3511,8 @@ function setMuted(on) {
   const mute = $("mirrorKeys").querySelector('[data-k="audio"]');
   keyLabel(mute, on ? "Unmute" : "Mute"); mute.classList.toggle("on", on);
 }
+
+let mirrorRenderer = null; // see startMirror
 
 // --- recording to MP4 (Mediabunny muxes the phone's own H.264 + Opus packets; nothing is re-encoded) ---
 // The file is written to disk as it's recorded (the place is asked for at the start), so a long recording
@@ -4100,7 +4120,7 @@ async function pumpThumbs() {
         const b64 = got[k.split(":")[1]];
         const url = b64 ? `data:image/jpeg;base64,${b64}` : "";
         thumbs.set(k, url);
-        if (thumbs.size > 3000) thumbs.delete(thumbs.keys().next().value);
+        if (thumbs.size > 1500) thumbs.delete(thumbs.keys().next().value);
         for (const img of imgs) if (url) img.src = url; else img.closest(".mtile, .mcard")?.classList.add("nothumb");
       }
     }
@@ -4110,9 +4130,15 @@ async function pumpThumbs() {
 // ---- reading files from the phone ----
 async function pullBlob(it, onBytes) {
   return withSync(async (s) => {
-    const reader = s.read(it.path).getReader(); const parts = []; let n = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value.slice()); n += value.length; onBytes?.(n); }
-    return new Blob(parts, { type: it.mime || "" });
+    // Folded into the Blob every 16 MB: a Blob made from Blobs only refers to them, and the browser keeps
+    // big ones on disk, so the page holds at most 16 MB of a large video at a time instead of all of it.
+    const reader = s.read(it.path).getReader(); let parts = [], held = 0, n = 0, blob = new Blob([]);
+    for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      parts.push(value.slice()); held += value.length; n += value.length; onBytes?.(n);
+      if (held >= 16 * 1024 * 1024) { blob = new Blob([blob, ...parts]); parts = []; held = 0; }
+    }
+    return new Blob([blob, ...parts], { type: it.mime || "" });
   });
 }
 
@@ -4596,6 +4622,8 @@ function renderMusicDups() {
 
 // ---- player: the music dock at the bottom of the window (./player.js); songs come over USB one at a time ----
 const songCache = new Map(); // key -> blob URL (the last few songs, and the next one)
+const songBytes = new Map(); // key -> size, so the cache can be held under SONG_CACHE_BYTES
+const SONG_CACHE_BYTES = 150 * 1024 * 1024;
 let musicDock = null;
 async function songSource(it, onBytes) {
   const key = mkey(it);
@@ -4603,8 +4631,13 @@ async function songSource(it, onBytes) {
   if (url) { songCache.delete(key); songCache.set(key, url); return url; } // most recently used last
   const blob = await pullBlob(it, onBytes);
   url = songCache.get(key) || URL.createObjectURL(blob); // fetched twice at once: keep the first
-  songCache.set(key, url);
-  while (songCache.size > 6) { const [k, u] = songCache.entries().next().value; URL.revokeObjectURL(u); songCache.delete(k); }
+  songCache.set(key, url); songBytes.set(key, blob.size);
+  // At most 6 songs and 150 MB (a few lossless albums' worth of tracks), but always the newest two:
+  // the one playing and the next one.
+  const total = () => [...songBytes.values()].reduce((a, b) => a + b, 0);
+  while (songCache.size > 2 && (songCache.size > 6 || total() > SONG_CACHE_BYTES)) {
+    const [k, u] = songCache.entries().next().value; URL.revokeObjectURL(u); songCache.delete(k); songBytes.delete(k);
+  }
   return url;
 }
 function playSong(list, index) {
@@ -4647,7 +4680,7 @@ function resetMedia() {
   for (const st of [media.photos, media.music]) { st.items = []; st.loaded = false; st.sel.clear(); st.dups = null; }
   thumbs.clear(); thumbWant.clear();
   for (const u of songCache.values()) URL.revokeObjectURL(u);
-  songCache.clear();
+  songCache.clear(); songBytes.clear();
 }
 
 // ---------- Wi‑Fi transfer (LocalSend protocol; network code lives in ../localsend.js) ----------

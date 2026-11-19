@@ -104,7 +104,7 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
     info.textContent = current ? `${current.w}×${current.h} · ${fmtSize(current.blob.size)} · ${new Date(current.at).toLocaleTimeString()}${blurNote}` : "";
     strip.hidden = shots.length < 2;
     strip.replaceChildren(...shots.map((s) => {
-      const t = el("button", { className: "sh-thumb" + (s === current ? " on" : ""), type: "button", title: new Date(s.at).toLocaleTimeString() }, el("img", { src: s.url, alt: "" }));
+      const t = el("button", { className: "sh-thumb" + (s === current ? " on" : ""), type: "button", title: new Date(s.at).toLocaleTimeString() }, el("img", { src: s.thumb || "", alt: "" }));
       t.onclick = () => { current = s; render(); };
       t.ondblclick = () => openFull(s);
       return t;
@@ -115,19 +115,35 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
   /** PNG bytes from the phone -> a blob in the chosen format and size, plus its pixel size. */
   async function convert(png, { format, scale }, turn = 0) {
     const bmp = await createImageBitmap(png);
-    const k = scale / 100, side = turn % 180 !== 0;
-    const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
-    if (format === "png" && scale === 100 && !turn) return { blob: png, w, h };
-    const c = new OffscreenCanvas(side ? h : w, side ? w : h), g = c.getContext("2d");
-    g.translate(c.width / 2, c.height / 2); g.rotate((turn * Math.PI) / 180);
-    g.imageSmoothingQuality = "high";
-    g.drawImage(bmp, -w / 2, -h / 2, w, h);
-    return { blob: await c.convertToBlob({ type: `image/${format}`, quality: 0.9 }), w: c.width, h: c.height };
+    try {
+      const k = scale / 100, side = turn % 180 !== 0;
+      const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+      if (format === "png" && scale === 100 && !turn) return { blob: png, w, h };
+      const c = new OffscreenCanvas(side ? h : w, side ? w : h), g = c.getContext("2d");
+      g.translate(c.width / 2, c.height / 2); g.rotate((turn * Math.PI) / 180);
+      g.imageSmoothingQuality = "high";
+      g.drawImage(bmp, -w / 2, -h / 2, w, h);
+      return { blob: await c.convertToBlob({ type: `image/${format}`, quality: 0.9 }), w: c.width, h: c.height };
+    } finally { bmp.close(); } // the full-size picture, decoded: let it go now rather than at the next clean-up
   }
+  // A small picture for the history strip: the full-size ones there would each take ~10 MB once shown.
+  async function thumbOf(s) {
+    try {
+      const bmp = await createImageBitmap(s.blob, { resizeWidth: 160, resizeQuality: "medium" });
+      const c = new OffscreenCanvas(bmp.width, bmp.height);
+      c.getContext("2d").drawImage(bmp, 0, 0); bmp.close();
+      const url = URL.createObjectURL(await c.convertToBlob({ type: "image/jpeg", quality: 0.8 }));
+      if (s.thumb) URL.revokeObjectURL(s.thumb);
+      if (!shots.includes(s)) { URL.revokeObjectURL(url); return; } // removed meanwhile
+      s.thumb = url; render();
+    } catch (e) { console.warn("Screenshot thumbnail:", e); }
+  }
+  const forget = (s) => { URL.revokeObjectURL(s.url); if (s.thumb) URL.revokeObjectURL(s.thumb); s.thumb = ""; };
   const add = (blob, w, h, format) => {
     const s = { blob, w, h, at: Date.now(), url: URL.createObjectURL(blob), name: `screenshot-${stamp(Date.now())}.${format === "jpeg" ? "jpg" : format}`, format };
     shots.unshift(s); current = s;
-    for (const old of shots.splice(HISTORY_MAX)) URL.revokeObjectURL(old.url);
+    for (const old of shots.splice(HISTORY_MAX)) forget(old);
+    thumbOf(s);
     return s;
   };
 
@@ -177,11 +193,11 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
     const { blob, w, h } = await convert(s.blob, { format: s.format, scale: 100 }, deg);
     URL.revokeObjectURL(s.url);
     Object.assign(s, { blob, w, h, url: URL.createObjectURL(blob) });
-    render();
+    render(); thumbOf(s);
   }
   function remove(s) {
     if (!s) return;
-    shots.splice(shots.indexOf(s), 1); URL.revokeObjectURL(s.url);
+    shots.splice(shots.indexOf(s), 1); forget(s);
     current = shots[0] || null; render();
   }
 
@@ -341,6 +357,6 @@ export function initScreenshot({ $, el, toast, showError, clearError, sh, shByte
 
   renderSummary(); render();
   return {
-    reset() { full?.close(); for (const s of shots.splice(0)) URL.revokeObjectURL(s.url); current = null; render(); },
+    reset() { full?.close(); for (const s of shots.splice(0)) forget(s); current = null; render(); },
   };
 }

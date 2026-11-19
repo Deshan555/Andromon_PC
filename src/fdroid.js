@@ -47,8 +47,16 @@ export function initFdroid(base) {
         .then((url) => { fetching--; job.done(url); pump(); });
     }
   }
+  // The newest 600 are kept; older ones are let go (a picture already showing stays) and fetched again if needed.
   const iconUrl = (pkg) => {
-    if (!icons.has(pkg)) icons.set(pkg, new Promise((done) => { waiting.push({ pkg, done }); pump(); }));
+    if (!icons.has(pkg)) {
+      icons.set(pkg, new Promise((done) => { waiting.push({ pkg, done }); pump(); }));
+      while (icons.size > 600) {
+        const [old, url] = icons.entries().next().value;
+        icons.delete(old);
+        url.then((u) => { if (u) setTimeout(() => URL.revokeObjectURL(u), 10_000); }); // after any picture still loading it
+      }
+    }
     return icons.get(pkg);
   };
   const seen = new IntersectionObserver((entries) => {

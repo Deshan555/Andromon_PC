@@ -35,14 +35,16 @@ export function mount(root, ctx) {
       let total = 0;
       try { total = Number((await sync.stat(path)).size) || 0; } catch {}
       const reader = sync.read(path).getReader(), parts = [];
-      let got = 0;
+      let got = 0, held = 0, blob = new Blob([]);
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        parts.push(value.slice()); got += value.length;
+        parts.push(value.slice()); got += value.length; held += value.length;
         onProgress?.(got, total);
+        // Folded into a Blob every 16 MB so a long recording isn't held whole in the page's memory.
+        if (held >= 16 * 1024 * 1024) { blob = new Blob([blob, ...parts]); parts.length = 0; held = 0; }
       }
-      return new Blob(parts);
+      return new Blob([blob, ...parts]);
     });
   }
 
