@@ -22,8 +22,13 @@ if (!dir || !fs.existsSync(dir)) { console.error("usage: release-manifest.js <fo
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const repo = process.env.GITHUB_REPOSITORY || String(pkg.homepage || "").replace(/^https:\/\/github\.com\//, "");
-const commit = process.env.GITHUB_SHA || git("rev-parse", "HEAD");
+// SOURCE_REPOSITORY / SOURCE_SHA: when the workflow runs in another repository (Andromon_Releases builds
+// this one's code), the repository and commit that were built; GitHub's own variables name the other one.
+const repo = process.env.SOURCE_REPOSITORY || process.env.GITHUB_REPOSITORY || String(pkg.homepage || "").replace(/^https:\/\/github\.com\//, "");
+// Where the files are downloaded from: RELEASE_REPOSITORY (for example Deshan555/Andromon_Releases) when the
+// releases are published in their own repository; commit links keep pointing at the source (repo).
+const releaseRepo = process.env.RELEASE_REPOSITORY || repo;
+const commit = process.env.SOURCE_SHA || (process.env.SOURCE_REPOSITORY ? "" : process.env.GITHUB_SHA) || git("rev-parse", "HEAD");
 const build = Number(process.env.GITHUB_RUN_NUMBER) || 0;
 const tag = `v${pkg.version}`;
 const date = new Date().toISOString();
@@ -39,7 +44,7 @@ const files = fs.readdirSync(dir).filter((n) => KINDS[path.extname(n).toLowerCas
     platform, arch: archOf(name), kind, name, size: data.length,
     sha256: crypto.createHash("sha256").update(data).digest("hex"),
     // Works once the release for this version is published. GitHub stores a space in a file name as a dot.
-    url: `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(name.replace(/ /g, "."))}`,
+    url: `https://github.com/${releaseRepo}/releases/download/${tag}/${encodeURIComponent(name.replace(/ /g, "."))}`,
   };
 });
 if (!files.length) { console.error(`No installers found in ${dir}`); process.exit(1); }
@@ -96,7 +101,7 @@ try {
 
 const manifest = {
   name: pkg.build?.productName || pkg.name, version: pkg.version, build, date, commit,
-  release: `https://github.com/${repo}/releases/tag/${tag}`,
+  release: `https://github.com/${releaseRepo}/releases/tag/${tag}`,
   changes: changes.map((c) => c.subject),
   ...(companion ? { companion: { ...companion, fromApk: undefined, changes: companion.changes.map((c) => c.subject) } } : {}),
   files,
@@ -139,7 +144,7 @@ if (process.argv[3]) {
     previous?.commit
       ? `Changes since the previous build ([\`${previous.commit.slice(0, 7)}\`](https://github.com/${repo}/commit/${previous.commit})${previous.build ? `, build ${previous.build}` : ""}).`
       : "First build: the list shows the latest commits.",
-    `Every build is listed in the [changelog](https://github.com/${repo}/blob/release/CHANGELOG.md).`, "",
+    `Every build is listed in the [changelog](https://github.com/${releaseRepo}/blob/${releaseRepo === repo ? "release" : "HEAD"}/CHANGELOG.md).`, "",
     // The phone app lives in another repository, so its commits are named without a link.
     ...(companion ? [`## Phone app ${companion.version}${companion.build ? ` (build ${companion.build})` : ""}`, "",
       ...(companion.changes.length ? companion.changes.map((c) => `- ${c.subject} (\`${c.sha}\`)`) : ["- No changes to the phone app."]), ""] : []),
