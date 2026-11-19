@@ -2,6 +2,47 @@
 
 Every build of the `release` branch, newest first. Written by the build; don't edit by hand.
 
+## v0.1.0 (build 4) · 2026-11-19
+
+- Add a Memory page: RAM in use, apps in memory, Stop and Free memory (`008937d`)
+- Use less memory in long sessions (`15eee26`)
+- Save screen recordings and files from the phone straight to disk (`566f534`)
+- Bundle the companion with the new welcome tour look (`319b7c3`)
+- Bundle the companion with the chart Dashboard (`c73ab24`)
+- Bundle the companion with the Tools tabs (`cba6585`)
+- Bundle companion 0.34.0 (`87442c3`)
+- Add a web build ready to upload to a static host (`cfcfd70`)
+- Retake the user guide screenshots on a real phone (`a9c8793`)
+- Leave the PC link off when it was stopped on the phone (`b29f5dc`)
+- Show a start-up splash with the logo and a progress bar (`2683498`)
+- Show screenshots full screen (`6f01905`)
+- Add a media player for videos and music (`fa7ce6e`)
+- Blur personal data in phone screenshots (`362c0c9`)
+- Blur personal data in the Andromon window (`cf4a192`)
+- Add app zoom, smaller buttons and icon-only buttons to Accessibility (`e0842b5`)
+- Add a Repair desk for phone repair shops (hidden for now) (`d8a3a5f`)
+- Find photos that look alike (`705ff4e`)
+- Add Folder sync between this computer and the phone (`732517e`)
+- Add a Battery health page (`de5a728`)
+- Add a Storage map page (`aab1ac4`)
+- Lock backups with a password (`b962ae5`)
+- Share the clipboard both ways while a phone is connected (`5c3f312`)
+- Add keyboard shortcuts for the mirror's controls (`6656782`)
+- Mirror extra phones in small windows of their own (`74d3b7e`)
+- Install apps and copy files dropped on the mirrored screen (`71ff101`)
+- Tell the phone which computer it is linked to (`1bbc9b1`)
+- Add a script that builds, signs and checks the installers (`e1bd2b3`)
+- Show a code the phone can scan to find this computer (`78976d8`)
+- Put the mirror controls around the phone's screen, with Auto quality (`ed7c828`)
+- Pin the sidebar to the window's left edge (`211745f`)
+- Show what to set up first when running as a web page (`d3ffbad`)
+- Connect phones by themselves and keep other adb programs off them (`0f1c99b`)
+- Add an SD card recovery page (PhotoRec) (`5a85b5b`)
+- Show an app's screenshots on the F-Droid page (`7b0ddcd`)
+- Add accessibility settings (`c38cc5a`)
+- Rename the app to Andromon (`ff8c7b6`)
+- Show a progress bar while files are copied, uploaded or downloaded (`2f155d9`)
+
 ## v0.1.0 (build 3) · 2026-11-15
 
 - Say in the README where to download the builds (`feddcf1`)
