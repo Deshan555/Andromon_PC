@@ -9,7 +9,7 @@ import {
   AndroidKeyEventAction, AndroidScreenPowerMode, h264ParseConfiguration,
 } from "@yume-chan/scrcpy";
 import { WebCodecsVideoDecoder, WebGLVideoFrameRenderer, BitmapVideoFrameRenderer } from "@yume-chan/scrcpy-decoder-webcodecs";
-import { Output, Mp4OutputFormat, BufferTarget, EncodedVideoPacketSource, EncodedAudioPacketSource, EncodedPacket } from "mediabunny";
+import { Output, Mp4OutputFormat, BufferTarget, StreamTarget, EncodedVideoPacketSource, EncodedAudioPacketSource, EncodedPacket } from "mediabunny";
 import { openPackageFiles, selectSplits, SENSITIVE_PERMISSIONS } from "./apk.js";
 import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
@@ -130,6 +130,40 @@ function download(blob, name) {
   const a = el("a", { href: URL.createObjectURL(blob), download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+/**
+ * A file on this computer to write a big save into piece by piece, so it never sits whole in memory.
+ * Where it goes follows Settings › Saving files (a save window, or straight into the save folder).
+ * Resolves to { name, writable, abort } — `writable` takes Uint8Arrays (appended) or
+ * { type: "write", data, position } — or to null when the person cancels, or undefined where files
+ * can't be written this way (the caller then builds the file in memory and uses download()).
+ */
+async function saveStream(name, kind) {
+  const api = globalThis.andromon?.app;
+  if (api?.saveStart) {
+    const f = await api.saveStart(name, { kind });
+    if (!f) return null;
+    // Only the bytes in view go over IPC, not a larger buffer they're a window into.
+    const own = (d) => (d.byteOffset === 0 && d.byteLength === d.buffer.byteLength ? d : d.slice());
+    // Once aborted (here or by abort() below, even while a writer holds the stream), nothing more is
+    // written and a later close doesn't keep a half-written file.
+    let dropped = false;
+    const drop = () => { if (dropped) return Promise.resolve(); dropped = true; return api.saveAbort(f.id).catch(() => {}); };
+    const writable = new WritableStream({
+      write: (c) => (dropped ? undefined : c instanceof Uint8Array ? api.saveWrite(f.id, own(c)) : api.saveWrite(f.id, own(c.data), c.position)),
+      close: () => (dropped ? undefined : api.saveClose(f.id)),
+      abort: drop,
+    }, new CountQueuingStrategy({ highWaterMark: 4 }));
+    return { name: f.name, writable, abort: drop };
+  }
+  if (window.showSaveFilePicker) {
+    let h;
+    try { h = await window.showSaveFilePicker({ suggestedName: name }); }
+    catch (e) { if (e.name === "AbortError") return null; throw e; }
+    const writable = await h.createWritable();
+    return { name: h.name, writable, abort: () => writable.abort().catch(() => {}) };
+  }
+  return undefined;
 }
 function withSync(fn) {
   return track(async () => {
@@ -3461,25 +3495,35 @@ function setMuted(on) {
 }
 
 // --- recording to MP4 (Mediabunny muxes the phone's own H.264 + Opus packets; nothing is re-encoded) ---
-const REC_LIMIT = 1.5 * 1024 ** 3; // the file is built in memory; stop before it gets too big
+// The file is written to disk as it's recorded (the place is asked for at the start), so a long recording
+// costs no memory. Where saving straight to a file isn't possible, it's built in memory and capped.
+const REC_LIMIT = 1.5 * 1024 ** 3;
 const hex2 = (n) => n.toString(16).padStart(2, "0");
 const bytesEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const fileStamp = () => new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 
 async function startRecording() {
-  const m = mirror; if (!m || m.rec) return;
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const m = mirror; if (!m || m.rec || m.recPicking) return;
+  let file;
+  m.recPicking = true;
+  try { file = await saveStream(`recording-${fileStamp()}.mp4`, "MP4 video"); }
+  finally { m.recPicking = false; }
+  if (file === null) return; // cancelled
+  if (mirror !== m || m.rec) { file?.abort(); return; } // the mirror stopped while the save window was open
+  const output = file
+    ? new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: new StreamTarget(file.writable, { chunked: true }) })
+    : new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const video = new EncodedVideoPacketSource("avc");
   output.addVideoTrack(video);
   let audio = null;
   if (m.audio) { audio = new EncodedAudioPacketSource("opus"); output.addAudioTrack(audio); }
   await output.start();
-  const rec = m.rec = { output, video, audio, t0: null, bytes: 0, started: 0, queue: Promise.resolve(), error: null, audioStarted: false, stopping: false };
+  const rec = m.rec = { output, file, video, audio, t0: null, bytes: 0, started: 0, queue: Promise.resolve(), error: null, audioStarted: false, stopping: false };
   // Packets must reach the muxer in order, one at a time.
   rec.add = (source, packet, meta) => {
     rec.bytes += packet.data.byteLength;
     rec.queue = rec.queue.then(() => source.add(packet, meta)).catch((e) => { rec.error ||= e; });
-    if (rec.bytes > REC_LIMIT) stopRecording(m, "Recording stopped at 1.5 GB and saved. Start a new one to keep going.");
+    if (!rec.file && rec.bytes > REC_LIMIT) stopRecording(m, "Recording stopped at 1.5 GB and saved. Start a new one to keep going.");
   };
   // Ask the phone for a key frame now rather than waiting for the next one (up to 10 s).
   m.controller?.resetVideo?.().catch(() => {});
@@ -3532,13 +3576,15 @@ async function stopRecording(m, message) {
   recUi(m);
   try {
     await rec.queue;
-    if (rec.t0 == null) { await rec.output.cancel(); toast("Nothing was recorded yet"); return; }
+    if (rec.t0 == null) { await rec.file?.abort(); await rec.output.cancel(); toast("Nothing was recorded yet"); return; }
     if (rec.error) throw rec.error;
     await rec.output.finalize();
+    if (rec.file) { toast(message || `Saved ${rec.file.name} (${fmtSize(rec.bytes)})`); return; }
     const buf = rec.output.target.buffer;
     download(new Blob([buf], { type: "video/mp4" }), `recording-${fileStamp()}.mp4`);
     toast(message || `Saved recording (${fmtSize(buf.byteLength)})`);
   } catch (e) {
+    rec.file?.abort();
     showError(new Error("Couldn't save the recording: " + (e?.message || e)));
   }
 }
@@ -4990,7 +5036,7 @@ new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--
 // ---------- screenshot page (see ./screenshot.js) ----------
 shotTab = initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb: () => adb, shotBlur });
 // ---------- files page (see ./files.js) ----------
-filesTab = initFiles({ $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, getAdb: () => adb, LinuxFileType });
+filesTab = initFiles({ $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, saveStream, getAdb: () => adb, LinuxFileType });
 // ---------- dropdown menus: every <select> gets the app's own menu (see ./dropdown.js) ----------
 initDropdowns();
 // ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------

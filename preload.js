@@ -174,6 +174,11 @@ contextBridge.exposeInMainWorld("andromon", {
     saveOpen: () => call("app:saveOpen"),
     saveAsk: (ask) => call("app:saveAsk", !!ask),
     saveChoose: () => call("app:saveChoose"),
+    // A big file written in pieces: open (asks where, or picks a free name in the save folder) -> write… -> close or abort.
+    saveStart: (name, opts) => call("save:open", String(name), opts || {}),
+    saveWrite: (id, data, position) => call("save:write", id, data, position),
+    saveClose: (id) => call("save:close", id),
+    saveAbort: (id) => call("save:abort", id),
     onEvent: (cb) => {
       const h = (_e, ev) => cb(ev);
       ipcRenderer.on("app:event", h);

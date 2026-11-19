@@ -15,7 +15,7 @@ const STORED = new Set("jpg jpeg png gif webp heic avif mp4 m4v mkv webm mov 3gp
 const TEXT_KINDS = new Set(["text", "code", "data", "script"]);
 
 export function initFiles(ctx) {
-  const { $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, getAdb, LinuxFileType } = ctx;
+  const { $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, saveStream, getAdb, LinuxFileType } = ctx;
   const root = $("filesRoot");
   const join = (dir, name) => (dir.endsWith("/") ? dir : dir + "/") + name;
   const parent = (p) => p.replace(/\/[^/]+\/?$/, "") || "/";
@@ -79,6 +79,22 @@ export function initFiles(ctx) {
       for (const p of parts) { const take = Math.min(p.length, all.length - at); all.set(p.subarray(0, take), at); at += take; if (at >= all.length) break; }
       return all;
     });
+  }
+
+  /** Copies a phone file straight into `out` (from saveStream), a piece at a time, so it never sits whole in memory. */
+  async function pullToFile(path, out, onBytes, job) {
+    const w = out.writable.getWriter();
+    try {
+      await withSync(async (s) => {
+        const reader = s.read(path).getReader(); let got = 0;
+        for (;;) {
+          const { done, value } = await reader.read(); if (done) break;
+          if (job?.cancelled) { reader.cancel().catch(() => {}); throw new Error("cancelled"); }
+          await w.write(value.slice()); got += value.length; onBytes?.(got);
+        }
+      });
+      await w.close();
+    } catch (e) { await w.abort().catch(() => {}); throw e; }
   }
 
   // ---------- page skeleton ----------
@@ -219,14 +235,25 @@ export function initFiles(ctx) {
       await work(list.length === 1 ? `Downloading ${list[0].name}…` : `Downloading ${list.length} files…`, async (say, j) => {
         const total = list.reduce((t, f) => t + (Number(f.size) || 0), 0);
         let before = 0, n = 0;
+        const saved = [];
         for (const f of list) {
           stopIf(j);
           const what = list.length > 1 ? `Downloading ${f.name} (${++n} of ${list.length})` : `Downloading ${f.name}`;
+          const out = await saveStream(f.name);
+          if (out === null) { before += Number(f.size) || 0; continue; } // the save window was cancelled: skip this one
           say(what, before, total);
-          const bytes = await readBytes(f.path, Infinity, (got) => say(what, before + got, total), j);
-          before += Number(f.size) || bytes.length;
-          download(new Blob([bytes]), f.name);
+          if (out) {
+            let got = 0;
+            await pullToFile(f.path, out, (g) => { got = g; say(what, before + g, total); }, j);
+            before += Number(f.size) || got;
+            saved.push(out.name);
+          } else {
+            const bytes = await readBytes(f.path, Infinity, (got) => say(what, before + got, total), j);
+            before += Number(f.size) || bytes.length;
+            download(new Blob([bytes]), f.name);
+          }
         }
+        if (saved.length) toast(saved.length === 1 ? `Saved ${saved[0]}` : `Saved ${saved.length} files`);
       });
     } finally { if (btn) btn.disabled = false; }
   }

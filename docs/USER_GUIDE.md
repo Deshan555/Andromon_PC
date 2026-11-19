@@ -279,7 +279,7 @@ Shows the phone's screen live and lets you use it with the mouse and keyboard.
 | **Play the phone's sound here** | Sends the phone's sound to the computer (Android 11+). |
 | **Turn the phone's screen off while mirroring** | The phone's own display stays dark while you use it from the computer. |
 
-While mirroring: click = tap, drag = swipe, wheel = scroll, right-click or Esc = Back, and typing goes to the phone. Text copied on either side is shared. The panel on the right has **Back, Home, Recents, Vol −, Vol +, Power, Notifications, Rotate, Screen off, Save frame, Mute, Full screen** and **Record** (saves an MP4 with picture and sound). **Stop mirroring** ends it.
+While mirroring: click = tap, drag = swipe, wheel = scroll, right-click or Esc = Back, and typing goes to the phone. Text copied on either side is shared. The panel on the right has **Back, Home, Recents, Vol −, Vol +, Power, Notifications, Rotate, Screen off, Save frame, Mute, Full screen** and **Record** (saves an MP4 with picture and sound; it is written to the file as it records, so a long recording doesn't fill the computer's memory). **Stop mirroring** ends it.
 
 ### Screenshot
 
