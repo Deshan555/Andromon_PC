@@ -1,6 +1,9 @@
 // Developer tab › Phones: keep more than one phone connected. The main phone is the one every other
 // tab works with; the others stay open here and can be made the main one with one click. Commands,
-// APK installs and screenshots can go to all of them at once.
+// APK installs and screenshots can go to all of them at once. "Mirror" shows an extra phone's screen in a
+// small window of its own (../minimirror.js), next to the main phone on the Screen mirror page.
+
+import { openMiniMirror, closeMiniMirror } from "../minimirror.js";
 
 export function mount(root, ctx) {
   const { el, toast, showError, clearError, shQuote } = ctx;
@@ -41,7 +44,7 @@ export function mount(root, ctx) {
   const addBtn = el("button", { className: "btn primary sm", type: "button", textContent: "Add another phone (USB)" });
   addBtn.onclick = async () => {
     clearError();
-    if (!ctx.openExtraUsbPhone) { showError("Adding phones needs the Droid Desk desktop app."); return; }
+    if (!ctx.openExtraUsbPhone) { showError("Adding phones needs the Andromon desktop app."); return; }
     ctx.busy(addBtn, true, "Connecting…");
     try {
       const a = await ctx.openExtraUsbPhone(addBtn);
@@ -68,19 +71,27 @@ export function mount(root, ctx) {
         use.onclick = async () => {
           ctx.busy(use, true, "Switching…");
           try {
+            closeMiniMirror(a); // it becomes the main phone, which the Screen mirror page shows
             extras.splice(extras.indexOf(a), 1);
             const prev = await ctx.swapMainPhone(a);
             if (prev) addExtra(prev);
             render();
           } catch (e) { showError(e); ctx.busy(use, false); }
         };
+        const watch = el("button", { className: "btn sm", type: "button", textContent: "Mirror" });
+        watch.onclick = async () => {
+          ctx.busy(watch, true, "Starting…");
+          try { await openMiniMirror(a, { el, toast, name: i.model }); } catch (e) { showError(e); }
+          finally { ctx.busy(watch, false); }
+        };
         const drop = el("button", { className: "btn sm", type: "button", textContent: "Disconnect" });
         drop.onclick = async () => {
+          closeMiniMirror(a);
           extras.splice(extras.indexOf(a), 1);
           try { await a.close(); } catch {}
           render();
         };
-        actions.append(use, drop);
+        actions.append(use, watch, drop);
       }
       const via = ctx.phoneVia?.(a) === "wifi" ? "Wi‑Fi" : "USB";
       return el("div", { className: "dev-phone" + (main ? " main" : "") },

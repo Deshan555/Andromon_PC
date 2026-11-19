@@ -12,7 +12,7 @@ const CFG = "/data/local/tmp/dd-trace.cfg";
 const PKG_RE = /^[A-Za-z0-9_.]+$/;
 const PRESETS = [
   { id: "ui", label: "App & UI", note: "CPU scheduling, frames and your app's own trace sections. The usual start for jank." },
-  { id: "startup", label: "App startup", note: "Same as App & UI, and Droid Desk cold-starts the app a second after recording begins." },
+  { id: "startup", label: "App startup", note: "Same as App & UI, and Andromon cold-starts the app a second after recording begins." },
   { id: "cpu", label: "CPU & battery", note: "CPU frequency and idle states, battery counters and power rails where the phone has them." },
   { id: "memory", label: "Memory", note: "Memory of every process once a second, low-memory kills and system memory." },
 ];
@@ -64,7 +64,7 @@ flush_period_ms: 10000
 
 export function mount(root, ctx) {
   const { el, sh, shQuote, toast, showError, clearError, store } = ctx;
-  const viewer = globalThis.droidDesk?.trace || null;
+  const viewer = globalThis.andromon?.trace || null;
   const recordings = []; // { name, blob, kind, at, info }
   const stamp = () => {
     const d = new Date(), p = (n) => String(n).padStart(2, "0");
@@ -252,7 +252,7 @@ export function mount(root, ctx) {
   function add(r) { recordings.unshift({ ...r, at: new Date() }); renderList(); }
   function renderList() {
     if (!recordings.length) {
-      list.replaceChildren(el("div", { className: "empty", textContent: "Traces you record appear here until you close Droid Desk. Save the ones you want to keep." }));
+      list.replaceChildren(el("div", { className: "empty", textContent: "Traces you record appear here until you close Andromon. Save the ones you want to keep." }));
       return;
     }
     list.replaceChildren(...recordings.map((r, i) => {
@@ -262,7 +262,7 @@ export function mount(root, ctx) {
       if (r.kind === "perfetto") {
         const open = el("button", { className: "btn sm primary", type: "button", textContent: "Open in Perfetto" });
         open.onclick = async () => {
-          if (!viewer) { showError("Opening Perfetto needs the Droid Desk desktop app. Save the trace and open it at ui.perfetto.dev."); return; }
+          if (!viewer) { showError("Opening Perfetto needs the Andromon desktop app. Save the trace and open it at ui.perfetto.dev."); return; }
           ctx.busy(open, true, "Opening…");
           try { await viewer.openPerfetto(new Uint8Array(await r.blob.arrayBuffer()), r.name); toast("Opened in your browser"); }
           catch (e) { showError(e); } finally { ctx.busy(open, false); }

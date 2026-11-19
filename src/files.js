@@ -2,8 +2,10 @@
 // delete, compress (zip) and extract. Everything goes over ADB: listing and transfers through the sync
 // service, the rest (mkdir, mv, rm, unzip, tar) as shell commands on the phone.
 // Icons come from ./fileicons.js, the same ones every other file list uses.
+import { videoPlayer, audioPlayer } from "./player.js";
 import { Zip, ZipDeflate, ZipPassThrough, unzipSync, strFromU8 } from "fflate";
 import { fileIcon, fileKind, icon, extOf, KIND_NAMES } from "./fileicons.js";
+import { createProgress, countBytes } from "./progress.js";
 
 const TEXT_PREVIEW = 256 * 1024;      // how much of a text file is read for its preview
 const MEDIA_LIMIT = 400 * 1024 ** 2;  // pictures, sound and video above this aren't pulled for a preview
@@ -13,7 +15,7 @@ const STORED = new Set("jpg jpeg png gif webp heic avif mp4 m4v mkv webm mov 3gp
 const TEXT_KINDS = new Set(["text", "code", "data", "script"]);
 
 export function initFiles(ctx) {
-  const { $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, getAdb, LinuxFileType } = ctx;
+  const { $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, saveStream, getAdb, LinuxFileType } = ctx;
   const root = $("filesRoot");
   const join = (dir, name) => (dir.endsWith("/") ? dir : dir + "/") + name;
   const parent = (p) => p.replace(/\/[^/]+\/?$/, "") || "/";
@@ -64,18 +66,35 @@ export function initFiles(ctx) {
     if (!m || m[1] !== "0") throw new Error(text || "The phone refused.");
     return text;
   }
-  async function readBytes(path, limit = Infinity) {
+  async function readBytes(path, limit = Infinity, onBytes = null, job = null) {
     return withSync(async (s) => {
       const reader = s.read(path).getReader(); const parts = []; let got = 0;
       for (;;) {
         const { done, value } = await reader.read(); if (done) break;
-        parts.push(value.slice()); got += value.length;
+        if (job?.cancelled) { reader.cancel().catch(() => {}); throw new Error("cancelled"); }
+        parts.push(value.slice()); got += value.length; onBytes?.(got);
         if (got >= limit) { reader.cancel().catch(() => {}); break; }
       }
       const all = new Uint8Array(Math.min(got, limit)); let at = 0;
       for (const p of parts) { const take = Math.min(p.length, all.length - at); all.set(p.subarray(0, take), at); at += take; if (at >= all.length) break; }
       return all;
     });
+  }
+
+  /** Copies a phone file straight into `out` (from saveStream), a piece at a time, so it never sits whole in memory. */
+  async function pullToFile(path, out, onBytes, job) {
+    const w = out.writable.getWriter();
+    try {
+      await withSync(async (s) => {
+        const reader = s.read(path).getReader(); let got = 0;
+        for (;;) {
+          const { done, value } = await reader.read(); if (done) break;
+          if (job?.cancelled) { reader.cancel().catch(() => {}); throw new Error("cancelled"); }
+          await w.write(value.slice()); got += value.length; onBytes?.(got);
+        }
+      });
+      await w.close();
+    } catch (e) { await w.abort().catch(() => {}); throw e; }
   }
 
   // ---------- page skeleton ----------
@@ -103,11 +122,17 @@ export function initFiles(ctx) {
 
   upload.onchange = async () => {
     const files = [...upload.files]; upload.value = ""; if (!files.length) return;
-    await work(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}…`, async (say) => {
-      let n = 0;
+    await work(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}…`, async (say, j) => {
+      const total = files.reduce((t, f) => t + f.size, 0);
+      let n = 0, sent = 0;
       for (const f of files) {
-        say(`Uploading ${f.name} (${++n} of ${files.length})`);
-        await withSync((s) => s.write({ filename: join(cwd, f.name), file: f.stream(), permission: 0o660, mtime: Math.floor(f.lastModified / 1000) }));
+        stopIf(j);
+        const what = files.length > 1 ? `Uploading ${f.name} (${++n} of ${files.length})` : `Uploading ${f.name}`;
+        say(what, sent, total);
+        const to = join(cwd, f.name);
+        const file = countBytes(f.stream(), (b) => { sent += b; say(what, sent, total); }, () => stopIf(j));
+        try { await withSync((s) => s.write({ filename: to, file, permission: 0o660, mtime: Math.floor(f.lastModified / 1000) })); }
+        catch (e) { if (j.cancelled) await sh(`rm -f -- ${q(to)}`).catch(() => {}); throw e; } // no half-uploaded file is left
       }
       toast(`Uploaded ${files.length} file${files.length > 1 ? "s" : ""}`);
     });
@@ -118,11 +143,13 @@ export function initFiles(ctx) {
   async function work(title, fn) {
     if (job) { toast("Wait for the running job to finish"); return false; }
     const mine = job = { cancelled: false };
-    const text = el("span", { textContent: title });
+    const bar = createProgress({ el, fmtSize });
+    bar.update(title);
     const cancel = el("button", { className: "btn sm", type: "button", textContent: "Cancel" });
-    cancel.onclick = () => { mine.cancelled = true; cancel.disabled = true; text.textContent = "Stopping…"; };
-    status.replaceChildren(el("span", { className: "spin" }), text, cancel); status.hidden = false;
-    try { clearError(); await fn((t) => { if (!mine.cancelled) text.textContent = t; }, mine); return true; }
+    cancel.onclick = () => { mine.cancelled = true; cancel.disabled = true; bar.update("Stopping…"); };
+    status.replaceChildren(bar.node, cancel); status.hidden = false;
+    // say(text) for a step without a known size; say(text, done, total[, "items"]) moves the bar.
+    try { clearError(); await fn((t, done, total, unit) => { if (!mine.cancelled) bar.update(t, done, total, unit); }, mine); return true; }
     catch (e) { if (mine.cancelled) toast("Cancelled"); else showError(e); return false; }
     finally { job = null; status.hidden = true; }
   }
@@ -173,7 +200,7 @@ export function initFiles(ctx) {
     box.onclick = (ev) => ev.stopPropagation();
     box.onchange = () => { box.checked ? sel.add(e.name) : sel.delete(e.name); r.classList.toggle("sel", box.checked); renderSelBar(); };
     const acts = el("span", { className: "fx-acts" });
-    if (type === "file") acts.append(iconBtn("download", `Download ${e.name}`, (b) => pull(path, e.name, b)));
+    if (type === "file") acts.append(iconBtn("download", `Download ${e.name}`, (b) => pull([{ path, name: e.name, size: e.size }], b)));
     const r = el("div", { className: "fx-row" + (sel.has(e.name) ? " sel" : "") + (open?.path === path ? " open" : ""), tabIndex: 0 },
       box, fileIcon(e.name, type),
       el("span", { className: "fx-name", textContent: e.name, title: e.name }),
@@ -194,17 +221,41 @@ export function initFiles(ctx) {
     selBar.replaceChildren(
       el("b", { textContent: `${items.length} selected` }),
       group(
-        groupBtn("download", "Download", async () => { if (!files.length) return toast("Folders can't be downloaded directly: compress them first"); for (const f of files) await pull(join(cwd, f.name), f.name); }),
+        groupBtn("download", "Download", async () => { if (!files.length) return toast("Folders can't be downloaded directly: compress them first"); await pull(files.map((f) => ({ path: join(cwd, f.name), name: f.name, size: f.size }))); }),
         groupBtn("archive", "Compress into a zip", () => compress(items)),
         armed(groupBtn("trash-2", "Delete", () => {}, "danger"), "Delete", () => remove(items)),
         groupBtn("x", "Clear the selection", () => { sel.clear(); renderList(); })));
   }
 
   // ---------- actions ----------
-  async function pull(path, name, btn) {
+  /** Downloads files from the phone to this computer: [{ path, name, size }]. */
+  async function pull(list, btn) {
     if (btn) btn.disabled = true;
-    try { download(new Blob([await readBytes(path)]), name); }
-    finally { if (btn) btn.disabled = false; }
+    try {
+      await work(list.length === 1 ? `Downloading ${list[0].name}…` : `Downloading ${list.length} files…`, async (say, j) => {
+        const total = list.reduce((t, f) => t + (Number(f.size) || 0), 0);
+        let before = 0, n = 0;
+        const saved = [];
+        for (const f of list) {
+          stopIf(j);
+          const what = list.length > 1 ? `Downloading ${f.name} (${++n} of ${list.length})` : `Downloading ${f.name}`;
+          const out = await saveStream(f.name);
+          if (out === null) { before += Number(f.size) || 0; continue; } // the save window was cancelled: skip this one
+          say(what, before, total);
+          if (out) {
+            let got = 0;
+            await pullToFile(f.path, out, (g) => { got = g; say(what, before + g, total); }, j);
+            before += Number(f.size) || got;
+            saved.push(out.name);
+          } else {
+            const bytes = await readBytes(f.path, Infinity, (got) => say(what, before + got, total), j);
+            before += Number(f.size) || bytes.length;
+            download(new Blob([bytes]), f.name);
+          }
+        }
+        if (saved.length) toast(saved.length === 1 ? `Saved ${saved[0]}` : `Saved ${saved.length} files`);
+      });
+    } finally { if (btn) btn.disabled = false; }
   }
   async function remove(items) {
     await run(`rm -rf -- ${items.map((e) => q(join(cwd, e.name))).join(" ")}`);
@@ -267,7 +318,7 @@ export function initFiles(ctx) {
               const { done: end, value } = await reader.read(); if (end) break;
               if (j.cancelled || failed) { reader.cancel().catch(() => {}); throw failed || new Error("cancelled"); }
               part.push(value.slice(), false); done += value.length;
-              say(`Compressing ${f.rel.split("/").pop()} · ${fmtSize(done)} of ${fmtSize(total)}`);
+              say(`Compressing ${f.rel.split("/").pop()}`, done, total);
               while (ctl.desiredSize <= 0 && !j.cancelled) await new Promise((r) => setTimeout(r, 20)); // the phone is still writing
             }
           });
@@ -307,7 +358,7 @@ export function initFiles(ctx) {
           const names = Object.keys(files).filter((n) => !n.endsWith("/") && !n.split("/").includes(".."));
           let n = 0;
           for (const name of names) {
-            stopIf(j); say(`Extracting ${name.split("/").pop()} (${++n} of ${names.length})`);
+            stopIf(j); say(`Extracting ${name.split("/").pop()}`, ++n, names.length, "items");
             const to = join(dest, name);
             await run(`mkdir -p -- ${q(parent(to))}`);
             await withSync((s) => s.write({ filename: to, file: new Blob([files[name]]).stream(), permission: 0o660 }));
@@ -346,7 +397,7 @@ export function initFiles(ctx) {
       ...[["Type", ext ? `${kindName} (.${ext})` : kindName], ["Size", `${fmtSize(entry.size)} (${Number(entry.size).toLocaleString()} bytes)`], ["Modified", when(entry)], ["Folder", cwd]]
         .flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v, title: v })]));
     const acts = el("div", { className: "fx-actions" }, group(
-      groupBtn("download", "Download", (b) => pull(entry.path, entry.name, b)),
+      groupBtn("download", "Download", (b) => pull([{ path: entry.path, name: entry.name, size: entry.size }], b)),
       canExtract(entry.name) ? groupBtn("archive-restore", "Extract here", () => extract(entry)) : null,
       groupBtn("archive", "Compress into a zip", () => compress([entry])),
       groupBtn("pencil", "Rename", () => { title.hidden = true; nameInput.hidden = false; nameInput.focus(); nameInput.setSelectionRange(0, entry.name.replace(/\.[^.]+$/, "").length); }),
@@ -383,10 +434,12 @@ export function initFiles(ctx) {
         const blob = new Blob([await readBytes(entry.path)], { type: MIME[ext] || "" });
         if (!live()) return resolve(el("div"));
         blobUrl = URL.createObjectURL(blob);
-        const m = el(tag, { src: blobUrl, className: "fx-media" });
-        if (tag !== "img") m.controls = true;
+        // Videos and sounds get the app's player (./player.js); pictures are a plain <img>.
+        const p = tag === "video" ? videoPlayer({ src: blobUrl, title: entry.name, autoplay: false, compact: true })
+          : tag === "audio" ? audioPlayer({ src: blobUrl, title: entry.name }) : null;
+        const m = p ? p.video || p.audio : el(tag, { src: blobUrl, className: "fx-media" });
         m.onerror = () => resolve(note(tag === "img" ? "This picture format can't be shown here. Download it to open it." : "This format can't be played here. Download it to open it."));
-        if (tag === "img") { m.alt = entry.name; m.onload = () => resolve(m); } else { m.onloadedmetadata = () => resolve(m); }
+        if (tag === "img") { m.alt = entry.name; m.onload = () => resolve(m); } else { m.onloadedmetadata = () => resolve(p.node); }
       })().catch((e) => resolve(note(`Couldn't open this file: ${e?.message || e}`)));
     });
     if (kind === "image") return media("img");

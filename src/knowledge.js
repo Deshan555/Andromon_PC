@@ -13,9 +13,9 @@ const PAGES = {
     intro: "The start page. It connects a phone and, once one is connected, shows its state at a glance.",
     how: [
       "Plug the phone in with USB debugging on and press Connect phone, or use Connect over Wi‑Fi (Android 11 and newer).",
-      "Droid Desk talks to the phone with ADB, the same channel developers use. Nothing has to be installed on the phone to start.",
+      "Andromon talks to the phone with ADB, the same channel developers use. Nothing has to be installed on the phone to start.",
       "After connecting, the tiles open the most used tools, and the right column lists facts about the phone; click a row to copy it.",
-      "Some tools (Messages, Contacts, Photos, Music, Notifications) need the Droid Desk Companion app on the phone. Droid Desk offers to install it when it is needed.",
+      "Some tools (Messages, Contacts, Photos, Music, Notifications) need the Andromon Companion app on the phone. Andromon offers to install it when it is needed.",
     ],
     tips: ["Tools that need a phone are greyed out in the sidebar until one is connected.", "Settings and the Collapse button are at the bottom of the sidebar."],
     tour: [
@@ -86,6 +86,46 @@ const PAGES = {
     tips: ["Both devices must be on the same Wi‑Fi, except with Direct link."],
     tour: [["#wifiSwitch", "On or off", "While on, this computer can be found by phones on the same network."], ["#wifiMethodName", "Transfer method", "Auto, Same Wi‑Fi or Direct link."], ["#wifiFolder", "Received files", "Where files from the phone are saved."]],
   },
+  storage: {
+    name: "Storage map",
+    intro: "See what fills the phone, folder by folder, and free space by deleting what you don't need.",
+    how: ["The top card shows Android's own count: apps, photos, videos, music, downloads and the rest.", "The map shows the phone's storage as boxes sized by what each folder or file takes. Click a folder to go into it; the path above takes you back.", "The lists show the biggest items in the open folder and the biggest files below it. Delete asks for a second click."],
+    tips: ["Folders that Android and apps need (DCIM, Download, Android…) can't be deleted as a whole: open them and delete what's inside.", "Deleted files are gone: there is no recycle bin on the phone. Back up first if in doubt."],
+    tour: [["#storageRoot > .card:first-child", "By kind", "Android's own count of what takes the space."], [".sm-map", "The map", "Bigger box, more space. Click a folder to open it."], [".sm-lists", "Biggest items", "Delete what you don't need."]],
+  },
+  sync: {
+    name: "Folder sync",
+    intro: "Keep a folder on this computer and one on the phone the same, one way or both ways.",
+    how: ["Add a folder pair: pick the folder on this computer, then type the phone folder (like /sdcard/Documents).", "Choose the direction: computer → phone, phone → computer, or both ways (the newer copy wins).", "Click Sync now, or switch on “Sync when the phone connects”."],
+    tips: ["Files replaced or removed on this computer go to its Trash, so they can be brought back. On the phone they are gone.", "If a sync would remove more than half of a folder's files, it stops and asks you to check instead."],
+    tour: [["#syncRoot .btn.primary", "Add a pair", "Pick the folder on this computer first."], [".fs-pair", "A pair", "Both folders, the direction and when it syncs."]],
+  },
+  battery: {
+    name: "Battery health",
+    intro: "How worn the battery is, its charge cycles and condition, and the charge over the last days.",
+    how: ["Battery health compares what the battery holds now with what it held when new, where the phone tells it.", "Charge cycles count full charges' worth used so far (Android 14 and newer on many phones).", "The chart comes from Andromon Companion, which records the charge while the phone is in use."],
+    tips: ["Heat wears a battery fastest. Keeping the charge between about 20% and 80% helps it last."],
+    tour: [["#batteryRoot .bh-stat.hero", "Health", "Capacity now against new."], [".bh-chart", "Charge history", "Shaded parts are charging."]],
+  },
+  memory: {
+    name: "Memory",
+    intro: "How much of the phone's RAM is in use, which apps hold it, and stopping the ones you don't need.",
+    how: [
+      "The big card shows RAM in use; the figures follow the phone every few seconds while the page is open.",
+      "Apps in memory lists every app with something running, biggest first, and how Android rates it: In use, Visible, Running, Recent or Cached.",
+      "Stop force-stops one app, as Settings › Apps › Force stop does. Free memory ends the background apps Android would close first.",
+      "This works over ADB alone: no root, Shizuku or companion app needed. App names and icons come from the companion when it is installed.",
+    ],
+    tips: ["Cached apps don't slow the phone: Android keeps them so they reopen quickly and ends them by itself when memory is needed.", "A stopped app may start again by itself for alarms, messages or music. To keep one from running, disable it on the Apps page."],
+    tour: [["#memoryRoot .hero .card", "RAM in use", "How full the memory is, and Free memory."], [".mm-stats", "The figures", "Available memory, compressed swap and how many apps are in memory."], [".mm-row", "An app", "Its memory, its state and Stop."]],
+  },
+  recovery: {
+    name: "SD card recovery",
+    intro: "Bring back deleted photos, videos and files from a memory card or USB stick in this computer.",
+    how: ["Take the card out of the phone or camera and put it in this computer's card reader.", "Download PhotoRec once (the free program that does the recovery).", "Pick the card, what to look for and a folder on this computer.", "Start, and type your computer's password when asked: reading a whole card needs it.", "Open the folder when it finishes. Files get new names and are sorted into numbered folders."],
+    tips: ["Stop using the card as soon as you notice something is missing: new photos overwrite deleted ones.", "This can't recover from a phone's built-in storage. On the phone, try Recover in Andromon Companion.", "A damaged card? Copy it to an image file first (for example with ddrescue) and recover from that."],
+    tour: [["#recoveryRoot .card:nth-child(2)", "PhotoRec", "The recovery program. Downloaded once from its author's site and checked."], ["#recoveryRoot .card:nth-child(3)", "Source", "A card or drive in this computer, or an image file of one."], ["#recoveryRoot .card:nth-child(4)", "Options", "Which file types, and where the recovered files go."], ["#recoveryRoot .card:nth-child(5)", "Recover", "Start, watch the count grow, then open the folder."]],
+  },
   apps: {
     name: "Apps",
     intro: "Everything installed on the phone: install, back up, uninstall, and look inside.",
@@ -124,9 +164,9 @@ const PAGES = {
   mirror: {
     name: "Screen mirror",
     intro: "See the phone's screen in this window and use it with mouse and keyboard.",
-    how: ["Start mirroring: a small capture helper (scrcpy) runs on the phone only while this is on; nothing is installed.", "Click is a tap, drag is a swipe, the wheel scrolls, right-click or Esc is Back. Typing goes to the phone.", "The control panel has the phone's buttons, media keys, brightness, and view options.", "Record saves the picture and sound as an MP4 file; Save frame and Copy frame take a still."],
+    how: ["Start mirroring: a small capture helper (scrcpy) runs on the phone only while this is on; nothing is installed.", "Click is a tap, drag is a swipe, the wheel scrolls, right-click or Esc is Back. Typing goes to the phone.", "The control panel has the phone's buttons, media keys, brightness, and view options.", "Record saves the picture and sound as an MP4 file, written as it records, so a long one doesn't fill this computer's memory; Save frame and Copy frame take a still."],
     tips: ["Quality, sound, video format and the rest are in Settings › Screen mirror.", "Actual size shows every pixel; Keep on top holds the window above others."],
-    tour: [["#mirrorStart", "Start", "Begins mirroring with the options shown on the right."], [".mr-setup", "Options in use", "Set in Settings › Screen mirror."], ["#mirrorStage", "The phone's screen", "Click, drag, scroll and type here."], ["#mirrorKeys", "Controls", "The phone's buttons and more, in groups."], ["#mirrorType", "Type box", "Text typed here is pasted on the phone, in any language."]],
+    tour: [["#mirrorStart", "Start", "Begins mirroring with the options shown on the right."], [".mr-setup", "Options in use", "Set in Settings › Screen mirror."], ["#mirrorStage", "The phone's screen", "Click, drag, scroll and type here."], ["#mirrorNav", "Navigation", "Back, Home, Recents and the phone's panels, left of the screen."], ["#mirrorKeys", "Controls", "Sound, power, media, view and capture, right of the screen. Point at an icon to see its name."], ["#mirrorType", "Type box", "Text typed here is pasted on the phone, in any language."]],
   },
   screen: {
     name: "Screenshot",
@@ -164,7 +204,7 @@ const PAGES = {
       "On a phone that isn't rooted, Shizuku stops when the phone restarts. Start Shizuku starts it again over the connection.",
     ],
     tips: ["After the first start, give the companion its permission: in the companion, Settings › Privileged access › Grant permission.", "It keeps running after you unplug the phone."],
-    tour: [["#szCard .card:nth-child(1)", "State and actions", "Whether Shizuku is installed and running, with Start, Open on the phone and Check again."], ["#szCard .card:nth-child(2)", "What it is for", "The companion tools that use it."], ["#szCard .card:nth-child(3)", "Setting it up", "The steps, once per phone."], ["#ramCard", "Phone RAM manager", "Droid Desk's own helper: it gives the companion's Memory screen the same rights without Shizuku, until the phone restarts."]],
+    tour: [["#szCard .card:nth-child(1)", "State and actions", "Whether Shizuku is installed and running, with Start, Open on the phone and Check again."], ["#szCard .card:nth-child(2)", "What it is for", "The companion tools that use it."], ["#szCard .card:nth-child(3)", "Setting it up", "The steps, once per phone."], ["#ramCard", "Phone RAM manager", "Andromon's own helper: it gives the companion's Memory screen the same rights without Shizuku, until the phone restarts."]],
   },
   shell: {
     name: "ADB shell",
@@ -175,8 +215,8 @@ const PAGES = {
   },
   settings: {
     name: "Settings",
-    intro: "Every option of Droid Desk in one place.",
-    how: ["Appearance: light or dark, the colour theme, the sidebar.", "Each tool has its own section here: Phone link, Notifications, Screen mirror, Screenshot, ADB shell, Wi‑Fi transfer.", "Saving files decides whether Droid Desk asks where each file goes.", "Downloads and sources lists what Droid Desk has downloaded, where from, and lets you update or remove it.", "About shows the version and checks for updates."],
+    intro: "Every option of Andromon in one place.",
+    how: ["Appearance: light or dark, the colour theme, the sidebar.", "Each tool has its own section here: Phone link, Notifications, Screen mirror, Screenshot, ADB shell, Wi‑Fi transfer.", "Saving files decides whether Andromon asks where each file goes.", "Downloads and sources lists what Andromon has downloaded, where from, and lets you update or remove it.", "About shows the version and checks for updates."],
     tips: ["Changes apply at once; there is no Save button."],
     tour: [["#settingsRoot .card:nth-child(1)", "Appearance", "Mode, colour theme and sidebar."], ["#settingsRoot .card:nth-child(2)", "Phone link", "What happens when a phone connects."], ["#settingsRoot .card:nth-child(4)", "Screen mirror", "The options the mirror page uses."], ["#settingsRoot .card:last-child", "About", "Version, updates and credits."]],
   },

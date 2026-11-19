@@ -1,4 +1,4 @@
-package dev.droiddesk.uihelper;
+package dev.andromon.uihelper;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.UiAutomation;
@@ -28,10 +28,10 @@ import java.util.List;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Droid Desk UI helper for test automation.
+ * Andromon UI helper for test automation.
  *
  * Runs on the phone as a shell process (app_process), like `uiautomator` and the scrcpy server:
- * nothing is installed, and it exits when Droid Desk closes the connection. It keeps one
+ * nothing is installed, and it exits when Andromon closes the connection. It keeps one
  * UiAutomation session open, so reading the screen takes milliseconds instead of the seconds
  * `uiautomator dump` needs to start a new process each time.
  *

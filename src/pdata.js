@@ -121,10 +121,10 @@ const nullable = (v) => (v == null || v === "null" ? "" : String(v));
 /**
  * sms: [{address, body, date, dateSent, type, read}], mms: the companion's mms.list entries.
  * partRef(mms, part) may return {data: base64} to embed an attachment or {file: "mms/…"} to point at
- * a file saved next to the XML (Droid Desk's own attribute, ignored by other apps); null = neither.
+ * a file saved next to the XML (Andromon's own attribute, ignored by other apps); null = neither.
  */
 export function buildSmsXml({ sms = [], mms = [], nameFor = () => "", fmtDate = () => "", partRef = () => null }) {
-  const out = [`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>`, `<!-- Written by Droid Desk. Same layout as the "SMS Backup & Restore" app. -->`,
+  const out = [`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>`, `<!-- Written by Andromon. Same layout as the "SMS Backup & Restore" app. -->`,
     `<smses count="${sms.length + mms.length}">`];
   for (const m of sms) {
     out.push(`  <sms protocol="0" address="${xmlAttr(m.address)}" date="${Number(m.date) || 0}" type="${Number(m.type) || 1}" subject="null" body="${xmlAttr(m.body)}" toa="null" sc_toa="null" service_center="null" read="${m.read ? 1 : 0}" status="-1" locked="0" date_sent="${Number(m.dateSent) || 0}" readable_date="${xmlAttr(fmtDate(m.date))}" contact_name="${xmlAttr(nameFor(m.address) || "(Unknown)")}" />`);
@@ -222,7 +222,7 @@ export function buildCallsXml(calls, nameFor = () => "", fmtDate = () => "") {
   return out.join("\n");
 }
 const validCall = (c) => isFinite(c.date) && c.date > 0 && c.type >= 1 && c.type <= 7 && isFinite(c.duration) && c.duration >= 0;
-/** Reads Droid Desk's call-log CSV or a <calls> XML file. Returns {calls, bad}. */
+/** Reads Andromon's call-log CSV or a <calls> XML file. Returns {calls, bad}. */
 export function parseCallsFile(text) {
   const t = String(text ?? "").replace(/^\ufeff/, "");
   const calls = []; let bad = 0;
@@ -240,7 +240,7 @@ export function parseCallsFile(text) {
   const head = rows[0].map((h) => h.trim().toLowerCase());
   const col = (...names) => head.findIndex((h) => names.some((n) => h.startsWith(n)));
   const iDate = col("date"), iType = col("type"), iNum = col("number"), iName = col("name"), iDur = col("duration");
-  if (iDate < 0 || iType < 0 || iNum < 0) throw new Error("This doesn't look like a Droid Desk call log (needs Date, Type and Number columns).");
+  if (iDate < 0 || iType < 0 || iNum < 0) throw new Error("This doesn't look like an Andromon call log (needs Date, Type and Number columns).");
   for (const r of rows.slice(1)) {
     const rawType = csvPlain(r[iType] || "").trim();
     const rawDate = (r[iDate] || "").trim();
@@ -281,7 +281,7 @@ export function toVcard(c, photo) {
   if (c.org) L.push(`ORG:${vEsc(c.org)}`);
   if (c.birthday) L.push(`BDAY:${vEsc(c.birthday)}`);
   if (c.note) L.push(`NOTE:${vEsc(c.note)}`);
-  if (c.starred) L.push("X-DROIDDESK-STARRED:1");
+  if (c.starred) L.push("X-ANDROMON-STARRED:1");
   const b64 = cleanBase64(photo ?? c.photo);
   if (b64) L.push(`PHOTO;ENCODING=b;TYPE=${photoKind(b64)}:${b64}`);
   L.push("END:VCARD");
@@ -343,7 +343,7 @@ export function parseVcf(text) {
       case "ORG": cur.org = vUnesc(splitUnescaped(value, ";")[0]); break;
       case "BDAY": cur.birthday = vUnesc(value); break;
       case "NOTE": cur.note = vUnesc(value); break;
-      case "X-DROIDDESK-STARRED": if (value.trim() === "1") cur.starred = true; break;
+      case "X-ANDROMON-STARRED": case "X-DROIDDESK-STARRED": if (value.trim() === "1") cur.starred = true; break;
       case "PHOTO": {
         // 3.0: ENCODING=b, 2.1: ENCODING=BASE64, 4.0: a data: URI. Links to pictures are not fetched.
         const data = /^data:/i.test(value) ? (value.match(/^data:[^,]*;base64,(.*)$/is) || [])[1] : /ENCODING=(B|BASE64)\b/.test(ps) ? value : "";

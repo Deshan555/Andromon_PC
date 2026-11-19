@@ -19,9 +19,9 @@ const KEYS = {
   tab: [61, "Tab"], search: [84, "Search"], menu: [82, "Menu"],
 };
 const HELPER_PATH = "/data/local/tmp/dd-ui-helper.jar";
-const BADGE_PKG = "dev.droiddesk.companion";
-const BADGE_TITLE = "DroidDeskRec"; // window title of the companion's recording badge (RecOverlay.kt)
-const STORE_KEY = "dd.tests";
+const BADGE_PKG = "dev.andromon.companion";
+const BADGE_TITLE = "AndromonRec"; // window title of the companion's recording badge (RecOverlay.kt)
+const STORE_KEY = "andromon.tests";
 const DEFAULT_TIMEOUT = 10; // seconds a step waits for its element
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -328,9 +328,9 @@ export function buildJUnit(runs) {
     const failed = r.steps.find((s) => s.status === "fail");
     const body = r.status === "pass" ? "" : r.status === "stopped" ? "<skipped/>"
       : `<failure message="${esc(failed ? `Step ${r.steps.indexOf(failed) + 1}: ${failed.label}` : "Failed")}">${esc(failed?.error || "")}</failure>`;
-    return `  <testcase classname="droiddesk" name="${esc(r.name)}" time="${(r.ms / 1000).toFixed(3)}">${body}</testcase>`;
+    return `  <testcase classname="andromon" name="${esc(r.name)}" time="${(r.ms / 1000).toFixed(3)}">${body}</testcase>`;
   });
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="Droid Desk" tests="${runs.length}" failures="${runs.filter((r) => r.status === "fail").length}" skipped="${runs.filter((r) => r.status === "stopped").length}" time="${(total / 1000).toFixed(3)}">\n${cases.join("\n")}\n</testsuite>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="Andromon" tests="${runs.length}" failures="${runs.filter((r) => r.status === "fail").length}" skipped="${runs.filter((r) => r.status === "stopped").length}" time="${(total / 1000).toFixed(3)}">\n${cases.join("\n")}\n</testsuite>\n`;
 }
 
 // ---------- the feature ----------
@@ -364,7 +364,7 @@ export function initAutotest(env) {
     if (!res.ok) throw new Error("ui-helper.jar is missing from this build");
     const jar = await res.blob();
     await withSync((s) => s.write({ filename: HELPER_PATH, file: jar.stream(), permission: 0o644 }));
-    const proc = await adb.subprocess.noneProtocol.spawn(`CLASSPATH=${HELPER_PATH} app_process / dev.droiddesk.uihelper.Main 2>/dev/null`);
+    const proc = await adb.subprocess.noneProtocol.spawn(`CLASSPATH=${HELPER_PATH} app_process / dev.andromon.uihelper.Main 2>/dev/null`);
     const h = { proc, adb, writer: proc.stdin.getWriter(), waiting: [], alive: true, chain: Promise.resolve() };
     const die = () => {
       if (!h.alive) return;
@@ -401,7 +401,7 @@ export function initAutotest(env) {
     catch (e) {
       // Only one UiAutomation session can exist: a helper left over from an earlier connection blocks ours.
       if (!/already registered/i.test(e?.message || "")) throw e;
-      await sh("pkill -f 'dev.droiddesk.uihelpe[r]'; true").catch(() => {});
+      await sh("pkill -f 'dev.andromon.uihelpe[r]'; true").catch(() => {});
       await sleep(500);
       return startHelper();
     }
@@ -1016,7 +1016,7 @@ export function initAutotest(env) {
       : "Use the app on the phone itself, or on the phone screen on the left: tap, long-press, swipe, type. Every action is added below as a step." })];
     if (ui.badge === "missing" || ui.badge === "outdated") {
       parts.push(el("div", { className: "at-badge" },
-        el("span", { textContent: `To show a floating “Recording” badge on the phone, ${ui.badge === "outdated" ? "update" : "install"} the Droid Desk Companion app. ` }),
+        el("span", { textContent: `To show a floating “Recording” badge on the phone, ${ui.badge === "outdated" ? "update" : "install"} the Andromon Companion app. ` }),
         btn(ui.badge === "outdated" ? "Update it" : "Install it", "sm", () => badgeOpen(true))));
     } else if (ui.badge === "error") parts.push(el("div", { className: "small", textContent: "The recording badge couldn't be shown on the phone: " + (ui.badgeError || "") }));
     else if (ui.badge === "on") parts.push(el("div", { className: "small", textContent: "The phone shows a floating “Recording” badge. Drag it if it's in the way; it isn't recorded." }));
@@ -1094,7 +1094,7 @@ export function initAutotest(env) {
       btn("New test", "primary", newTest, { disabled: ui.running }),
       ui.running ? btn("■ Stop", "", () => { ui.stop = true; }) : btn("▶ Run all", "", () => runTests(tests.filter((t) => t.steps.length)), { disabled: !tests.some((t) => t.steps.length) }),
       btn("Import…", "sm", () => file.click()), file,
-      btn("Export all", "sm", () => saveText(JSON.stringify({ droidDeskTests: 1, tests: tests.map(exportable) }, null, 2), `tests-${stamp()}.json`, "application/json"), { disabled: !tests.length }),
+      btn("Export all", "sm", () => saveText(JSON.stringify({ andromonTests: 1, tests: tests.map(exportable) }, null, 2), `tests-${stamp()}.json`, "application/json"), { disabled: !tests.length }),
     );
     card.append(bar);
     if (ui.lastRuns.length && !ui.running) {
@@ -1355,6 +1355,9 @@ export function initAutotest(env) {
       stopRecording(); cancelPick(); render();
     },
     stopHelper,
+    // Also used by "Blur personal data" for screenshots (./shotblur.js): the on-screen elements, and whether
+    // the helper is already running (reading is then quick; otherwise the first read starts it).
+    readScreen, helperUp: () => !!(helper?.alive && helper.adb === getAdb()),
     capturePointer, captureKey, capturePaste, captureWheel,
     _debug: { readScreen, tests: () => tests, ui, getHelper, ask, settle, flattenXml, findOne, pickTarget, buildReport, buildJUnit, parseTouchDevices, touchTracker, panelToScreen },
   };

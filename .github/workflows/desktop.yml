@@ -1,4 +1,4 @@
-# Builds the Droid Desk installers on every push to the "release" branch:
+# Builds the Andromon installers on every push to the "release" branch:
 #   macOS    .dmg       (Apple Silicon + Intel)
 #   Windows  .exe       (setup wizard, x64 + ARM64)
 #   Linux    .AppImage and .deb (x64)
@@ -63,7 +63,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
-          name: droid-desk-${{ matrix.name }}
+          name: andromon-${{ matrix.name }}
           path: |
             dist/*.dmg
             dist/*.exe
@@ -104,7 +104,7 @@ jobs:
             gh release edit "$version" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
             gh release create "$version" installers/* --draft --target "$GITHUB_SHA" \
-              --title "Droid Desk $version" --notes-file "$RUNNER_TEMP/release-notes.md"
+              --title "Andromon $version" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
       # A push made with the workflow's own token does not start another build.
       - name: Commit latest.json and CHANGELOG.md to the release branch

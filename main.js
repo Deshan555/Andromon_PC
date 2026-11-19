@@ -1,8 +1,8 @@
-// Droid Desk — Electron main process.
+// Andromon — Electron main process.
 // The UI in renderer/ talks ADB to the phone over WebUSB (Chromium built into Electron).
 // This file only creates the window, serves the UI from a secure app:// origin,
 // and answers Chromium's WebUSB permission + device-chooser requests.
-const { app, BrowserWindow, protocol, net, session, dialog, shell, Menu, ipcMain, MessageChannelMain, Notification, nativeImage } = require("electron");
+const { app, BrowserWindow, protocol, net, session, dialog, shell, Menu, ipcMain, MessageChannelMain, Notification, nativeImage, clipboard } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -19,9 +19,143 @@ const { setupFdroid } = require("./fdroid.js");
 const { setupAppSettings } = require("./appsettings.js");
 const { setupUpdater } = require("./updater.js");
 const { setupRequirements } = require("./requirements.js");
+const { setupRecovery } = require("./recovery.js");
 
 const RENDERER_DIR = path.join(__dirname, "renderer");
-const ORIGIN = "app://droiddesk";
+const ORIGIN = "app://andromon";
+
+// ---------- moving over from the app's old name, Droid Desk ----------
+// Droid Desk kept its settings in a folder named "Droid Desk" and its page data (settings saved by the
+// page, the adb key every phone already trusts) under the origin app://droiddesk. On the first start
+// with no "Andromon" folder yet, the old folder is copied (it is left as it was), and once the app is
+// ready the old origin's localStorage and IndexedDB are copied to the new origin. Runs once.
+const LEGACY_HOST = "droiddesk";
+const LEGACY_DIR = "Droid Desk";
+const MIGRATE_PAGE = "/__migrate";
+const migrateMark = () => path.join(app.getPath("userData"), "migrated-from-droid-desk.json");
+(function copyLegacyFolder() {
+  try {
+    const now = app.getPath("userData");
+    const old = path.join(path.dirname(now), LEGACY_DIR);
+    // The folder itself already exists by now (Electron makes it at launch), so look for saved data in it.
+    if (!fs.existsSync(old) || fs.existsSync(migrateMark())) return;
+    if (["settings.json", "IndexedDB"].some((f) => fs.existsSync(path.join(now, f)))) return;
+    // caches are rebuilt by themselves; Singleton* files would make this look like a second copy of the old app
+    const SKIP = new Set(["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "ShaderCache", "GrShaderCache", "Crashpad"]);
+    fs.cpSync(old, now, {
+      recursive: true,
+      filter: (src) => !(path.dirname(src) === old && SKIP.has(path.basename(src))) && !/^Singleton/.test(path.basename(src)),
+    });
+    fs.writeFileSync(migrateMark(), JSON.stringify({ from: old, at: new Date().toISOString(), web: "pending" }, null, 2));
+  } catch (e) {
+    console.warn("Couldn't copy the Droid Desk settings:", e);
+  }
+})();
+
+// Runs inside a blank page of the old origin: everything in its localStorage and IndexedDB, as JSON
+// (binary values, such as the adb key, as base64).
+const EXPORT_WEB_DATA = async () => {
+  const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const enc = async (v) => {
+    if (v instanceof Blob) return { $blob: b64(new Uint8Array(await v.arrayBuffer())), type: v.type };
+    if (v instanceof ArrayBuffer) return { $ab: b64(new Uint8Array(v)) };
+    if (ArrayBuffer.isView(v)) return { $view: v.constructor.name, b64: b64(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
+    if (v instanceof Date) return { $date: v.getTime() };
+    if (Array.isArray(v)) return Promise.all(v.map(enc));
+    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) o[k] = await enc(v[k]); return o; }
+    return v;
+  };
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const ls = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+  const dbs = [];
+  for (const info of await indexedDB.databases()) {
+    const db = await req(indexedDB.open(info.name));
+    const stores = [];
+    for (const name of db.objectStoreNames) {
+      const st = db.transaction(name, "readonly").objectStore(name);
+      const indexes = [...st.indexNames].map((n) => { const ix = st.index(n); return { name: n, keyPath: ix.keyPath, unique: ix.unique, multiEntry: ix.multiEntry }; });
+      const [keys, values] = await Promise.all([req(st.getAllKeys()), req(st.getAll())]);
+      const rows = [];
+      for (let i = 0; i < keys.length; i++) rows.push([await enc(keys[i]), await enc(values[i])]);
+      stores.push({ name, keyPath: st.keyPath, autoIncrement: st.autoIncrement, indexes, rows });
+    }
+    dbs.push({ name: info.name, version: db.version, stores });
+    db.close();
+  }
+  return JSON.stringify({ ls, dbs });
+};
+// Runs inside a blank page of the new origin with what EXPORT_WEB_DATA returned. Keeps anything the new
+// origin already has; old "dd." / "dd-" localStorage keys become "andromon." / "andromon-" keys.
+const IMPORT_WEB_DATA = async (dump) => {
+  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const dec = (v) => {
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === "object") {
+      if (typeof v.$blob === "string") return new Blob([unb64(v.$blob)], { type: v.type || "" });
+      if (typeof v.$ab === "string") return unb64(v.$ab).buffer;
+      if (typeof v.$view === "string") { const u = unb64(v.b64), T = globalThis[v.$view]; return T && T !== Uint8Array ? new T(u.buffer) : u; }
+      if (typeof v.$date === "number") return new Date(v.$date);
+      const o = {}; for (const k of Object.keys(v)) o[k] = dec(v[k]); return o;
+    }
+    return v;
+  };
+  for (const [k, v] of Object.entries(dump.ls)) {
+    const key = /^dd[.-]/.test(k) ? "andromon" + k.slice(2) : k;
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, v);
+  }
+  for (const d of dump.dbs) {
+    const db = await new Promise((res, rej) => {
+      const r = indexedDB.open(d.name, d.version);
+      r.onupgradeneeded = () => {
+        for (const s of d.stores) {
+          if (r.result.objectStoreNames.contains(s.name)) continue;
+          const st = r.result.createObjectStore(s.name, { keyPath: s.keyPath ?? undefined, autoIncrement: s.autoIncrement });
+          for (const ix of s.indexes) st.createIndex(ix.name, ix.keyPath, { unique: ix.unique, multiEntry: ix.multiEntry });
+        }
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    for (const s of d.stores) {
+      if (!db.objectStoreNames.contains(s.name) || !s.rows.length) continue;
+      await new Promise((res, rej) => {
+        const tx = db.transaction(s.name, "readwrite"), st = tx.objectStore(s.name);
+        // an empty store only: never add a second copy (the adb key store would then hold two keys)
+        const count = st.count();
+        count.onsuccess = () => { if (count.result) return; for (const [k, v] of s.rows) st.keyPath === null ? st.put(dec(v), dec(k)) : st.put(dec(v)); };
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    }
+    db.close();
+  }
+  return true;
+};
+async function migrateLegacyWebData() {
+  let mark;
+  try { mark = JSON.parse(fs.readFileSync(migrateMark(), "utf8")); } catch { return; }
+  if (mark.web !== "pending") return;
+  const page = async (host) => {
+    const w = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+    await w.loadURL(`app://${host}${MIGRATE_PAGE}`);
+    return w;
+  };
+  try {
+    const from = await page(LEGACY_HOST);
+    const dump = await from.webContents.executeJavaScript(`(${EXPORT_WEB_DATA})()`);
+    from.destroy();
+    const to = await page("andromon");
+    await to.webContents.executeJavaScript(`(${IMPORT_WEB_DATA})(${dump})`);
+    to.destroy();
+    const n = JSON.parse(dump);
+    mark.web = "done";
+    mark.copied = { localStorage: Object.keys(n.ls).length, indexedDB: n.dbs.map((d) => d.name) };
+  } catch (e) {
+    console.warn("Couldn't copy Droid Desk's page data:", e);
+    mark.web = "failed: " + (e?.message || e);
+  }
+  try { fs.writeFileSync(migrateMark(), JSON.stringify(mark, null, 2)); } catch {}
+}
 
 // app:// must be "secure" (WebUSB needs a secure context) and "standard" (gives a stable
 // origin so IndexedDB keeps the ADB RSA key between launches -> no re-authorizing each time).
@@ -32,7 +166,11 @@ protocol.registerSchemesAsPrivileged([
 function serveRenderer() {
   protocol.handle("app", (request) => {
     const { host, pathname } = new URL(request.url);
-    if (host !== "droiddesk") return new Response("Not found", { status: 404 });
+    // a blank page on the old and the new origin, used once to move the page data over (see above)
+    if (pathname === MIGRATE_PAGE && (host === LEGACY_HOST || host === "andromon")) {
+      return new Response("<!doctype html><title>Andromon</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+    if (host !== "andromon") return new Response("Not found", { status: 404 });
     const rel = decodeURIComponent(pathname === "/" ? "/index.html" : pathname);
     const file = path.normalize(path.join(RENDERER_DIR, rel));
     // Block path traversal out of the renderer folder.
@@ -88,13 +226,44 @@ function allowWebUsb() {
   });
 }
 
+// ---------- start-up splash: the logo and a progress bar (renderer/splash.html) until the main window is ready ----------
+let splash = null, splashShownAt = 0;
+function showSplash() {
+  splash = new BrowserWindow({
+    width: 480, height: 300, frame: false, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    show: false, center: true, skipTaskbar: true, title: "Andromon", backgroundColor: "#111317",
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
+  });
+  splash.once("ready-to-show", () => { if (!splash) return; splash.show(); splashShownAt = Date.now(); });
+  splash.on("closed", () => { splash = null; });
+  splash.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  splash.webContents.on("will-navigate", (e) => e.preventDefault());
+  splash.loadURL(`${ORIGIN}/splash.html?v=${encodeURIComponent(app.getVersion())}`);
+  // Never stand in the way: if the main window hasn't shown after 25 s, show it anyway.
+  setTimeout(() => { if (splash) closeSplash(() => { if (mainWindow && !mainWindow.isVisible()) mainWindow.show(); }); }, 25_000);
+}
+function splashStep(p, text) {
+  if (!splash || splash.webContents.isLoading()) return;
+  splash.webContents.executeJavaScript(`globalThis.splashStep?.(${Number(p)}, ${JSON.stringify(text)})`).catch(() => {});
+}
+/** Fills the bar, then shows the main window (`then`) and closes the splash. */
+function closeSplash(then) {
+  if (!splash) return then();
+  const s = splash; splash = null;
+  if (!splashShownAt || s.isDestroyed()) { then(); if (!s.isDestroyed()) s.destroy(); return; }
+  if (!s.webContents.isLoading()) s.webContents.executeJavaScript(`globalThis.splashStep?.(1, "Ready")`).catch(() => {});
+  // Long enough to see the bar reach the end, without holding up a fast start.
+  const wait = Math.max(450, 1200 - (Date.now() - splashShownAt));
+  setTimeout(() => { then(); setTimeout(() => { if (!s.isDestroyed()) s.destroy(); }, 200); }, wait);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1180,
     height: 820,
     minWidth: 760,
     minHeight: 520,
-    title: "Droid Desk",
+    title: "Andromon",
     backgroundColor: "#111317",
     show: false,
     webPreferences: {
@@ -107,7 +276,11 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
-  win.once("ready-to-show", () => win.show());
+  // The splash (if it is up) follows the main window's loading, and makes way once it can be shown.
+  win.webContents.once("did-start-loading", () => splashStep(0.4, "Loading the interface…"));
+  win.webContents.once("dom-ready", () => splashStep(0.75, "Setting up…"));
+  win.once("ready-to-show", () => closeSplash(() => win.show()));
+  win.webContents.once("did-fail-load", () => closeSplash(() => { if (!win.isDestroyed()) win.show(); }));
 
   // Keep navigation inside the app; open external links in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -117,6 +290,23 @@ function createWindow() {
   win.webContents.on("will-navigate", (e, url) => {
     if (!url.startsWith(ORIGIN)) e.preventDefault();
   });
+
+  // ⌘/Ctrl + − 0 change Settings › Accessibility › App zoom instead of Chromium's own zoom (which
+  // the macOS menu would apply on top of it). Ctrl + scroll wheel does the same.
+  win.webContents.on("before-input-event", (e, input) => {
+    if (input.type !== "keyDown" || input.alt || !(process.platform === "darwin" ? input.meta : input.control)) return;
+    const dir = { "=": 1, "+": 1, "-": -1, "_": -1, "0": 0 }[input.key];
+    if (dir === undefined) return;
+    e.preventDefault();
+    win.webContents.send("win:zoomKey", dir);
+  });
+  let lastWheelZoom = 0; // one step per wheel gesture, not one per wheel tick
+  win.webContents.on("zoom-changed", (_e, way) => {
+    if (Date.now() - lastWheelZoom < 250) return;
+    lastWheelZoom = Date.now();
+    win.webContents.send("win:zoomKey", way === "in" ? 1 : -1);
+  });
+  win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(1)); // undo any zoom left from before
 
   win.loadURL(`${ORIGIN}/index.html`);
   mainWindow = win;
@@ -133,7 +323,7 @@ function writeSettings(patch) {
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
 }
-const defaultSaveDir = () => path.join(app.getPath("downloads"), "Droid Desk");
+const defaultSaveDir = () => path.join(app.getPath("downloads"), "Andromon");
 
 function setupWifi() {
   wifi = new LocalSend({
@@ -141,15 +331,21 @@ function setupWifi() {
     saveDir: readSettings().wifiSaveDir || defaultSaveDir(),
     emit: (ev) => mainWindow?.webContents.send("wifi:event", ev),
   });
-  // Only our own UI (app://droiddesk) may drive the network service.
+  // Only our own UI (app://andromon) may drive the network service.
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => {
     const url = event.senderFrame?.url || "";
     if (!url.startsWith(ORIGIN + "/")) throw new Error("Not allowed");
     return fn(event, ...args);
   });
-  handle("adb:release", () => releaseAdb());
+  handle("adb:release", (_e, serial) => releaseAdb(typeof serial === "string" ? serial : ""));
+  handle("adb:guard", (event, on, serial) => guardAdb(event.sender, !!on, typeof serial === "string" ? serial : ""));
   // Screen mirror › Keep on top
   handle("win:setOnTop", (event, on) => { BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(!!on); return !!on; });
+  // Settings › Phone link › Share the clipboard: this computer's clipboard text, read and written
+  // here so it works while the window is in the background (the page's own clipboard needs focus).
+  // (Awaited: newer Electron versions may answer with a promise.)
+  handle("clip:read", async () => String((await clipboard.readText()) ?? "").slice(0, 1024 * 1024));
+  handle("clip:write", async (_e, text) => { await clipboard.writeText(String(text ?? "").slice(0, 1024 * 1024)); return true; });
   setupWadb(handle);
   setupNotify(handle);
   setupDevnet(handle);
@@ -161,7 +357,8 @@ function setupWifi() {
   fdroid = setupFdroid(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // F-Droid page
   setupAppSettings(handle, { userData: app.getPath("userData"), readSettings, writeSettings, origin: ORIGIN, getWindow: () => mainWindow }); // Settings page
   setupUpdater(handle, { readSettings, writeSettings, getWindow: () => mainWindow }); // update check (Settings › About)
-  setupRequirements(handle, { findJava: revanced.findJava, adbCandidates, minJava: revanced.minJava }); // Settings › This computer
+  setupRequirements(handle, { findJava: revanced.findJava, adbCandidates, minJava: revanced.minJava, readSettings, writeSettings, getWindow: () => mainWindow }); // Settings › This computer
+  setupRecovery(handle, { userData: app.getPath("userData"), getWindow: () => mainWindow }); // SD card recovery page (PhotoRec)
   const method = (m) => (["auto", "lan", "direct"].includes(m) ? m : readSettings().wifiMethod || "auto");
   handle("wifi:status", () => ({ ...wifi.status(), method: method() }));
   handle("wifi:setMethod", (_e, m) => { if (["auto", "lan", "direct"].includes(m)) writeSettings({ wifiMethod: m }); return method(); });
@@ -435,7 +632,7 @@ function setupWadb(handle) {
       if (svc) candidates.push({ host: svc.host, port: svc.port });
       const saved = pairedPhones().find((p) => p.serial === serial);
       if (saved?.lastHost && saved.lastPort) candidates.push({ host: saved.lastHost, port: saved.lastPort });
-      if (!candidates.length) throw new Error("The phone isn't on the network right now. On the phone, open Droid Desk Companion › PC link and tap “Turn on Wi‑Fi connection” (same Wi‑Fi as this computer).");
+      if (!candidates.length) throw new Error("The phone isn't on the network right now. On the phone, open Andromon Companion › PC link and tap “Turn on Wi‑Fi connection” (same Wi‑Fi as this computer).");
     }
     if (!candidates.length) throw new Error("Enter the phone's IP address & port (Wireless debugging › IP address & Port).");
     const { port1, port2 } = new MessageChannelMain();
@@ -472,7 +669,9 @@ function run(cmd, args, timeout = 8000) {
   return new Promise((resolve) => execFile(cmd, args, { timeout, windowsHide: true },
     (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || "") + String(stderr || "") })));
 }
+// Every adb on this computer, the one chosen in Settings › This computer first.
 function adbCandidates() {
+  const custom = readSettings().adbPath;
   const win = process.platform === "win32";
   const exe = win ? "adb.exe" : "adb";
   const home = os.homedir();
@@ -484,34 +683,139 @@ function adbCandidates() {
     path.join(home, "scoop/shims"), "C:\\platform-tools", path.join(process.env.ProgramData || "C:\\ProgramData", "chocolatey/bin"));
   else dirs.push(path.join(home, "Android/Sdk/platform-tools"), "/usr/local/bin", "/usr/bin");
   dirs.push(...(process.env.PATH || "").split(path.delimiter).filter(Boolean));
-  return [...new Set(dirs.map((d) => path.join(d, exe)))].filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+  return [...new Set([...(typeof custom === "string" && custom ? [custom] : []), ...dirs.map((d) => path.join(d, exe))])]
+    .filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
 }
-async function releaseAdb() {
-  let killServer = false;
-  for (const bin of adbCandidates()) {
-    if ((await run(bin, ["kill-server"])).ok) { killServer = true; break; }
+// The programs that have this phone's ADB interface open (USB class ff/42/01), as [{ pid, name }].
+// macOS lists them in the IORegistry, Linux in /proc. Windows has no cheap way: [] there.
+async function adbHolders(serial) {
+  if (!serial) return [];
+  const found = new Map();
+  if (process.platform === "darwin") {
+    const { out } = await run("ioreg", ["-r", "-c", "IOUSBHostDevice", "-l", "-w0"], 8000);
+    // Walk the tree: a device ("USB Serial Number"), its ADB interface, and the user clients under it.
+    let devSerial = null, inAdb = false, adbDepth = -1, cls = null, sub = null, depth = 0;
+    for (const line of out.split("\n")) {
+      const node = line.match(/^([ |]*)\+-o (.*?)  <class (\w+)/);
+      if (node) {
+        depth = node[1].length;
+        if (node[3] === "IOUSBHostDevice") { devSerial = null; inAdb = false; }
+        if (inAdb && depth <= adbDepth) inAdb = false;
+        if (node[3] === "IOUSBHostInterface") { cls = sub = null; adbDepth = depth; inAdb = false; }
+        continue;
+      }
+      const prop = line.match(/"([^"]+)" = (.*)$/);
+      if (!prop) continue;
+      const [, k, v] = prop;
+      if (k === "USB Serial Number" && devSerial === null) devSerial = v.replace(/^"|"$/g, "");
+      if (k === "bInterfaceClass") cls = Number(v);
+      if (k === "bInterfaceSubClass") sub = Number(v);
+      if ((k === "bInterfaceClass" || k === "bInterfaceSubClass") && cls === 255 && sub === 66 && devSerial === serial) inAdb = true;
+      const who = k === "IOUserClientCreator" && inAdb && v.match(/pid (\d+), (.*?)"?$/);
+      if (who) found.set(Number(who[1]), who[2]);
+    }
+  } else if (process.platform === "linux") {
+    let node = null;
+    for (const d of fs.readdirSync("/sys/bus/usb/devices")) {
+      const base = path.join("/sys/bus/usb/devices", d);
+      try {
+        if (fs.readFileSync(path.join(base, "serial"), "utf8").trim() !== serial) continue;
+        const bus = Number(fs.readFileSync(path.join(base, "busnum"), "utf8")), dev = Number(fs.readFileSync(path.join(base, "devnum"), "utf8"));
+        node = `/dev/bus/usb/${String(bus).padStart(3, "0")}/${String(dev).padStart(3, "0")}`;
+        break;
+      } catch {}
+    }
+    if (node) for (const pid of fs.readdirSync("/proc").filter((x) => /^\d+$/.test(x))) {
+      try {
+        const fdDir = `/proc/${pid}/fd`;
+        if (fs.readdirSync(fdDir).some((fd) => { try { return fs.readlinkSync(path.join(fdDir, fd)) === node; } catch { return false; } }))
+          found.set(Number(pid), fs.readFileSync(`/proc/${pid}/comm`, "utf8").trim());
+      } catch {} // other users' processes can't be read, and can't be closed by us either
+    }
   }
-  await new Promise((r) => setTimeout(r, 400));
-  // Whatever is still running (a server that ignored kill-server, or one whose adb isn't on this PC's PATH).
+  // Never this app itself (WebUSB lives in its main process, helpers are its children).
+  const ours = new Set([process.pid]);
+  const { out: ps } = await run("ps", ["-A", "-o", "pid=,ppid="], 5000);
+  const tree = ps.trim().split("\n").map((l) => l.trim().split(/\s+/).map(Number));
+  for (let grew = true; grew;) { grew = false; for (const [pid, ppid] of tree) if (ours.has(ppid) && !ours.has(pid)) { ours.add(pid); grew = true; } }
+  // Nor another copy of Andromon (the installed app next to one run from source): it is the person's own.
+  // "droid ?desk": an older copy installed under the app's previous name
+  const self = new RegExp(`^(andromon|droid ?desk|electron|${path.basename(process.execPath, ".exe").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(\\.exe)?$`, "i");
+  return [...found].filter(([pid, name]) => !ours.has(pid) && !self.test(name)).map(([pid, name]) => ({ pid, name }));
+}
+// A browser holding the phone is a WebADB page in one of its tabs: closing the whole browser would lose the
+// person's tabs, so it is only named and they close that tab themselves.
+const BROWSER_RE = /chrom|edge|brave|opera|vivaldi|arc|firefox|safari|yandex/i;
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+// Takes the phone away from every other program using its USB debugging connection: the adb servers of
+// the Android SDK / Android Studio / scrcpy / Vysor..., and any other tool that opened it. Returns what it closed.
+async function releaseAdb(serial) {
+  const holders = await adbHolders(serial).catch(() => []);
+  const browsers = [...new Set(holders.filter((h) => BROWSER_RE.test(h.name)).map((h) => h.name))];
+  const targets = holders.filter((h) => !BROWSER_RE.test(h.name));
+  let killServer = false;
+  // An adb server is asked to stop first, so its clients (Android Studio, scrcpy) see a clean shutdown.
+  if (!targets.length || targets.some((h) => /^adb(\.exe)?$/i.test(h.name))) {
+    for (const bin of adbCandidates()) {
+      if ((await run(bin, ["kill-server"])).ok) { killServer = true; break; }
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const closed = new Set();
+  for (const h of targets) {
+    if (!alive(h.pid)) { closed.add(h.name); continue; }
+    try { process.kill(h.pid, "SIGTERM"); } catch { continue; } // someone else's process: not ours to close
+    for (let i = 0; i < 10 && alive(h.pid); i++) await new Promise((r) => setTimeout(r, 100));
+    if (alive(h.pid)) try { process.kill(h.pid, "SIGKILL"); } catch {}
+    closed.add(h.name);
+  }
+  // Whatever is still running (a server that ignored kill-server, one whose adb isn't on this PC's PATH,
+  // or Windows, where the holders can't be listed).
   const forced = process.platform === "win32"
     ? (await run("taskkill", ["/F", "/T", "/IM", "adb.exe"])).ok
     : (await run("pkill", ["-x", "adb"])).ok;
-  return { killServer, forced };
+  if (forced || killServer) closed.add("adb");
+  return { closed: [...closed], browsers, killServer, forced };
+}
+// While a phone is connected, adb started by another program (Android Studio restarts it, scrcpy, a
+// terminal) is closed again every few seconds, so it can't reach the phone over USB or Wi‑Fi.
+// Andromon itself never runs adb: it talks to the phone directly (WebUSB, wadb.js).
+let adbGuard = null; // { timer, wc, off }
+function stopAdbGuard() {
+  if (!adbGuard) return;
+  clearInterval(adbGuard.timer);
+  for (const ev of ["did-navigate", "render-process-gone", "destroyed"]) adbGuard.wc.removeListener(ev, adbGuard.off);
+  adbGuard = null;
+}
+async function guardAdb(wc, on, serial) {
+  stopAdbGuard();
+  if (!on) return { on: false };
+  const sweep = () => (process.platform === "win32"
+    ? run("tasklist", ["/FI", "IMAGENAME eq adb.exe", "/NH"], 4000).then((r) => /adb\.exe/i.test(r.out) && run("taskkill", ["/F", "/IM", "adb.exe"]))
+    : run("pkill", ["-x", "adb"], 4000));
+  const off = () => stopAdbGuard(); // the page reloaded or closed: no connected phone left to guard
+  adbGuard = { timer: setInterval(sweep, 4000), wc, off };
+  for (const ev of ["did-navigate", "render-process-gone", "destroyed"]) wc.on(ev, off);
+  return { on: true, ...(await releaseAdb(serial)) };
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);
-  if (process.platform === "win32") app.setAppUserModelId("dev.droiddesk.app"); // needed for notifications
+  if (process.platform === "win32") app.setAppUserModelId("dev.andromon.app"); // needed for notifications
   serveRenderer();
+  showSplash();
+  await migrateLegacyWebData(); // once, after an update from Droid Desk
   allowWebUsb();
   setupWifi();
+  splashStep(0.25, "Getting ready…");
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on("before-quit", () => { wifi?.stop(); devnetStopAll(); inspector?.stop().catch(() => {}); revanced?.stop(); fdroid?.stop(); });
+app.on("before-quit", () => { stopAdbGuard(); wifi?.stop(); devnetStopAll(); inspector?.stop().catch(() => {}); revanced?.stop(); fdroid?.stop(); });
 
 app.on("window-all-closed", () => {
   wifi?.stop(); // never leave a network listener running without a window to ask for consent

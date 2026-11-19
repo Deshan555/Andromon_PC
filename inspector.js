@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Droid Desk — API inspector (App testing › API calls). Main process only.
+// Andromon — API inspector (App testing › API calls). Main process only.
 //
 // An HTTP proxy on 127.0.0.1 that the phone uses as its system proxy (through an `adb reverse`
 // set up by the page). It forwards every request and keeps a copy for display:
@@ -25,6 +25,7 @@ const path = require("node:path");
 
 const MAX_ENTRIES = 2000;
 const MAX_BODY = 2 * 1024 * 1024; // kept per body (raw and decoded)
+const MAX_KEPT = 200 * 1024 * 1024; // all kept bodies together; the oldest calls are dropped past this
 const HOP = new Set(["connection", "proxy-connection", "keep-alive", "proxy-authorization", "proxy-authenticate", "te", "trailer", "upgrade"]);
 
 // ---------------------------------------------------------------- DER / X.509
@@ -79,10 +80,10 @@ function signCert({ subject, issuer, publicKey, signKey, notBefore, notAfter, ex
   return seq(tbs, SIG_ALG, bitString(signature));
 }
 
-const CA_NAME = "Droid Desk API inspector CA";
+const CA_NAME = "Andromon API inspector CA";
 function createCa() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const nm = name(CA_NAME, "Droid Desk");
+  const nm = name(CA_NAME, "Andromon");
   const ski = keyId(publicKey);
   const now = Date.now();
   const certDer = signCert({
@@ -134,11 +135,15 @@ function splitHostPort(s, defPort) {
 const errText = (e) => (e?.code ? `${e.code}: ${e.message}` : String(e?.message || e));
 
 // Collects up to MAX_BODY bytes of a body while counting all of it.
+// `owner` (the inspector) counts what every body keeps, so the total can be held under MAX_KEPT.
 class Body {
-  constructor() { this.parts = []; this.kept = 0; this.size = 0; }
+  constructor(owner) { this.parts = []; this.kept = 0; this.size = 0; this.owner = owner; }
   add(c) {
     this.size += c.length;
-    if (this.kept < MAX_BODY) { const take = c.subarray(0, MAX_BODY - this.kept); this.parts.push(Buffer.from(take)); this.kept += take.length; }
+    if (this.kept < MAX_BODY) {
+      const take = c.subarray(0, MAX_BODY - this.kept); this.parts.push(Buffer.from(take)); this.kept += take.length;
+      this.owner?.kept(take.length);
+    }
   }
   get truncated() { return this.size > this.kept; }
   buffer() { return this.parts.length === 1 ? this.parts[0] : Buffer.concat(this.parts); }
@@ -251,16 +256,26 @@ class Inspector {
     await new Promise((r) => s.close(() => r()));
     return this.status();
   }
-  clear() { this.entries.clear(); this.dirty.clear(); this.emit({ type: "cleared" }); return true; }
+  clear() { for (const e of this.entries.values()) { if (e.reqBody) e.reqBody.owner = null; if (e.resBody) e.resBody.owner = null; } this.entries.clear(); this.keptBytes = 0; this.dirty.clear(); this.emit({ type: "cleared" }); return true; }
 
   // ---- entries
+  // Bytes held in bodies. Past MAX_KEPT the oldest calls go, as they do past MAX_ENTRIES.
+  kept(n) {
+    this.keptBytes = (this.keptBytes || 0) + n;
+    while (this.keptBytes > MAX_KEPT && this.entries.size > 1) this.dropOldest();
+  }
+  dropOldest() {
+    const first = this.entries.keys().next().value;
+    const e = this.entries.get(first);
+    this.entries.delete(first);
+    this.keptBytes -= (e?.reqBody?.kept || 0) + (e?.resBody?.kept || 0);
+    if (e?.reqBody) e.reqBody.owner = null; // a call still running no longer counts
+    if (e?.resBody) e.resBody.owner = null;
+  }
   newEntry(fields) {
     const e = { id: ++this.seq, time: now(), status: 0, error: "", reqHeaders: [], resHeaders: [], reqBody: null, resBody: null, ...fields };
     this.entries.set(e.id, e);
-    if (this.entries.size > MAX_ENTRIES) {
-      const first = this.entries.keys().next().value;
-      this.entries.delete(first);
-    }
+    if (this.entries.size > MAX_ENTRIES) this.dropOldest();
     this.touch(e);
     return e;
   }
@@ -321,7 +336,7 @@ class Inspector {
     } catch {
       if (!secure && req.url.startsWith("/")) { // someone opened the proxy itself
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-        res.end("Droid Desk API inspector is running. Point the phone's proxy here.\n");
+        res.end("Andromon API inspector is running. Point the phone's proxy here.\n");
         return;
       }
       res.writeHead(400); res.end(); return;
@@ -331,7 +346,7 @@ class Inspector {
     const e = this.newEntry({
       kind: "http", method: req.method, scheme: isHttps ? "https" : "http", host: target.hostname.replace(/^\[|\]$/g, ""), port,
       path: target.pathname + target.search, url: target.href, httpVersion: req.httpVersion, decrypted: secure,
-      reqHeaders: req.rawHeaders.slice(), reqBody: new Body(), resBody: null,
+      reqHeaders: req.rawHeaders.slice(), reqBody: new Body(this), resBody: null,
       tls: secure ? { client: { protocol: req.socket.getProtocol?.() || "", cipher: req.socket.getCipher?.()?.name || "", sni: req.socket.servername || "" } } : null,
     });
     const headers = [];
@@ -351,7 +366,7 @@ class Inspector {
       finished = true;
       e.error = errText(err); e.end = now(); this.touch(e);
       if (!res.headersSent) {
-        try { res.writeHead(502, { "content-type": "text/plain; charset=utf-8", "x-droiddesk-error": "1" }); res.end(`Droid Desk proxy: ${e.error}\n`); } catch {}
+        try { res.writeHead(502, { "content-type": "text/plain; charset=utf-8", "x-andromon-error": "1" }); res.end(`Andromon proxy: ${e.error}\n`); } catch {}
       } else { try { res.destroy(); } catch {} }
       try { up.destroy(); } catch {}
     };
@@ -361,7 +376,7 @@ class Inspector {
     });
     up.on("response", (ur) => {
       e.firstByte = now(); e.status = ur.statusCode; e.statusText = ur.statusMessage || "";
-      e.resHeaders = ur.rawHeaders.slice(); e.resBody = new Body();
+      e.resHeaders = ur.rawHeaders.slice(); e.resBody = new Body(this.entries.has(e.id) ? this : null); // not counted if the call was already dropped
       if (isHttps && ur.socket?.getPeerCertificate) {
         try {
           const pc = ur.socket.getPeerCertificate();
@@ -457,7 +472,7 @@ class Inspector {
         if (/alert|unknown ca|certificate|bad_certificate|handshake/i.test(msg) && !t.__ddRecorded) {
           t.__ddRecorded = true;
           this.newEntry({ kind: "tls-error", method: "CONNECT", scheme: "https", host: hp.host, port: hp.port, path: "", url: `${hp.host}:${hp.port}`,
-            error: "The app refused Droid Desk's certificate (it doesn't trust the CA, or it pins its certificate).", end: now() });
+            error: "The app refused Andromon's certificate (it doesn't trust the CA, or it pins its certificate).", end: now() });
         }
         try { t.destroy(); } catch {}
       });

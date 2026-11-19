@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; connect-src 'self' https://raw.githubusercontent.com https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'">
-<title>Droid Desk</title>
+<title>Andromon</title>
 <style>
   /* Same look as the companion app on the phone: brand colours lime #E3F786, green #9CD237, ink
      #292A2C and white; a light grey page, off-white cards, one lime-to-green hero card, dark pill
@@ -78,10 +78,17 @@
   b, strong, th { font-weight: 500; }
   ::selection { background: var(--lavender); }
 
-  /* ---------- frame: floating black nav + colour-blocked page ---------- */
+  /* ---------- frame: black nav docked to the left edge + colour-blocked page ---------- */
   .app { display: grid; grid-template-columns: 236px 1fr; gap: 12px; padding: 12px; min-height: 100vh; }
   aside { background: var(--nav-bg); color: #fff; border-radius: 28px; padding: 20px 12px 16px; display: flex; flex-direction: column; gap: 2px;
     position: sticky; top: 12px; height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: none; }
+  /* The sidebar is pinned to the window's left edge: it never moves when the page scrolls, down or sideways.
+     Its grid column stays as the spacer, so the page keeps to column 2. */
+  @media (min-width: 761px) {
+    .app { padding-left: 0; }
+    .app > aside { position: fixed; left: 0; top: 0; bottom: 0; width: 236px; height: auto; border-radius: 0 20px 20px 0; z-index: 5; }
+    .app > main { grid-column: 2; }
+  }
   nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
   nav::-webkit-scrollbar { display: none; }
   nav button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; background: none; border: 0; padding: 8px 14px; font-size: 12.5px; border-radius: 12px; cursor: pointer; color: var(--nav-icon); flex: none; transition: background .15s, color .15s; }
@@ -107,7 +114,7 @@
   @media (min-width: 761px) {
     .app.rail { grid-template-columns: 64px 1fr; }
     .app.rail aside { padding: 16px 8px 12px; }
-    .app.rail aside { position: sticky; }
+    .app.rail > aside { width: 64px; }
     .app.rail nav button { justify-content: center; padding: 7px 0; position: relative; }
     .app.rail nav button > span { display: none; }
     .app.rail nav button .nbadge { position: absolute; top: 2px; right: 6px; min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; margin: 0; }
@@ -150,6 +157,9 @@
   .app[data-view="tests"]    { --page: var(--bg); }
   .app[data-view="screen"]   { --page: var(--bg); }
   .app[data-view="wifi"]     { --page: var(--bg); }
+  .app[data-view="recovery"] { --page: var(--bg); }
+  .app[data-view="storage"], .app[data-view="sync"], .app[data-view="battery"], .app[data-view="memory"] { --page: var(--bg); }
+  @keyframes rc-slide { from { margin-left: 0; } to { margin-left: 65%; } }
   .app[data-view="dev"]      { --page: var(--bg); }
   .app[data-view="qa"]       { --page: var(--bg); }
   .app[data-view="calendar"] { --page: var(--bg); }
@@ -240,6 +250,21 @@
   .stat .v { font-size: 15px; font-weight: 500; margin-top: 2px; word-break: break-word; }
   .bar { height: 6px; background: var(--chip); border-radius: 3px; margin-top: 10px; overflow: hidden; }
   .bar > i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+  /* Progress of file copies and uploads (src/progress.js): a line of text over a bar */
+  .pg { display: grid; gap: 6px; flex: 1; min-width: 0; }
+  .pg-line { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; min-width: 0; }
+  .pg-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pg-meta { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pg .bar { margin-top: 0; height: 6px; }
+  .pg .bar > i { width: 0; transition: width .25s ease-out; }
+  .bar.indet > i { width: 30% !important; transition: none; animation: pg-slide 1.3s ease-in-out infinite; }
+  @keyframes pg-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .bk-step { flex-wrap: wrap; }
+  .bk-step > .pg { flex: 0 0 calc(100% - 30px); margin: 2px 0 4px 30px; }
+  .bk-toast .pg { min-width: min(320px, 60vw); }
+  .bk-toast .bar { background: rgba(127,127,127,.35); }
+  .bk-toast .bar > i { background: var(--on-ink); }
+  .bk-toast .pg-meta { color: inherit; opacity: .7; }
 
   /* Overview: pastel dashboard like the companion's home screen */
   #overview .grid .stat { background: var(--bg); min-height: 92px; } /* plain tiles; the hero card carries the colour */
@@ -368,12 +393,100 @@
   .viewer .btn:not(.primary):not(.danger) { background: rgba(255,255,255,.12); color: #fff; box-shadow: none; }
   .viewer .btn.primary { background: #fff; color: #17171b; }
   .viewer .vbody { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; padding: 0 12px 12px; }
+  .viewer .pg { flex: 0 1 440px; }
+  .viewer .bar { background: rgba(255,255,255,.18); }
+  .viewer .bar > i { background: #fff; }
+  .viewer .pg-meta { color: #b8b8bd; }
   .viewer .vbody img, .viewer .vbody video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
-  .mplayer { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: var(--ink) !important; color: var(--on-ink); }
-  .mplayer .btn { background: transparent; color: var(--on-ink); box-shadow: inset 0 0 0 1px rgba(127,127,127,.5); }
-  .mplayer .sub { color: inherit; opacity: .7; }
-  .mplayer img { width: 56px; height: 56px; border-radius: 16px; object-fit: cover; background: var(--glass); }
-  .mplayer audio { flex: 1; min-width: 220px; }
+  /* ---------- media player (src/player.js): video, single sound file, and the music dock ---------- */
+  .pl-b { display: inline-grid; place-items: center; width: 34px; height: 34px; flex: none; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; transition: background .15s, opacity .15s, transform .1s; }
+  .pl-b svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .pl-b svg .fill { fill: currentColor; stroke: none; }
+  .pl-b:hover:not(:disabled) { background: rgba(127,127,127,.2); }
+  .pl-b:active:not(:disabled) { transform: scale(.92); }
+  .pl-b:disabled { opacity: .35; cursor: default; }
+  .pl-b:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+  .pl-toggle { opacity: .6; }
+  .pl-toggle.on { opacity: 1; color: var(--green); }
+  .pl-main { width: 44px; height: 44px; background: currentColor; }
+  .pl-main svg { width: 20px; height: 20px; color: var(--pl-bg, #111); }
+  .pl-main:hover:not(:disabled) { background: currentColor; transform: scale(1.05); }
+  .pl-speed { width: auto; min-width: 42px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pl-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .pl-col { display: flex; flex-direction: column; min-width: 0; }
+  .pl-sp { flex: 1; }
+  .pl-time { font-size: 12px; font-variant-numeric: tabular-nums; opacity: .8; white-space: nowrap; min-width: 36px; text-align: center; }
+  .pl-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-sub { font-size: 12.5px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* slider: seek bar and volume */
+  .pl-slider { position: relative; flex: 1; height: 18px; display: flex; align-items: center; cursor: pointer; touch-action: none; min-width: 60px; }
+  .pl-slider:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 6px; }
+  .pl-track { position: relative; flex: 1; height: 4px; border-radius: 4px; background: rgba(127,127,127,.35); overflow: hidden; transition: height .12s; }
+  .pl-slider:hover .pl-track, .pl-slider.drag .pl-track { height: 6px; }
+  .pl-loaded { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(127,127,127,.45); }
+  .pl-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: currentColor; border-radius: 4px; }
+  .pl-knob { position: absolute; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: currentColor; box-shadow: 0 1px 4px rgba(0,0,0,.35); transform: scale(0); transition: transform .12s; pointer-events: none; }
+  .pl-slider:hover .pl-knob, .pl-slider.drag .pl-knob, .pl-slider:focus-visible .pl-knob { transform: scale(1); }
+  .pl-tip { position: absolute; bottom: 22px; transform: translateX(-50%); padding: 3px 7px; border-radius: 6px; background: rgba(0,0,0,.8); color: #fff; font-size: 11.5px; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+  .pl-volbox { display: flex; align-items: center; }
+  .pl-vol { flex: none; width: 0; min-width: 0; opacity: 0; transition: width .18s, opacity .18s; }
+  .pl-volbox:hover .pl-vol, .pl-volbox:focus-within .pl-vol, .mdock .pl-vol { width: 84px; opacity: 1; margin: 0 6px 0 2px; }
+  /* video */
+  .vplayer { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #000; border-radius: 12px; overflow: hidden; color: #fff; --pl-bg: #000; outline: none; }
+  .vplayer video { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 0 !important; }
+  .vplayer.compact { height: auto; max-height: 52vh; aspect-ratio: 16 / 9; }
+  .vplayer:fullscreen { border-radius: 0; }
+  .vplayer:focus, .aplayer:focus { outline: none !important; }
+  .vplayer:focus-visible, .aplayer:focus-visible { outline: 2px solid rgba(255,255,255,.35) !important; outline-offset: -2px !important; }
+  .vplayer .pl-big { position: absolute; width: 72px; height: 72px; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); }
+  .vplayer .pl-big svg { width: 30px; height: 30px; margin-left: 4px; }
+  .vplayer .pl-big:hover { background: rgba(0,0,0,.75); transform: scale(1.06); }
+  .vplayer .pl-wait { position: absolute; width: 40px; height: 40px; border-width: 3px; color: #fff; pointer-events: none; }
+  .vplayer .pl-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 14px 8px; background: linear-gradient(transparent, rgba(0,0,0,.75)); transition: opacity .25s; }
+  .vplayer .pl-bar .pl-slider { margin: 0 2px 2px; }
+  .vplayer .pl-bar .pl-row { gap: 2px; }
+  .vplayer.compact .pl-bar { padding: 22px 8px 4px; }
+  .vplayer.compact :is(.pl-speed, [aria-label="Loop"]) { display: none; }
+  .vplayer.playing.idle { cursor: none; }
+  .vplayer.playing.idle .pl-bar { opacity: 0; }
+  .vplayer .pl-toggle.on { color: #b9ec6a; }
+  /* one sound file (Files preview) */
+  .aplayer { display: flex; gap: 14px; align-items: center; padding: 14px; border-radius: 18px; background: var(--ink); color: var(--on-ink); --pl-bg: var(--ink); outline: none; }
+  .aplayer audio { display: none; }
+  .aplayer .pl-col { flex: 1; gap: 6px; }
+  .aplayer .pl-row { gap: 8px; }
+  .pl-art { position: relative; flex: none; width: 52px; height: 52px; border-radius: 12px; overflow: hidden; display: grid; place-items: center; background: rgba(127,127,127,.25); }
+  .pl-art svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; opacity: .6; }
+  .pl-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* the music dock */
+  .mdock { position: fixed; bottom: 14px; z-index: 40; display: grid; grid-template-columns: minmax(150px, 1fr) minmax(260px, 2fr) minmax(150px, 1fr); align-items: center; gap: 14px;
+    padding: 10px 14px; border-radius: 22px; background: rgba(23,23,27,.92); color: #f4f4f5; --pl-bg: #17171b; backdrop-filter: blur(18px) saturate(1.4);
+    box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06); animation: popin .25s ease-out; }
+  .mdock[hidden] { display: none; }
+  .mdock audio { display: none; }
+  .mdock .pl-info { display: flex; align-items: center; gap: 12px; min-width: 0; border: 0; background: none; color: inherit; text-align: left; padding: 0; cursor: pointer; font: inherit; }
+  .mdock .pl-info:hover .pl-title { text-decoration: underline; }
+  .mdock .pl-center { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .mdock .pl-btns { justify-content: center; gap: 8px; }
+  .mdock .pl-seek { gap: 8px; }
+  .mdock .pl-right { justify-content: flex-end; }
+  .mdock .pl-toggle.on { color: #b9ec6a; }
+  .mdock.playing .pl-art { box-shadow: 0 0 0 2px rgba(185,236,106,.5); }
+  .mdock.loading .pl-fill, .mdock.loading .pl-knob { display: none; }
+  .mdock.loading .pl-loaded { background: rgba(185,236,106,.55); }
+  .pl-queue { position: absolute; right: 10px; bottom: calc(100% + 10px); width: min(380px, calc(100vw - 40px)); max-height: min(60vh, 520px); overflow: auto; padding: 8px;
+    border-radius: 18px; background: rgba(23,23,27,.97); box-shadow: 0 18px 50px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.08); }
+  .pl-qh { display: block; padding: 10px 10px 4px; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; opacity: .55; }
+  .pl-qi { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 7px 10px; border: 0; border-radius: 12px; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+  .pl-qi:hover { background: rgba(255,255,255,.08); }
+  .pl-qi.on { background: rgba(185,236,106,.14); color: #d9f5a8; }
+  .pl-qn, .pl-qd { font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; text-align: center; }
+  :root.has-mdock main { padding-bottom: 120px; }
+  @media (max-width: 900px) {
+    .mdock { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "info right" "center center"; row-gap: 6px; }
+    .mdock .pl-info { grid-area: info; } .mdock .pl-center { grid-area: center; } .mdock .pl-right { grid-area: right; }
+    .mdock .pl-vol { display: none; }
+  }
   .mcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .mcard { padding: 10px; background: var(--panel-2); border: 0; border-radius: 22px; cursor: pointer; text-align: left; color: var(--text); font: inherit; }
   .mcard:hover { background: var(--surface); }
@@ -592,7 +705,7 @@
   .fx-new input { flex: 1; min-width: 140px; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
   .fx-selbar { background: var(--ink); color: var(--on-ink); }
   .fx-selbar b { margin-right: auto; font-weight: 500; padding-left: 6px; }
-  .fx-status span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fx-status > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fx-head, .fx-row { display: grid; grid-template-columns: 22px 34px minmax(0, 1fr) 90px 170px 38px; align-items: center; gap: 12px; padding: 0 10px; }
   .fx-head { height: 34px; font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
   .fx-col { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
@@ -659,6 +772,9 @@
   .sh-bar .sp { flex: 1; }
   .sh-sub { margin-bottom: 14px; min-height: 30px; }
   .sh-main { display: inline-flex; align-items: center; gap: 8px; }
+  .sh-blur { display: inline-flex; align-items: center; gap: 6px; }
+  .sh-blur svg { width: 15px; height: 15px; }
+  .sh-blur.on { background: var(--ink); color: var(--on-ink); box-shadow: none; }
   .sh-main svg, .sh-empty svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .sh-timers { display: flex; align-items: center; gap: 6px; }
   .sh-stage { display: grid; place-items: center; min-height: min(480px, calc(100vh - 330px)); padding: 18px; border-radius: 22px; background: var(--panel-2); }
@@ -671,6 +787,44 @@
   .sh-thumb { flex: none; height: 84px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; cursor: pointer; background: var(--panel-2); box-shadow: 0 0 0 1px var(--border); }
   .sh-thumb img { display: block; height: 100%; width: auto; }
   .sh-thumb.on { box-shadow: 0 0 0 2px var(--ink); }
+  .sh-stage .shot.sh-open { cursor: zoom-in; }
+  /* full screen (openFull in src/screenshot.js): always dark, the picture alone on the screen */
+  .sf { position: fixed; inset: 0; z-index: 1000; background: #0b0b0d; color: #f2f2f4; display: block; overflow: hidden; }
+  .sf:fullscreen { width: 100%; height: 100%; }
+  .sf::backdrop { background: #0b0b0d; }
+  .sf-pane { position: absolute; inset: 0; overflow: hidden; display: flex; touch-action: none; user-select: none; }
+  .sf-pane img { flex: none; margin: auto; display: block; max-width: none; max-height: none; cursor: zoom-in; image-rendering: auto; }
+  .sf-pane.zoomed { overflow: auto; scrollbar-width: none; }
+  .sf-pane.zoomed::-webkit-scrollbar { display: none; }
+  .sf-pane.zoomed img { cursor: zoom-out; image-rendering: pixelated; }
+  .sf-pane.zoomed.bigger, .sf-pane.zoomed.bigger img { cursor: grab; }
+  .sf-pane.dragging, .sf-pane.dragging img { cursor: grabbing !important; }
+  .sf-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 6px; padding: 14px 18px 28px;
+    background: linear-gradient(rgba(0,0,0,.72), rgba(0,0,0,0)); transition: opacity .25s; }
+  .sf-bar .sp { flex: 1; }
+  .sf-title { display: grid; min-width: 0; line-height: 1.3; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  .sf-title b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sf-meta { font-size: 12px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sf-sep { width: 1px; height: 22px; margin: 0 4px; background: rgba(255,255,255,.22); }
+  .sf-b { display: inline-grid; place-items: center; width: 38px; height: 38px; flex: none; padding: 0; border: 0; border-radius: 50%;
+    background: rgba(255,255,255,.1); color: #fff; cursor: pointer; transition: background .15s, opacity .25s, transform .1s; }
+  .sf-b:hover:not(:disabled) { background: rgba(255,255,255,.22); }
+  .sf-b:active:not(:disabled) { transform: scale(.94); }
+  .sf-b:disabled { opacity: .3; cursor: default; }
+  .sf-b:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .sf-b.danger:hover { background: rgba(255,90,80,.35); }
+  .sf-b svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sf-nav { position: absolute; top: 50%; width: 48px; height: 48px; margin-top: -24px; background: rgba(0,0,0,.45); backdrop-filter: blur(8px); }
+  .sf-nav svg { width: 24px; height: 24px; }
+  .sf-nav[hidden] { display: none; }
+  .sf-prev { left: 18px; } .sf-next { right: 18px; }
+  .sf-note { position: absolute; left: 50%; bottom: 28px; transform: translate(-50%, 8px); padding: 9px 16px; border-radius: 999px;
+    background: rgba(30,30,34,.92); color: #fff; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  .sf-note.show { opacity: 1; transform: translate(-50%, 0); }
+  .sf.idle { cursor: none; }
+  .sf.idle .sf-bar, .sf.idle .sf-nav { opacity: 0; pointer-events: none; }
+  .sf.idle .sf-pane img { cursor: none; }
+  @media (prefers-reduced-motion: reduce) { .sf-bar, .sf-b, .sf-note { transition: none; } }
   /* ---------- Backup & restore and Shizuku pages: a column of cards ---------- */
   .pg-cards { display: grid; gap: 16px; }
   .pg-cards > .card { margin: 0; }
@@ -810,7 +964,9 @@
   /* ---------- mirror ---------- */
   .mr { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
   .mr .card { margin: 0; }
-  .mr-side { display: grid; gap: 16px; position: sticky; top: calc(var(--head-h, 96px) + 12px); }
+  .mr-side { display: grid; gap: 16px; align-content: start; position: sticky; top: calc(var(--head-h, 96px) + 12px);
+    /* it is an <aside>: undo the navigation sidebar's look */
+    background: none; color: inherit; border-radius: 0; padding: 0; height: auto; overflow: visible; }
   .mr-side h2 { margin: 0 0 12px; }
   .mr-view { padding: 16px 18px 18px; }
   .mr-bar { display: flex; align-items: center; gap: 10px; min-height: 32px; margin-bottom: 12px; }
@@ -825,27 +981,171 @@
   .mr-ghost b { font-size: 17px; }
   .mr-ghost .btn { margin-top: 10px; }
   .mirror-stage { display: flex; justify-content: center; align-items: center; background: var(--panel-2); border-radius: 22px; padding: 22px; }
-  .mirror-stage canvas { display: block; max-width: 100%; max-height: calc(100vh - 250px); width: auto; height: auto; border-radius: 16px; touch-action: none; cursor: default; outline: none; box-shadow: 0 0 0 6px #0d0d0e, 0 0 0 7px rgba(255,255,255,.14), 0 18px 44px rgba(0,0,0,.28); }
+  .mirror-stage canvas { display: block; max-width: 100%; max-height: calc(100vh - 300px); width: auto; height: auto; border-radius: 16px; touch-action: none; cursor: default; outline: none; box-shadow: 0 0 0 6px #0d0d0e, 0 0 0 7px rgba(255,255,255,.14), 0 18px 44px rgba(0,0,0,.28); }
   .mirror-stage canvas:focus-visible { box-shadow: 0 0 0 6px #0d0d0e, 0 0 0 8px var(--ink), 0 18px 44px rgba(0,0,0,.28); }
   .mirror-stage:fullscreen { border-radius: 0; padding: 0; background: #000; }
   .mirror-stage:fullscreen canvas { max-height: 100vh; border-radius: 0; box-shadow: none; }
-  .mr-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .mr-key { display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 62px; padding: 9px 4px; border: 0; border-radius: 16px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 11.5px; line-height: 1.2; cursor: pointer; box-shadow: inset 0 0 0 1px var(--border); }
+  /* While mirroring: navigation in a vertical strip left of the phone, every other control in one on its right. */
+  .mr-screen { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+  .mr:not(.on) .mr-screen { display: block; }
+  .mr:not(.on) .mr-strip, .mr:not(.on) .mr-type { display: none; }
+  .mr-strip { display: grid; gap: 8px; align-content: start; padding: 7px; border-radius: 20px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border);
+    max-height: calc(100vh - 250px); overflow-y: auto; scrollbar-width: none; }
+  .mr-grp { display: grid; grid-template-columns: 36px; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .mr-strip-r .mr-grp { grid-template-columns: repeat(2, 36px); }
+  .mr-grp:first-child { padding-top: 0; border-top: 0; }
+  .mr-key { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 11px; background: transparent; color: var(--text); cursor: pointer; }
+  .mr-key[hidden] { display: none; }
   .mr-key svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .mr-key:hover:not(:disabled) { background: var(--chip); }
   .mr-key:active:not(:disabled) { transform: scale(.97); }
   .mr-key:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .mr-key:disabled { opacity: .45; cursor: not-allowed; }
   .mr-key.on { background: var(--ink); color: var(--on-ink); box-shadow: none; }
-  .mr-grp { grid-column: 1 / -1; margin: 6px 2px -2px; font-size: 12px; color: var(--muted); }
-  .mr-grp:first-child { margin-top: 0; }
   .mr-type { display: flex; gap: 8px; margin-top: 12px; }
   .mr-type input { flex: 1; min-width: 0; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); }
   .mr-type input:focus { outline: none; box-shadow: 0 0 0 2px var(--ink); }
   .mirror-stage.actual { overflow: auto; justify-content: safe center; align-items: safe center; max-height: calc(100vh - 210px); }
   .mirror-stage.actual canvas { max-width: none; max-height: none; }
-  .mr-controls { max-height: calc(100vh - var(--head-h, 96px) - 36px); overflow: auto; }
-  .mr-rec { grid-column: 1 / -1; grid-auto-flow: column; justify-content: center; min-height: 44px; gap: 9px; font-size: 13px; font-weight: 500; }
+  /* Files dropped on the phone's screen (src/mirrordrop.js): a hint while dragging, a bar while copying */
+  .mirror-stage { position: relative; }
+  .mr-drop { position: absolute; inset: 10px; display: grid; place-content: center; gap: 6px; text-align: center; border: 2px dashed var(--ink); border-radius: 18px; background: color-mix(in srgb, var(--panel-2) 88%, transparent); pointer-events: none; z-index: 2; }
+  .mr-drop[hidden], .mr-drop-status[hidden] { display: none; }
+  .mr-drop b { font-size: 17px; }
+  .mr-drop-status { position: absolute; left: 22px; right: 22px; bottom: 22px; padding: 10px 14px; border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 8px 26px rgba(0,0,0,.22); z-index: 2; }
+  /* Storage map (src/storagemap.js) */
+  #storageRoot { display: grid; gap: 16px; }
+  .sm-total { margin: 2px 0 12px; } .sm-total b { font-size: 22px; }
+  .sm-kinds { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--chip); }
+  .sm-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .sm-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+  .sm-k0 { background: #7c6cf2; } .sm-k1 { background: #a597ff; } .sm-k2 { background: #cfc7ff; } .sm-k3 { background: #2fa36b; } .sm-k4 { background: #e2853b; }
+  .sm-k5 { background: #d65a8a; } .sm-k6 { background: #3d8fd6; } .sm-k7 { background: #8a8d93; } .sm-k8 { background: #c4b48a; }
+  .sm-crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+  .sm-map { position: relative; height: clamp(260px, 46vh, 520px); border-radius: 14px; overflow: hidden; background: var(--chip); }
+  .sm-box { position: absolute; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; padding: 6px 8px; border: 0; border-radius: 8px; overflow: hidden; text-align: left; font: inherit; color: #111; }
+  button.sm-box { cursor: pointer; } button.sm-box:hover { filter: brightness(1.06); outline: 2px solid var(--ink); outline-offset: -2px; }
+  .sm-box b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sm-box span { font-size: 12px; opacity: .75; }
+  .sm-dir { background: #c9c1ff; } .sm-img { background: #a9e3c4; } .sm-vid { background: #f6c193; } .sm-aud { background: #f3b4cc; } .sm-pkg { background: #a9cdf3; } .sm-file { background: #dcdcd6; } .sm-rest { background: #ecebe6; }
+  .sm-empty { display: grid; place-content: center; height: 100%; grid-auto-flow: column; gap: 8px; align-items: center; }
+  .sm-lists { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .sm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--chip); }
+  .sm-row:last-child { border-bottom: 0; }
+  .sm-row-text b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .sm-size { font-variant-numeric: tabular-nums; }
+  /* Battery health (src/battery.js) */
+  #batteryRoot { display: grid; gap: 16px; }
+  .bh-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .bh-stat { display: grid; gap: 4px; align-content: start; }
+  .bh-value { font-size: 28px; font-weight: 500; letter-spacing: -.01em; }
+  .bh-stat.hero { background: var(--mint); }
+  .bh-chart { width: 100%; height: auto; display: block; }
+  .bh-chart .bh-grid { stroke: var(--chip); stroke-width: 1; }
+  .bh-chart .bh-axis { fill: var(--muted); font-size: 11px; }
+  .bh-chart .bh-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+  .bh-chart .bh-charging { fill: var(--lime); opacity: .35; }
+  /* Phone memory (src/memory.js) */
+  #memoryRoot { display: grid; gap: 16px; }
+  #memoryRoot .hero { margin: 0; }
+  .mm-stats { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .mm-stat { display: grid; gap: 4px; align-content: start; }
+  .mm-value { font-size: 28px; font-weight: 500; letter-spacing: -.01em; }
+  .mm-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 160px) 76px 92px; gap: 14px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--chip); }
+  .mm-row:last-of-type { border-bottom: 0; }
+  .mm-bar { height: 6px; border-radius: 99px; background: var(--chip); overflow: hidden; }
+  .mm-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ink); }
+  .mm-size { text-align: right; font-variant-numeric: tabular-nums; }
+  .mm-row > .btn, .mm-nostop { justify-self: end; }
+  @media (max-width: 760px) { .mm-row { grid-template-columns: minmax(0, 1fr) 70px 80px; } .mm-bar { display: none; } }
+  /* Folder sync (src/foldersync.js) */
+  #syncRoot { display: grid; gap: 16px; }
+  .fs-ends { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: end; }
+  .fs-ends .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fs-path { width: 100%; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; font-family: var(--mono); font-size: 13px; box-shadow: inset 0 0 0 1px var(--border); }
+  @media (max-width: 760px) { .fs-ends { grid-template-columns: minmax(0, 1fr); } }
+  /* Backup: lock with a password (src/backup.js, src/backupcrypto.js) */
+  .bk-lock { display: grid; gap: 8px; margin: 6px 0 4px 30px; max-width: 460px; }
+  .bk-lock[hidden] { display: none; }
+  .bk-pass { padding: 8px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); min-width: 0; }
+  .pd-dialog .bk-pass { width: 100%; max-width: 360px; margin-bottom: 8px; }
+  /* A second phone's screen in a floating window (src/minimirror.js) */
+  .mm-win { position: fixed; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #111214; color: #f2f2f2; border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.45); overflow: hidden; max-height: calc(100vh - 24px); }
+  .mm-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; cursor: move; user-select: none; }
+  .mm-title { flex: 1; min-width: 0; display: grid; } .mm-title b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .mm-title .muted { color: #a9aab0; }
+  .mm-stage { display: grid; place-items: center; min-height: 0; padding: 0 10px; }
+  .mm-canvas { display: block; max-width: 100%; max-height: calc(100vh - 150px); width: 100%; height: auto; border-radius: 10px; outline: none; touch-action: none; background: #000; }
+  .mm-canvas:focus-visible { box-shadow: 0 0 0 2px #fff; }
+  .mm-foot { display: flex; justify-content: center; gap: 18px; padding: 8px; }
+  .mm-btn { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(255,255,255,.1); color: inherit; cursor: pointer; }
+  .mm-btn:hover { background: rgba(255,255,255,.2); }
+  .mm-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mm-grip { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,.35) 50%); }
+  /* Repair desk (src/repair.js, src/repair/*.js) */
+  .app[data-view="repair"] { --page: var(--bg); }
+  #repairRoot .dev-pane { display: grid; gap: 16px; } #repairRoot .dev-pane[hidden] { display: none; }
+  #repairRoot .dev-pane > div { display: grid; gap: 16px; }
+  .rp-head { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .rp-job { display: grid; gap: 4px; min-width: 0; flex: 1 1 320px; } .rp-job select { max-width: 100%; }
+  .rp-priv { display: flex; gap: 14px; align-items: center; flex: 1 1 320px; justify-content: flex-end; }
+  .app.privacy nav button:is([data-view="messages"], [data-view="contacts"], [data-view="calls"], [data-view="calendar"], [data-view="notifs"], [data-view="photos"], [data-view="music"], [data-view="files"], [data-view="storage"], [data-view="sync"], [data-view="backup"]) { display: none; }
+  .rp-search { flex: 1 1 260px; padding: 8px 14px; border: 0; border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); min-width: 0; }
+  .rp-jobs { display: grid; gap: 4px; }
+  .rp-jobrow { display: grid; grid-template-columns: 80px minmax(0, 1.2fr) minmax(0, 1fr) auto 90px; gap: 10px; align-items: center; padding: 9px 10px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .rp-jobrow:hover, .rp-jobrow.on { background: var(--chip); }
+  .rp-jobrow.inhand b::after { content: " ●"; color: var(--good); }
+  .rp-jobrow span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rp-st-ready { background: var(--lime); color: #111; } .rp-st-collected, .rp-st-cancelled { opacity: .6; }
+  .rp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 14px; }
+  .rp-field { display: grid; gap: 4px; min-width: 0; } .rp-field.wide { grid-column: 1 / -1; }
+  .rp-in, .rp-note { width: 100%; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--panel-2); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--border); min-width: 0; resize: vertical; }
+  .rp-files { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .rp-file-wrap { position: relative; }
+  .rp-file { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 12px; overflow: hidden; background: var(--chip); color: inherit; font-size: 12px; text-align: center; text-decoration: none; padding: 4px; }
+  .rp-file img { width: 100%; height: 100%; object-fit: cover; }
+  .rp-file-x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--ink); color: var(--on-ink); cursor: pointer; }
+  .rp-hist { display: grid; gap: 3px; margin-top: 6px; max-height: 220px; overflow: auto; }
+  .rp-cmp { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .rp-cmp th, .rp-cmp td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--chip); vertical-align: top; }
+  .rp-cmp thead th { font-weight: 500; color: var(--muted); font-size: 12.5px; }
+  .rp-cmp tbody th { font-weight: 500; white-space: nowrap; width: 1%; }
+  .rp-cmp tr.diff td { background: color-mix(in srgb, var(--lime) 35%, transparent); }
+  .rp-bench td, .rp-bench th { white-space: nowrap; }
+  .rp-tgroup { margin: 14px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .rp-tgroup:first-child { margin-top: 0; }
+  .rp-test { display: grid; grid-template-columns: minmax(0, 1fr) auto 160px auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; }
+  .rp-test.pass { background: color-mix(in srgb, var(--good) 14%, transparent); } .rp-test.fail { background: color-mix(in srgb, var(--danger) 14%, transparent); } .rp-test.na { opacity: .55; }
+  .rp-marks { display: flex; gap: 4px; }
+  .rp-mark.on.pass { background: var(--good); color: #fff; } .rp-mark.on.fail { background: var(--danger); color: #fff; } .rp-mark.on.skip { background: var(--ink); color: var(--on-ink); }
+  @media (max-width: 900px) { .rp-test { grid-template-columns: minmax(0, 1fr); } .rp-jobrow { grid-template-columns: 70px minmax(0, 1fr) auto; } .rp-jobrow > :nth-child(3), .rp-jobrow > :nth-child(5) { display: none; } }
+  .rp-live { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 12px; }
+  .rp-fromto { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; } .rp-fromto label { display: grid; gap: 4px; }
+  .rp-ok { padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--good) 16%, transparent); }
+  /* Printing (Repair receipts, reports, certificates): only #printArea is printed */
+  #printArea { display: none; }
+  @media print {
+    body.printing > *:not(#printArea) { display: none !important; }
+    body.printing { background: #fff !important; }
+    body.printing #printArea { display: block; color: #000; font: 11pt/1.45 var(--font); }
+    .pr-sheet { padding: 0 4mm; } .pr-brand { font-size: 10pt; color: #555; } .pr-sheet h1 { font-size: 18pt; margin: 2mm 0 5mm; } .pr-sheet h2 { font-size: 13pt; margin: 6mm 0 2mm; }
+    .pr-table, .pr-sheet .rp-cmp { width: 100%; border-collapse: collapse; } .pr-table th, .pr-table td, .pr-sheet .rp-cmp th, .pr-sheet .rp-cmp td { text-align: left; padding: 1.5mm 2mm; border-bottom: 0.3mm solid #ccc; vertical-align: top; }
+    .pr-table th { width: 32%; font-weight: 600; } .pr-sheet .rp-cmp tr.diff td { background: #eee; }
+    .pr-cols { display: flex; gap: 6mm; align-items: flex-start; } .pr-cols .pr-table { flex: 1; } .pr-qr { text-align: center; } .pr-qr img { width: 32mm; height: 32mm; image-rendering: pixelated; }
+    .pr-terms { font-size: 9pt; color: #444; margin-top: 6mm; }
+    .pr-sign { display: flex; gap: 12mm; margin-top: 14mm; } .pr-sign > div { flex: 1; border-top: 0.3mm solid #000; padding-top: 1.5mm; font-size: 9pt; }
+    .pr-label { display: flex; gap: 4mm; align-items: center; border: 0.3mm dashed #999; padding: 3mm; width: 80mm; } .pr-label img { width: 24mm; height: 24mm; image-rendering: pixelated; }
+  }
+  /* Settings › Screen mirror › Keyboard shortcuts (src/shortcuts.js) */
+  .sc-details { margin-top: 14px; border-top: 1px solid var(--chip); padding-top: 12px; }
+  .sc-details > summary { cursor: pointer; }
+  .sc-list { display: grid; gap: 2px; margin-top: 10px; }
+  .sc-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto auto; gap: 8px; align-items: center; padding: 4px 0; }
+  .sc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-keys { font-family: var(--mono); font-size: 12.5px; padding: 3px 8px; border-radius: 7px; background: var(--chip); justify-self: start; }
+  .sc-keys.none { color: var(--muted); background: none; }
+  .mr-rec { grid-column: span 2; width: auto; grid-auto-flow: column; justify-content: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .mr-rec span:empty { display: none; }
   .mr-rec.rec-on { background: var(--danger); color: #fff; box-shadow: none; }
   .mr-setup dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; font-size: 13px; }
   .mr-setup dt { color: var(--muted); }
@@ -856,8 +1156,9 @@
   .mr-tips dt { color: var(--muted); }
   .mr-tips dd { margin: 0; }
   .mr-tips p { margin: 0; }
-  .mr:not(.on) .mr-controls, .mr.on .mr-setup, .mr.on .mr-tips { display: none; }
-  @media (max-width: 980px) { .mr { grid-template-columns: minmax(0, 1fr); } .mr-side { position: static; } .mr-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+  .mr.on { grid-template-columns: minmax(0, 1fr); }
+  .mr.on .mr-side { display: none; }
+  @media (max-width: 980px) { .mr { grid-template-columns: minmax(0, 1fr); } .mr-side { position: static; } }
 
   /* ---------- apps, debloat, misc ---------- */
   .app-icon { width: 56px; height: 56px; border-radius: 18px; background: var(--lavender); color: var(--text); display: grid; place-items: center; font-size: 24px; font-weight: 500; flex: none; overflow: hidden; }
@@ -918,6 +1219,20 @@
   .fd-text { white-space: pre-line; overflow-wrap: anywhere; max-width: 80ch; line-height: 1.5; }
   .fd-links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
   .fd-links a { color: inherit; }
+  .fd-shots { display: flex; gap: 12px; overflow-x: auto; padding: 2px 2px 10px; margin: 0 0 16px; scroll-snap-type: x proximity; }
+  .fd-shot { flex: none; height: 340px; min-width: 150px; padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--chip); color: var(--muted); overflow: hidden; display: grid; place-items: center; cursor: zoom-in; scroll-snap-align: start; }
+  .fd-shot:disabled { cursor: default; }
+  .fd-shot img { height: 340px; width: auto; max-width: 620px; object-fit: contain; display: block; }
+  .fd-shot:focus-visible { outline: 2px solid var(--green, #9CD237); outline-offset: 2px; }
+  .fd-viewer { position: fixed; inset: 0; z-index: 1000; background: rgba(10,10,12,.86); display: grid; grid-template-columns: 64px 1fr 64px; grid-template-rows: 56px 1fr; align-items: center; justify-items: center; }
+  .fd-viewer img { grid-column: 2; grid-row: 2; max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border-radius: 12px; box-shadow: 0 12px 48px rgba(0,0,0,.5); }
+  .fd-viewer .fd-vbar { grid-column: 1 / -1; grid-row: 1; justify-self: stretch; display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #fff; }
+  .fd-viewer button { border: 0; border-radius: 999px; background: rgba(255,255,255,.14); color: #fff; font: inherit; cursor: pointer; }
+  .fd-viewer button:hover:not(:disabled) { background: rgba(255,255,255,.26); }
+  .fd-viewer button:disabled { opacity: .3; cursor: default; }
+  .fd-viewer button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .fd-viewer .nav { grid-row: 2; width: 44px; height: 44px; font-size: 24px; line-height: 1; }
+  .fd-viewer .close { padding: 7px 16px; }
   pre.out.rv-log { min-height: 0; max-height: 260px; margin: 14px 0 0; white-space: pre-wrap; word-break: break-word; }
   .badge.safety-recommended { background: var(--good-soft); color: var(--good); }
   .badge.safety-advanced { background: var(--chip); color: var(--text); }
@@ -966,6 +1281,104 @@
   .dev-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13px; }
   .dev-kv > :nth-child(odd) { color: var(--muted); }
   .dev-kv > :nth-child(even) { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+  /* ---------- accessibility (Settings › Accessibility; renderer/theme.js sets these before paint) ---------- */
+  /* Text size: everything grows together (text, icons, spacing), so nothing overlaps. */
+  :root[data-text="115"] { --text-zoom: 1.15; }
+  :root[data-text="130"] { --text-zoom: 1.3; }
+  :root[data-text="150"] { --text-zoom: 1.5; }
+  /* App zoom: the whole window, on top of Text size. ⌘/Ctrl + − 0 step it too. */
+  :root[data-zoom="67"] { --app-zoom: 0.67; }
+  :root[data-zoom="75"] { --app-zoom: 0.75; }
+  :root[data-zoom="80"] { --app-zoom: 0.8; }
+  :root[data-zoom="90"] { --app-zoom: 0.9; }
+  :root[data-zoom="110"] { --app-zoom: 1.1; }
+  :root[data-zoom="125"] { --app-zoom: 1.25; }
+  :root[data-zoom="150"] { --app-zoom: 1.5; }
+  :root[data-zoom="175"] { --app-zoom: 1.75; }
+  :root[data-zoom="200"] { --app-zoom: 2; }
+  :root[data-text], :root[data-zoom] { zoom: calc(var(--text-zoom, 1) * var(--app-zoom, 1)); }
+  /* Button size: smaller buttons, for more room on small screens. */
+  :root[data-buttons="small"] .btn { padding: 6px 14px; font-size: 13px; }
+  :root[data-buttons="small"] .btn.sm { padding: 4px 11px; font-size: 12px; }
+  :root[data-buttons="smallest"] .btn { padding: 4px 10px; font-size: 12px; }
+  :root[data-buttons="smallest"] .btn.sm { padding: 2px 8px; font-size: 11px; }
+  /* Icon buttons (src/iconbuttons.js sets data-ico): the icon only; the words stay for screen readers and the tooltip. */
+  :root { --ib: 36px; --ib-sm: 30px; --ii: 17px; --ii-sm: 15px; }
+  :root[data-buttons="small"] { --ib: 30px; --ib-sm: 26px; --ii: 15px; --ii-sm: 14px; }
+  :root[data-buttons="smallest"] { --ib: 26px; --ib-sm: 22px; --ii: 14px; --ii-sm: 12px; }
+  /* The icon sits absolutely in the middle, so the hidden words (and a busy spinner) can't push it off centre. */
+  :root[data-icons] .btn[data-ico] { --s: var(--ii); position: relative; font-size: 0 !important; line-height: 0; padding: 0 !important; min-width: var(--ib); height: var(--ib);
+    display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; overflow: hidden; }
+  :root[data-icons] .btn.sm[data-ico] { --s: var(--ii-sm); min-width: var(--ib-sm); height: var(--ib-sm); }
+  :root[data-icons] .btn[data-ico]::before { content: ""; position: absolute; inset: 0; margin: auto; width: var(--s); height: var(--s); background: currentColor;
+    -webkit-mask: var(--ico) center / contain no-repeat; mask: var(--ico) center / contain no-repeat; }
+  :root[data-icons] .btn[data-ico][aria-busy="true"]::before { content: none; }
+  :root[data-icons] .btn[data-ico] .spin { width: var(--s); height: var(--s); margin: 0; }
+  .ico-tip { position: fixed; z-index: 10000; max-width: 280px; padding: 6px 10px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 12px; line-height: 1.35; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+  .ico-tip b { display: block; font-weight: 600; }
+  .ico-tip span { display: block; opacity: .82; margin-top: 2px; }
+  .ico-tip[hidden] { display: none; }
+  /* Plain font: the computer's own, often easier to read than Poppins. */
+  :root[data-font="plain"] { --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  /* More contrast: darker secondary text, visible edges, solid cards. */
+  :root[data-contrast="more"] {
+    --text: #000000; --ink: #000000; --muted: #333436; --faint: #545558; --border: #77787b;
+    --surface: #ffffff; --glass: #ffffff; --glass-strong: #ffffff; --chip: rgba(0,0,0,.13);
+    --nav-bg: #000000; --nav-icon: #f0f0f0; --good: #3a6106; --danger: #b3221d; --warn-ink: #4a3800;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-contrast="more"]:not([data-theme="light"]) {
+      --bg: #000000; --surface: #161718; --text: #ffffff; --ink: #ffffff; --muted: #dadbdd; --faint: #b4b5b8; --border: #8a8b8f;
+      --glass: #1d1e20; --glass-strong: #26272a; --chip: rgba(255,255,255,.18); --nav-bg: #161718; --nav-icon: #f0f0f0;
+      --good: #b9ec6a; --danger: #ff7a73;
+    }
+  }
+  :root[data-contrast="more"][data-theme="dark"] {
+    --bg: #000000; --surface: #161718; --text: #ffffff; --ink: #ffffff; --muted: #dadbdd; --faint: #b4b5b8; --border: #8a8b8f;
+    --glass: #1d1e20; --glass-strong: #26272a; --chip: rgba(255,255,255,.18); --nav-bg: #161718; --nav-icon: #f0f0f0;
+    --good: #b9ec6a; --danger: #ff7a73;
+  }
+  :root[data-contrast="more"] :is(.card, .btn:not(.primary), input, select, textarea, ol.steps li) { box-shadow: inset 0 0 0 1px var(--border); }
+  :root[data-contrast="more"] .switch:not([aria-checked="true"]) { box-shadow: inset 0 0 0 2px var(--muted); }
+  :root[data-contrast="more"] .switch:not([aria-checked="true"])::after { background: var(--muted); box-shadow: none; }
+  :root[data-contrast="more"] ::placeholder { color: var(--muted); opacity: 1; }
+  /* Bold text */
+  :root[data-bold] body, :root[data-bold] body * { font-weight: 500 !important; }
+  :root[data-bold] :is(b, strong, th, h1, h2, h3, .btn, nav button.active, nav button.nhead) { font-weight: 600 !important; }
+  /* Reduce motion: no sliding, fading or pulsing. Spinners keep turning, slowly, so work still shows. */
+  :root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+  }
+  :root[data-motion="reduce"] .spin { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
+  :root[data-motion="reduce"] .dl-wait > i { animation: none !important; width: 100%; opacity: .5; }
+  :root[data-motion="reduce"] .bar.indet > i { animation: none !important; width: 100% !important; opacity: .35; }
+  /* Strong focus outline: a thick ring around whatever the keyboard is on, everywhere. */
+  :root[data-focus="strong"] { --focus-ring: #1557d6; }
+  @media (prefers-color-scheme: dark) { :root[data-focus="strong"]:not([data-theme="light"]) { --focus-ring: #ffd23f; } }
+  :root[data-focus="strong"][data-theme="dark"] { --focus-ring: #ffd23f; }
+  :root[data-focus="strong"] :focus-visible { outline: 3px solid var(--focus-ring) !important; outline-offset: 2px !important; }
+  :root[data-focus="strong"] nav :focus-visible { outline-color: #ffd23f !important; outline-offset: -3px !important; } /* inside: the scrolling list would cut it off */
+  /* Underline links */
+  :root[data-links="underline"] a { text-decoration: underline !important; text-underline-offset: 2px; }
+
+  /* ---------- privacy blur (Settings › Accessibility, Ctrl/⌘ + Shift + P; src/privacyblur.js) ---------- */
+  /* Places that always hold personal data, plus whatever the scanner found (pii-auto, pii-span) or a page marked data-pii. */
+  :root[data-pii-blur] :is([data-pii], .pii-auto, .pii-span,
+    #threadList .thread-item .t > span:first-child, #threadList .thread-item .s, #threadView .thread-head, #threadView .bubble, .to-input, .composer textarea,
+    #ctRows tr > td:first-child, #ctRows .lk-tel > span:first-child, #ctRows td.hide-sm,
+    #callRows tr > td:nth-child(2),
+    .cal-title, .cal-what .sub, .cal-desc, .cal-detail,
+    .ncard .nt, .ncard .nx, .ncard .msgs, .ncard .nb .av, .ncard .rbox input,
+    .callpop .name, .callpop .num, .callpop .av,
+    .wr-name, .loc-map, .loc-phonelabel, .loc-pinlabel) {
+    filter: blur(6px); transition: filter .15s;
+  }
+  :root[data-pii-blur] .pii-span { display: inline-block; }
+  /* Point at it (or Tab to it) to read it: the item itself, or anything in the row or card it sits in. */
+  :root[data-pii-blur] :is([data-pii], .pii-auto, .pii-span, #threadView .bubble, #threadView .thread-head, .to-input, .composer textarea, .ncard .rbox input, .wr-name, .loc-map):is(:hover, :focus-within),
+  :root[data-pii-blur] :is(#threadList .thread-item, #ctRows tr, #callRows tr, .cal-ev, .cal-detail, .ncard, .callpop .who):is(:hover, :focus-within) * { filter: none !important; } /* beats the id selectors in the blur list */
 </style>
 <script src="theme.js"></script>
 <link rel="stylesheet" href="wifiradar.css">
@@ -1006,10 +1419,13 @@
         <button type="button" class="nhead" aria-expanded="true" aria-controls="ng-media"><span>Files &amp; media</span></button>
         <div class="nitems" id="ng-media">
           <button data-view="files" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Files</span></button>
+          <button data-view="storage" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/></svg><span>Storage map</span></button>
           <button data-view="photos" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>Photos</span></button>
           <button data-view="music" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19"/><circle cx="18" cy="16" r="3"/><circle cx="6" cy="19" r="3"/></svg><span>Music</span></button>
           <button data-view="backup" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h2"/><path d="M20 8v11a2 2 0 0 1-2 2h-2"/><path d="m9 15 3-3 3 3"/><path d="M12 12v9"/></svg><span>Backup &amp; restore</span></button>
+          <button data-view="sync" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg><span>Folder sync</span></button>
           <button data-view="wifi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg><span>Wi‑Fi transfer</span></button>
+          <button data-view="recovery"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M8 10V7"/><path d="M12 10V7"/><path d="M16 10V8"/></svg><span>SD card recovery</span></button>
         </div>
       </div>
       <div class="ngroup" data-group="device">
@@ -1020,9 +1436,17 @@
           <button data-view="revanced" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z"/></svg><span>ReVanced</span></button>
           <button data-view="fdroid"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 10a4 4 0 0 1-8 0"/><path d="M3.103 6.034h17.794"/><path d="M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z"/></svg><span>F-Droid</span></button>
           <button data-view="controls" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></svg><span>Controls</span></button>
+          <button data-view="battery" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 14v-4"/><rect width="16" height="12" x="2" y="6" rx="2"/><path d="M6 10v4"/><path d="M10 10v4"/></svg><span>Battery health</span></button>
+          <button data-view="memory" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M8 11V9"/><path d="M16 11V9"/><path d="M12 11V9"/><path d="M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg><span>Memory</span></button>
           <button data-view="shizuku" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg><span>Shizuku</span></button>
           <button data-view="mirror" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg><span>Screen mirror</span></button>
           <button data-view="screen" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg><span>Screenshot</span></button>
+        </div>
+      </div>
+      <div class="ngroup" data-group="repair">
+        <button type="button" class="nhead" aria-expanded="true" aria-controls="ng-repair"><span>Repair</span></button>
+        <div class="nitems" id="ng-repair">
+          <button data-view="repair"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span>Repair desk</span></button>
         </div>
       </div>
       <div class="ngroup" data-group="dev">
@@ -1046,7 +1470,7 @@
       <h1 id="title">Connect <i>your phone</i></h1>
       <div>
         <span class="activity" id="activity" role="status" hidden><span class="spin" aria-hidden="true"></span>Working…</span>
-        <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Droid Desk is available. Opens Settings"></button>
+        <button class="btn sm upd-pill" type="button" id="updBtn" hidden title="A newer Andromon is available. Opens Settings"></button>
         <button class="dl-btn" type="button" id="wifiConnectBtn" hidden title="Connect over Wi‑Fi (Wireless debugging, Android 11+)" aria-label="Connect over Wi‑Fi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg></button>
         <button class="dl-btn hd-connect" type="button" id="connectBtn" title="Connect phone (USB cable)" aria-label="Connect phone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></button>
         <!-- One icon group: downloads, how this page works (the knowledge drawer), disconnect (while connected). -->
@@ -1070,6 +1494,7 @@
 
     <!-- OVERVIEW -->
     <section data-panel="overview">
+      <div class="card" id="rejoinBox" hidden></div>
       <div class="card" id="wadbIntro" hidden></div>
       <div class="card" id="wadbSetup" hidden></div>
       <div class="card" id="intro">
@@ -1114,7 +1539,7 @@
               </div>
               <div class="card" id="lkClipCard">
                 <h3>Shared clipboard</h3>
-                <p class="sub">Copy here, paste on the phone, and the other way round. On the phone, “Send clipboard to PC” is on the Droid Desk notification and in a quick-settings tile.</p>
+                <p class="sub">Copy here, paste on the phone, and the other way round. On the phone, “Send clipboard to PC” is on the Andromon notification and in a quick-settings tile.</p>
                 <div class="lk-row">
                   <button class="btn" id="lkClipTo" type="button">Copy to phone's clipboard</button>
                   <button class="btn" id="lkClipFrom" type="button">Get phone's clipboard</button>
@@ -1142,7 +1567,7 @@
     <section data-panel="backup" hidden><div class="pg-cards" id="backupCard" hidden></div></section>
 
     <!-- SHIZUKU (src/shizuku.js): its state on the phone, start it over adb, open it.
-         Below it, the Phone RAM manager (src/app.js): Droid Desk's own helper for the same companion tools. -->
+         Below it, the Phone RAM manager (src/app.js): Andromon's own helper for the same companion tools. -->
     <section data-panel="shizuku" hidden>
       <div class="pg-cards">
         <div class="pg-cards" id="szCard"></div>
@@ -1175,6 +1600,15 @@
 
     <!-- FILES -->
     <section data-panel="files" hidden><div id="filesRoot"></div></section>
+    <section data-panel="repair" hidden>
+      <div id="repairHead"></div>
+      <div class="dev-tabs"><div class="seg" id="repairTabs" role="tablist"></div></div>
+      <div id="repairRoot"></div>
+    </section>
+    <section data-panel="storage" hidden><div id="storageRoot"></div></section>
+    <section data-panel="sync" hidden><div id="syncRoot"></div></section>
+    <section data-panel="battery" hidden><div id="batteryRoot"></div></section>
+    <section data-panel="memory" hidden><div id="memoryRoot"></div></section>
 
     <!-- PHOTOS -->
     <section data-panel="photos" hidden>
@@ -1195,6 +1629,7 @@
             <button class="btn sm" id="phAdd" type="button">Add to phone…</button>
             <input type="file" id="phAddInput" accept="image/*,video/*" multiple hidden>
             <button class="btn sm" id="phDups" type="button">Find duplicates</button>
+            <button class="btn sm" id="phSimilar" type="button" title="Photos that look alike: bursts, retakes, edited copies">Find similar</button>
             <button class="btn sm" id="phReload" type="button">Reload</button>
           </div>
           <div class="sub" id="phProgress" hidden style="margin-top:10px"></div>
@@ -1210,7 +1645,6 @@
     <section data-panel="music" hidden>
       <div class="card" id="muGate" hidden></div>
       <div id="muMain" hidden>
-        <div class="card mplayer" id="muPlayer" hidden></div>
         <div class="stick-top">
         <div class="card">
           <div class="toolbar">
@@ -1338,6 +1772,8 @@
             <span class="sp"></span>
             <button class="btn sm" id="mirrorStop" hidden>Stop mirroring</button>
           </div>
+          <div class="mr-screen">
+          <div class="mr-strip" id="mirrorNav" role="toolbar" aria-label="Navigation" aria-orientation="vertical"></div>
           <div class="mirror-idle" id="mirrorIdle">
             <div class="mr-ghost">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M12 18h.01"/></svg>
@@ -1349,20 +1785,18 @@
           <div class="mirror-stage" id="mirrorStage" hidden>
             <canvas id="mirrorCanvas" tabindex="0" aria-label="Phone screen. Click to tap, type to send keys."></canvas>
           </div>
+          <div class="mr-strip mr-strip-r" id="mirrorKeys" role="toolbar" aria-label="Phone controls" aria-orientation="vertical"></div>
+          </div>
+          <form class="mr-type" id="mirrorType">
+            <input type="text" id="mirrorText" placeholder="Type here, send to the phone" autocomplete="off" aria-label="Text to type on the phone">
+            <button class="btn sm primary" type="submit">Send</button>
+          </form>
         </div>
         <aside class="mr-side">
           <div class="card mr-setup">
             <h2>Options</h2>
             <dl id="mirrorSummary"></dl>
             <button class="btn sm" type="button" id="mirrorSettings">Change in Settings</button>
-          </div>
-          <div class="card mr-controls">
-            <h2>Controls</h2>
-            <div class="mr-keys" id="mirrorKeys"></div>
-            <form class="mr-type" id="mirrorType">
-              <input type="text" id="mirrorText" placeholder="Type here, send to the phone" autocomplete="off" aria-label="Text to type on the phone">
-              <button class="btn sm primary" type="submit">Send</button>
-            </form>
           </div>
           <div class="card mr-tips">
             <h2>How it works</h2>
@@ -1444,9 +1878,12 @@
     <!-- F-DROID (built by src/fdroid.js) -->
     <section data-panel="fdroid" hidden><div id="fdRoot"></div></section>
 
+    <!-- SD CARD RECOVERY (src/recovery.js): PhotoRec on a memory card in this computer, or an image file. Works without a phone. -->
+    <section data-panel="recovery" hidden><div id="recoveryRoot"></div></section>
+
     <!-- WI-FI TRANSFER -->
     <section data-panel="wifi" hidden>
-      <div class="card" id="wifiUnavailable" hidden>Wi‑Fi transfer is only available in the Droid Desk desktop app.</div>
+      <div class="card" id="wifiUnavailable" hidden>Wi‑Fi transfer is only available in the Andromon desktop app.</div>
       <div id="wifiMain">
         <div class="card">
           <div class="ctl" style="margin-bottom:12px">
@@ -1457,6 +1894,11 @@
             <div><div><b>Transfer method: <span id="wifiMethodName"></span></b></div><div class="sub" id="wifiMethodNote"></div></div>
             <button class="btn sm to-settings" type="button">Change in Settings</button>
           </div>
+          <div class="ctl" style="margin-bottom:12px;align-items:flex-start">
+            <div><div><b>Phone can't find this computer?</b></div><div class="sub">Show a code and scan it in Andromon Companion: Receive › Send › Scan code.</div></div>
+            <button class="btn sm" id="wifiCodeBtn" type="button" disabled>Show code</button>
+          </div>
+          <div class="qrbox" id="wifiCode" style="margin-bottom:12px" hidden></div>
           <div class="sub" id="wifiLink" style="margin-bottom:12px" hidden></div>
           <div class="toolbar" style="margin:0">
             <span class="muted small">Received files go to</span>
@@ -1474,9 +1916,9 @@
           <div class="wifi-near"><div id="wifiRadar"></div><div class="wifi-list" id="wifiDevices"></div></div>
         </div>
         <div class="card muted small">
-          <b>How it works:</b> on your phone, turn on <b>Receive</b> in Droid Desk Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>
-          <b>Methods:</b> <i>Same Wi‑Fi</i> goes through your router and works with both apps. <i>Direct link</i> (Droid Desk Companion only) has this computer join a private Wi‑Fi from the phone for the transfer: one hop instead of two, so much faster on 2.4 GHz or busy networks, but this computer has no internet until it reconnects (automatically, right after). <i>Auto</i> picks Direct link only for big transfers on slow Wi‑Fi.<br>
-          Everything is encrypted, nothing goes through the internet, and you're asked before any file is received. Droid Desk only listens on the network while this is on.
+          <b>How it works:</b> on your phone, turn on <b>Receive</b> in Andromon Companion, or install <a href="https://localsend.org" target="_blank" rel="noopener">LocalSend</a> (free, open source), on the same Wi‑Fi. Turn this on, then click <b>Send files…</b> (or drop files on a device) to send to the phone; phones can send to this computer too. No USB cable or developer options needed.<br>
+          <b>Methods:</b> <i>Same Wi‑Fi</i> goes through your router and works with both apps. <i>Direct link</i> (Andromon Companion only) has this computer join a private Wi‑Fi from the phone for the transfer: one hop instead of two, so much faster on 2.4 GHz or busy networks, but this computer has no internet until it reconnects (automatically, right after). <i>Auto</i> picks Direct link only for big transfers on slow Wi‑Fi.<br>
+          Everything is encrypted, nothing goes through the internet, and you're asked before any file is received. Andromon only listens on the network while this is on.
         </div>
       </div>
     </section>

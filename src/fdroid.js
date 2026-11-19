@@ -1,7 +1,7 @@
 // F-Droid page: browse F-Droid's catalogue of free and open-source apps and install one on the phone.
 // The work with the internet is done by the main process (../fdroid.js): it downloads F-Droid's
 // signed index and an app's APK, and checks both. This file is the page: search, the list, an
-// app's details, and the install over adb.
+// app's details with its screenshots, and the install over adb.
 //
 // Browsing and "Save the APK" work without a phone. With a phone connected, the page offers the
 // version that fits it (Android version, processor) and shows which apps it has and which have a
@@ -16,7 +16,7 @@ const PLAY = "com.android.vending";
 
 export function initFdroid(base) {
   const { $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, getAdb } = base;
-  const api = globalThis.droidDesk?.fdroid || null;
+  const api = globalThis.andromon?.fdroid || null;
   const s = {
     status: null,
     q: "", category: "", sort: "updated", view: "all", // view: "all" | "phone" | "updates"
@@ -47,8 +47,16 @@ export function initFdroid(base) {
         .then((url) => { fetching--; job.done(url); pump(); });
     }
   }
+  // The newest 600 are kept; older ones are let go (a picture already showing stays) and fetched again if needed.
   const iconUrl = (pkg) => {
-    if (!icons.has(pkg)) icons.set(pkg, new Promise((done) => { waiting.push({ pkg, done }); pump(); }));
+    if (!icons.has(pkg)) {
+      icons.set(pkg, new Promise((done) => { waiting.push({ pkg, done }); pump(); }));
+      while (icons.size > 600) {
+        const [old, url] = icons.entries().next().value;
+        icons.delete(old);
+        url.then((u) => { if (u) setTimeout(() => URL.revokeObjectURL(u), 10_000); }); // after any picture still loading it
+      }
+    }
     return icons.get(pkg);
   };
   const seen = new IntersectionObserver((entries) => {
@@ -63,6 +71,74 @@ export function initFdroid(base) {
     const box = el("div", { className: "fd-icon" + (large ? " lg" : ""), textContent: (a.name.trim()[0] || "?").toUpperCase() });
     if (a.icon) { box.dataset.pkg = a.pkg; seen.observe(box); }
     return box;
+  }
+
+  // ---------- screenshots of the app that is open ----------
+  // Fetched and checked by the main process like the icons. Kept while that app is open.
+  const shots = { pkg: "", urls: [] }; // urls[i]: Promise<object URL | null>
+  function shotUrl(pkg, i) {
+    if (shots.pkg !== pkg) {
+      for (const p of shots.urls) p?.then((url) => { if (url) URL.revokeObjectURL(url); });
+      shots.pkg = pkg; shots.urls = [];
+    }
+    return shots.urls[i] ||= api.shot(pkg, i).then((r) => (r ? URL.createObjectURL(new Blob([r.data], { type: r.type })) : null), () => null);
+  }
+  // A row of screenshots that scrolls sideways. One that can't be loaded disappears.
+  function shotStrip(d) {
+    const strip = el("div", { className: "fd-shots", role: "group", ariaLabel: `Screenshots of ${d.name}` });
+    const loaded = []; // { i, url } of the pictures that arrived, in order
+    for (let i = 0; i < d.shots; i++) {
+      const tile = el("button", { className: "fd-shot", type: "button", disabled: true, ariaLabel: `Screenshot ${i + 1} of ${d.shots}` }, spinner());
+      strip.append(tile);
+      shotUrl(d.pkg, i).then((url) => {
+        if (!url) { tile.remove(); if (!strip.children.length) strip.remove(); return; }
+        loaded.push({ i, url }); loaded.sort((a, b) => a.i - b.i);
+        tile.replaceChildren(el("img", { src: url, alt: `Screenshot ${i + 1} of ${d.name}`, draggable: false }));
+        tile.disabled = false;
+        tile.onclick = () => viewShots(d.name, loaded, loaded.findIndex((x) => x.i === i), tile);
+      });
+    }
+    return strip;
+  }
+  // One screenshot at full size over the page. Arrow keys or the buttons step through; Esc or a click beside it closes.
+  function viewShots(name, list, at, opener) {
+    const img = el("img", { draggable: false });
+    const count = el("span", { style: "flex:1" });
+    const close = el("button", { className: "close", type: "button", textContent: "Close" });
+    const prev = el("button", { className: "nav", type: "button", textContent: "‹", ariaLabel: "Previous screenshot", style: "grid-column:1" });
+    const next = el("button", { className: "nav", type: "button", textContent: "›", ariaLabel: "Next screenshot", style: "grid-column:3" });
+    const box = el("div", { className: "fd-viewer", role: "dialog", ariaModal: "true", ariaLabel: `Screenshots of ${name}` },
+      el("div", { className: "fd-vbar" }, count, close), prev, img, next);
+    const show = (n) => {
+      at = Math.max(0, Math.min(list.length - 1, n));
+      img.src = list[at].url; img.alt = `Screenshot ${at + 1} of ${name}`;
+      count.textContent = `${name} · ${at + 1} of ${list.length}`;
+      prev.disabled = at === 0; next.disabled = at === list.length - 1;
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") done();
+      else if (e.key === "ArrowLeft") show(at - 1);
+      else if (e.key === "ArrowRight") show(at + 1);
+      else if (e.key === "Tab") { // keep the keyboard inside the viewer
+        const stops = [close, prev, next].filter((b) => !b.disabled);
+        const to = stops[(stops.indexOf(document.activeElement) + (e.shiftKey ? -1 : 1) + stops.length) % stops.length];
+        to.focus();
+      } else return;
+      e.preventDefault(); e.stopPropagation();
+    };
+    function done() {
+      document.removeEventListener("keydown", onKey, true);
+      box.remove();
+      if (opener?.isConnected) opener.focus();
+    }
+    prev.onclick = () => show(at - 1);
+    next.onclick = () => show(at + 1);
+    close.onclick = done;
+    box.onclick = (e) => { if (e.target === box || e.target === count.parentNode || e.target === count) done(); };
+    document.addEventListener("keydown", onKey, true);
+    document.body.append(box);
+    show(at);
+    close.focus();
   }
 
   // ---------- the phone ----------
@@ -108,7 +184,7 @@ export function initFdroid(base) {
     progressTo = (ev) => { if (ev.pkg === pkg) onStep(`Downloading… ${fmtSize(ev.done)}${ev.total ? ` of ${fmtSize(ev.total)}` : ""}`); };
     let got;
     try { got = await api.fetch(pkg, code); } finally { progressTo = null; }
-    const remote = `/data/local/tmp/droiddesk-fd-${Date.now()}.apk`;
+    const remote = `/data/local/tmp/andromon-fd-${Date.now()}.apk`;
     let off = 0;
     const stream = new ReadableStream({
       async pull(c) {
@@ -165,7 +241,7 @@ export function initFdroid(base) {
   async function load() {
     const root = $("fdRoot");
     if (!api) {
-      root.replaceChildren(el("div", { className: "card" }, h2("F-Droid"), para("The catalogue is downloaded and checked by a program on this computer, so it's only available in the Droid Desk desktop app.")));
+      root.replaceChildren(el("div", { className: "card" }, h2("F-Droid"), para("The catalogue is downloaded and checked by a program on this computer, so it's only available in the Andromon desktop app.")));
       return;
     }
     if (s.working) return; // keep the running download's progress on screen
@@ -191,10 +267,10 @@ export function initFdroid(base) {
     $("fdRoot").replaceChildren(el("div", { className: "card" },
       h2("Free and open-source apps"),
       para("F-Droid is a catalogue of several thousand free and open-source Android apps: no ads from the store, no account, and every app is built from its public source code. " +
-        "Droid Desk downloads F-Droid's catalogue to this computer, lets you search it, and installs the apps you choose on the phone over the cable or Wi‑Fi."),
+        "Andromon downloads F-Droid's catalogue to this computer, lets you search it, and installs the apps you choose on the phone over the cable or Wi‑Fi."),
       el("div", { className: "toolbar", style: "margin:0" }, get), progress,
       el("p", { className: "muted small", style: "margin:14px 0 0" },
-        "F-Droid is an independent community project (f-droid.org); Droid Desk isn't part of it. The catalogue and the apps are downloaded only from f-droid.org. " +
+        "F-Droid is an independent community project (f-droid.org); Andromon isn't part of it. The catalogue and the apps are downloaded only from f-droid.org. " +
         "The catalogue is checked against F-Droid's signature, and every app against the catalogue, before anything is used.")));
   }
 
@@ -451,6 +527,8 @@ export function initFdroid(base) {
         stat("Version", shown.name + (shown.beta ? " (beta)" : "")), stat("Size", fmtSize(shown.size)), stat("Updated", day(d.lastUpdated)),
         stat("Needs", `Android ${shown.minAndroid} or newer`), stat("Licence", d.license), stat("Made by", d.author), stat("Category", d.categories.join(", "))));
     }
+    if (d.shots) card.append(shotStrip(d));
+    else if (!s.status.catalog.screenshots) card.append(para("To see screenshots, go back to the list and press “Check for new apps”: this catalogue was downloaded before Andromon kept them."));
     if (shown?.whatsNew) card.append(el("h3", { style: "margin:0 0 4px", textContent: `New in ${shown.name}` }), el("div", { className: "fd-text muted", style: "margin-bottom:16px", textContent: shown.whatsNew }));
     if (d.description) card.append(el("h3", { style: "margin:0 0 4px", textContent: "About this app" }), el("div", { className: "fd-text", textContent: d.description }));
 

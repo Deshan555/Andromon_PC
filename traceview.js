@@ -38,7 +38,7 @@ function serveOnce(bytes, name) {
       : e));
     server.listen(PORT, "127.0.0.1", () => {
       current = { server, timer: setTimeout(stop, 120_000) };
-      resolve(`${UI}/#!/?url=http://127.0.0.1:${PORT}/${file}&referrer=droid_desk`);
+      resolve(`${UI}/#!/?url=http://127.0.0.1:${PORT}/${file}&referrer=andromon`);
     });
   });
 }

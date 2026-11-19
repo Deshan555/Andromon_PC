@@ -1,13 +1,13 @@
-// Droid Desk — the F-Droid catalogue (main process).
+// Andromon — the F-Droid catalogue (main process).
 //
-// F-Droid (https://f-droid.org) is a catalogue of free and open-source Android apps. Droid Desk
+// F-Droid (https://f-droid.org) is a catalogue of free and open-source Android apps. Andromon
 // doesn't ship any of it: when the person asks, this file downloads F-Droid's own index and, for an
 // app they choose, that app's APK. Everything is checked before it is used:
 //   - entry.jar       a small signed JAR. Its signature is checked here against F-Droid's signing
 //                     certificate (pinned by SHA-256 fingerprint). It names the index and its hash.
 //   - index-v2.json   every app and version, with the SHA-256 of each file. Checked against the
 //                     hash from entry.jar, then boiled down to the English texts (catalog.json).
-//   - icons and APKs  each one is checked against its SHA-256 from the index.
+//   - icons, screenshots and APKs  each one is checked against its SHA-256 from the index.
 // An index older than the one already here is refused, so an old signed index can't be replayed.
 //
 // Everything is kept in <userData>/fdroid. The sandboxed page never names a path or an address: it
@@ -22,10 +22,13 @@ const zlib = require("node:zlib");
 const REPO = "https://f-droid.org/repo";
 // SHA-256 of the certificate that signs f-droid.org's index (published on f-droid.org/docs).
 const FINGERPRINT = "43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab";
-const FORMAT = 1; // of catalog.json; bump when buildCatalog returns something new
+const FORMAT = 2; // of catalog.json; bump when buildCatalog returns something new. 2: screenshots
+const OLD_FORMATS = [1]; // still readable; the next catalogue check downloads the index again to fill in what is new
 const MAX_ENTRY = 4 * 1024 ** 2;
 const MAX_INDEX = 400 * 1024 ** 2;
 const MAX_ICON = 2 * 1024 ** 2;
+const MAX_SHOT = 12 * 1024 ** 2;
+const MAX_SHOTS = 8; // screenshots kept per app
 const MAX_APK = 2 * 1024 ** 3;
 const READ_CHUNK = 8 * 1024 * 1024;
 const SAFE_NAME = /^\/[\w.\-+=@~ ]+(?:\/[\w.\-+=@~ ]+)*$/; // a file inside the repo
@@ -147,7 +150,7 @@ function readSignedJar(jar, name, fingerprint = FINGERPRINT) {
   throw bad();
 }
 
-// ---------- index-v2.json -> the catalogue Droid Desk keeps ----------
+// ---------- index-v2.json -> the catalogue Andromon keeps ----------
 const str = (v, max = 400) => (typeof v === "string" ? v.slice(0, max) : "");
 // A text in several languages: English, else the first one.
 function text(v, max) {
@@ -163,6 +166,20 @@ function plain(s) {
 }
 const link = (v) => (typeof v === "string" && /^https?:\/\/[^\s"<>]{1,500}$/.test(v) ? v : "");
 const fileRef = (f) => (f && typeof f === "object" && typeof f.name === "string" && SAFE_NAME.test(f.name) && !f.name.includes("..") && HEX64.test(f.sha256 || "") ? { name: f.name, sha256: f.sha256, size: Number(f.size) || 0 } : null);
+// Only pictures that can't carry code: no SVG or XML.
+const pictureType = (name) => (/\.png$/i.test(name) ? "image/png" : /\.jpe?g$/i.test(name) ? "image/jpeg" : /\.webp$/i.test(name) ? "image/webp" : null);
+// An app's screenshots: the phone ones, in English when there are any, else in the first language.
+// Apps with only tablet screenshots show those.
+function shotsOf(all) {
+  for (const kind of ["phone", "sevenInch", "tenInch"]) {
+    const byLanguage = all && typeof all === "object" ? all[kind] : null;
+    if (!byLanguage || typeof byLanguage !== "object") continue;
+    const list = byLanguage["en-US"] ?? byLanguage["en-GB"] ?? byLanguage.en ?? Object.values(byLanguage)[0];
+    const files = (Array.isArray(list) ? list : []).map(fileRef).filter((f) => f && pictureType(f.name) && f.size <= MAX_SHOT).slice(0, MAX_SHOTS);
+    if (files.length) return files.map((f) => ({ name: f.name, sha256: f.sha256 }));
+  }
+  return [];
+}
 function buildCatalog(index, timestamp) {
   const named = (o) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).map(([id, v]) => [id, { name: text(v?.name, 80) || id, description: text(v?.description, 400) }]));
   const apps = [];
@@ -192,6 +209,7 @@ function buildCatalog(index, timestamp) {
     apps.push({
       pkg, name: text(m.name, 120) || pkg, summary: text(m.summary, 300), description: plain(text(m.description, 20000)),
       icon: fileRef(m.icon?.["en-US"] ?? Object.values(m.icon && typeof m.icon === "object" ? m.icon : {})[0]),
+      shots: shotsOf(m.screenshots),
       categories: (Array.isArray(m.categories) ? m.categories : []).filter((c) => typeof c === "string").map((c) => c.slice(0, 60)),
       license: str(m.license, 80), author: str(m.authorName, 120),
       webSite: link(m.webSite), sourceCode: link(m.sourceCode), issueTracker: link(m.issueTracker), changelog: link(m.changelog),
@@ -232,15 +250,32 @@ function row(a, phone) {
 
 function setupFdroid(handle, { userData, getWindow }) {
   const dir = path.join(userData, "fdroid");
-  const P = { catalog: path.join(dir, "catalog.json"), index: path.join(dir, "index-v2.json"), apk: path.join(dir, "download.apk"), icons: path.join(dir, "icons") };
+  const P = { catalog: path.join(dir, "catalog.json"), index: path.join(dir, "index-v2.json"), apk: path.join(dir, "download.apk"), icons: path.join(dir, "icons"), shots: path.join(dir, "shots") };
   const emit = (ev) => { const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.send("fd:event", ev); };
   const exists = (f) => fsp.access(f).then(() => true, () => false);
 
   // ----- the catalogue in memory -----
-  let cat = null, byPkg = new Map(), loading = null;
+  // Parsed, it takes 60–100 MB, so it's only kept while the F-Droid page is being used: after a few
+  // minutes without a call it's let go, and read from disk again when next needed. A short summary
+  // (what Settings shows) stays, so Settings doesn't load it.
+  const IDLE_MS = 3 * 60_000;
+  let cat = null, byPkg = new Map(), loading = null, idle = null, meta = null;
+  const summarize = (c) => ({
+    timestamp: c.timestamp, fetchedAt: c.fetchedAt, apps: c.apps.length,
+    categories: Object.entries(c.categories).map(([id, x]) => ({ id, name: x.name })).sort((a, b) => a.name.localeCompare(b.name)),
+    antiFeatures: c.antiFeatures,
+    screenshots: c.format >= 2, // false: a catalogue from before screenshots were kept
+  });
+  function keepAwhile() {
+    clearTimeout(idle);
+    idle = setTimeout(() => { if (busy || loading) keepAwhile(); else { cat = null; byPkg = new Map(); } }, IDLE_MS);
+    idle.unref?.();
+  }
   function use(c) {
     cat = c; byPkg = new Map();
+    meta = c ? summarize(c) : null;
     if (!c) return;
+    keepAwhile();
     for (const a of c.apps) {
       byPkg.set(a.pkg, a);
       // Lower-case copies for searching; not written to disk.
@@ -248,11 +283,11 @@ function setupFdroid(handle, { userData, getWindow }) {
     }
   }
   function load() {
-    if (cat) return Promise.resolve(cat);
+    if (cat) { keepAwhile(); return Promise.resolve(cat); }
     return loading ||= (async () => {
       try {
         const c = JSON.parse(await fsp.readFile(P.catalog, "utf8"));
-        if (c?.format === FORMAT && Array.isArray(c.apps)) use(c);
+        if ((c?.format === FORMAT || OLD_FORMATS.includes(c?.format)) && Array.isArray(c.apps)) use(c);
       } catch {}
       loading = null;
       return cat;
@@ -278,7 +313,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     return REPO + name.split("/").map(encodeURIComponent).join("/");
   };
   async function fetchBytes(name, limit, signal) {
-    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "DroidDesk" }, signal });
+    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "Andromon" }, signal });
     if (!res.ok) throw new Error(`Couldn't reach f-droid.org (HTTP ${res.status}).`);
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > limit) throw new Error("F-Droid sent a larger file than expected.");
@@ -298,7 +333,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     }
   }
   async function downloadTo(name, dest, what, total, limit, signal, ev = {}) {
-    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "DroidDesk" }, signal });
+    const res = await net.fetch(repoUrl(name), { headers: { "user-agent": "Andromon" }, signal });
     if (!res.ok || !res.body) throw new Error(`Couldn't download ${what} (HTTP ${res.status}).`);
     await fsp.mkdir(path.dirname(dest), { recursive: true });
     const part = dest + ".part";
@@ -320,15 +355,9 @@ function setupFdroid(handle, { userData, getWindow }) {
   }
 
   async function status() {
-    await load();
-    return {
-      catalog: cat ? {
-        timestamp: cat.timestamp, fetchedAt: cat.fetchedAt, apps: cat.apps.length,
-        categories: Object.entries(cat.categories).map(([id, c]) => ({ id, name: c.name })).sort((a, b) => a.name.localeCompare(b.name)),
-        antiFeatures: cat.antiFeatures,
-      } : null,
-      busy,
-    };
+    if (cat) meta = summarize(cat); // fetchedAt may have changed
+    else if (!meta) await load();
+    return { catalog: meta, busy };
   }
 
   // Downloads F-Droid's index when it is newer than the one here. Returns status() plus `changed`.
@@ -340,7 +369,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     const ts = Number(entry?.timestamp), idx = entry?.index;
     if (!Number.isFinite(ts) || !idx || typeof idx.name !== "string" || !HEX64.test(idx.sha256 || "") || !(Number(idx.size) > 0) || Number(idx.size) > MAX_INDEX) throw new Error("F-Droid sent an unexpected answer.");
     if (cat && ts < cat.timestamp) throw new Error("F-Droid sent an older catalogue than the one already here. Nothing was changed.");
-    if (cat && ts === cat.timestamp) {
+    if (cat && ts === cat.timestamp && cat.format === FORMAT) {
       cat.fetchedAt = Date.now();
       await fsp.writeFile(P.catalog, JSON.stringify(cat));
       return { ...(await status()), busy: null, changed: false };
@@ -397,7 +426,7 @@ function setupFdroid(handle, { userData, getWindow }) {
     const phone = cleanPhone(ph);
     const v = suggest(a, phone);
     return {
-      pkg: a.pkg, name: a.name, summary: a.summary, description: a.description, icon: !!a.icon, categories: a.categories.map((c) => cat.categories[c]?.name || c),
+      pkg: a.pkg, name: a.name, summary: a.summary, description: a.description, icon: !!a.icon, shots: a.shots?.length || 0, categories: a.categories.map((c) => cat.categories[c]?.name || c),
       license: a.license, author: a.author, webSite: a.webSite, sourceCode: a.sourceCode, issueTracker: a.issueTracker, changelog: a.changelog,
       added: a.added, lastUpdated: a.lastUpdated, suggested: v?.code ?? null,
       versions: a.versions.map((x) => ({
@@ -406,29 +435,36 @@ function setupFdroid(handle, { userData, getWindow }) {
       })),
     };
   }
-  // An app's icon, checked against the index and kept on disk. Null when it has none or it can't be fetched.
-  const iconJobs = new Map();
-  async function icon(pkg) {
-    await load();
-    const a = byPkg.get(String(pkg));
-    if (!a?.icon) return null;
-    const { name, sha256 } = a.icon;
-    const type = /\.png$/i.test(name) ? "image/png" : /\.jpe?g$/i.test(name) ? "image/jpeg" : /\.webp$/i.test(name) ? "image/webp" : null;
-    if (!type) return null; // no SVG or XML: only pictures that can't carry code
-    let job = iconJobs.get(sha256);
+  // A picture from the repo, checked against its SHA-256 from the index and kept on disk under that
+  // hash. Null when it can't be fetched or isn't a plain picture.
+  const pictureJobs = new Map();
+  function picture(ref, folder, limit) {
+    const type = ref && pictureType(ref.name);
+    if (!type) return Promise.resolve(null);
+    const { name, sha256 } = ref;
+    let job = pictureJobs.get(sha256);
     if (!job) {
       job = (async () => {
-        const file = path.join(P.icons, sha256);
+        const file = path.join(folder, sha256);
         try { return await fsp.readFile(file); } catch {}
-        const buf = await fetchBytes(name, MAX_ICON);
-        if (crypto.createHash("sha256").update(buf).digest("hex") !== sha256) throw new Error("Bad icon");
-        await fsp.mkdir(P.icons, { recursive: true });
+        const buf = await fetchBytes(name, limit);
+        if (crypto.createHash("sha256").update(buf).digest("hex") !== sha256) throw new Error("Bad picture");
+        await fsp.mkdir(folder, { recursive: true });
         await fsp.writeFile(file, buf);
         return buf;
-      })().finally(() => iconJobs.delete(sha256));
-      iconJobs.set(sha256, job);
+      })().finally(() => pictureJobs.delete(sha256));
+      pictureJobs.set(sha256, job);
     }
     return job.then((buf) => ({ type, data: new Uint8Array(buf.buffer, buf.byteOffset, buf.length) }), () => null);
+  }
+  async function icon(pkg) {
+    await load();
+    return picture(byPkg.get(String(pkg))?.icon, P.icons, MAX_ICON);
+  }
+  // Screenshot number `i` (from 0) of an app; details() says how many there are.
+  async function shot(pkg, i) {
+    await load();
+    return picture(byPkg.get(String(pkg))?.shots?.[Number(i)], P.shots, MAX_SHOT);
   }
 
   // ----- an app's APK -----
@@ -481,6 +517,7 @@ function setupFdroid(handle, { userData, getWindow }) {
   handle("fd:lookup", (_e, pkgs, phone) => lookup(pkgs, phone));
   handle("fd:app", (_e, pkg, phone) => details(pkg, phone));
   handle("fd:icon", (_e, pkg) => icon(pkg));
+  handle("fd:shot", (_e, pkg, i) => shot(pkg, i));
   handle("fd:fetch", (_e, pkg, code) => fetchApk(pkg, code));
   handle("fd:read", (_e, offset, length) => read(offset, length));
   handle("fd:save", (event) => save(event));

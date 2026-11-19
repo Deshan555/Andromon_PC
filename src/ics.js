@@ -3,7 +3,7 @@
 //   {id, calendarId, title, location, description, start, end (ms), allDay, timezone, rrule,
 //    rdate?, exdate?, duration?, originalId?, originalInstanceTime?, status?, uid?, attendees?}
 // Written files have no VTIMEZONE blocks: timed events are in UTC, all-day events are DATE values.
-// (A repeating event's original time zone is kept in X-DROIDDESK-TZ, so importing a Droid Desk
+// (A repeating event's original time zone is kept in X-ANDROMON-TZ (X-DROIDDESK-TZ in files from before the rename), so importing an Andromon
 // file gives the phone the same zone back and its repeats stay at the same local time.)
 
 const pad = (n, w = 2) => String(n).padStart(w, "0");
@@ -100,7 +100,7 @@ export function androidDates(text, fallbackTz = "") {
 
 const STATUS = { 0: "TENTATIVE", 1: "CONFIRMED", 2: "CANCELLED" };
 const PARTSTAT = { 1: "ACCEPTED", 2: "DECLINED", 3: "NEEDS-ACTION", 4: "TENTATIVE" };
-const uidOf = (e) => (e.uid && String(e.uid).trim()) || `droiddesk-${e.calendarId ?? 0}-${e.id ?? 0}@droiddesk`;
+const uidOf = (e) => (e.uid && String(e.uid).trim()) || `andromon-${e.calendarId ?? 0}-${e.id ?? 0}@andromon`;
 const qParam = (s) => `"${String(s).replace(/["\r\n]/g, "'")}"`;
 // RRULE text is passed through as it is, but only when it looks like a rule (so it can't smuggle
 // in other lines or properties).
@@ -133,8 +133,8 @@ function eventLines(e, { calendarName, stamp, exdates = [], recurrenceId = null 
     if (!a?.email || /[\s<>]/.test(a.email)) continue;
     L.push(`ATTENDEE${a.name ? `;CN=${qParam(a.name)}` : ""}${PARTSTAT[a.status] ? `;PARTSTAT=${PARTSTAT[a.status]}` : ""}:mailto:${a.email}`);
   }
-  if (e.timezone && !allDay && /^[\w+\-/]+$/.test(e.timezone)) L.push(`X-DROIDDESK-TZ:${e.timezone}`);
-  if (calendarName) L.push(`X-DROIDDESK-CALENDAR:${icsEscape(calendarName)}`);
+  if (e.timezone && !allDay && /^[\w+\-/]+$/.test(e.timezone)) L.push(`X-ANDROMON-TZ:${e.timezone}`);
+  if (calendarName) L.push(`X-ANDROMON-CALENDAR:${icsEscape(calendarName)}`);
   L.push("END:VEVENT");
   return L;
 }
@@ -152,7 +152,7 @@ export function writeIcs(events, { calendars = [], name = "", now = Date.now() }
       cancelled.get(e.originalId).push(Number(e.originalInstanceTime));
     }
   }
-  const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Droid Desk//Droid Desk//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"];
+  const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Andromon//Andromon//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"];
   if (name) L.push(`X-WR-CALNAME:${icsEscape(name)}`);
   let count = 0;
   for (const e of events) {
@@ -250,8 +250,8 @@ export function parseIcs(text) {
       case "RDATE": if ((p.params.VALUE || "").toUpperCase() !== "PERIOD") for (const v of p.value.split(",")) { const t = parseIcsTime(v, p.params.TZID || ""); if (t) cur.rdate.push(t.ms); } break;
       case "RECURRENCE-ID": cur.recT = time(p); break;
       case "STATUS": cur.status = STATUS_CODE[p.value.trim().toUpperCase()]; break;
-      case "X-DROIDDESK-TZ": cur.ddTz = p.value.trim(); break;
-      case "X-DROIDDESK-CALENDAR": cur.calendarName = icsUnescape(p.value); break;
+      case "X-ANDROMON-TZ": case "X-DROIDDESK-TZ": cur.ddTz = p.value.trim(); break;
+      case "X-ANDROMON-CALENDAR": case "X-DROIDDESK-CALENDAR": cur.calendarName = icsUnescape(p.value); break;
     }
   }
   // Link changed/cancelled occurrences to their series.

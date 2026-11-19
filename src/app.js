@@ -9,26 +9,40 @@ import {
   AndroidKeyEventAction, AndroidScreenPowerMode, h264ParseConfiguration,
 } from "@yume-chan/scrcpy";
 import { WebCodecsVideoDecoder, WebGLVideoFrameRenderer, BitmapVideoFrameRenderer } from "@yume-chan/scrcpy-decoder-webcodecs";
-import { Output, Mp4OutputFormat, BufferTarget, EncodedVideoPacketSource, EncodedAudioPacketSource, EncodedPacket } from "mediabunny";
+import { Output, Mp4OutputFormat, BufferTarget, StreamTarget, EncodedVideoPacketSource, EncodedAudioPacketSource, EncodedPacket } from "mediabunny";
 import { openPackageFiles, selectSplits, SENSITIVE_PERMISSIONS } from "./apk.js";
 import { initAutotest } from "./autotest.js";
 import { initDevtools, initAppTesting } from "./devtools.js";
 import { initLinks } from "./links.js";
 import { initSettings } from "./settings.js";
+import { initPrivacyBlur } from "./privacyblur.js";
+import { videoPlayer, initMusicDock } from "./player.js";
+import { setKnownPii, personalName } from "./pii.js";
 import { initDownloads } from "./downloads.js";
 import { initDropdowns } from "./dropdown.js";
 import { initFiles } from "./files.js";
 import { icon } from "./fileicons.js";
 import { initScreenshot, shotPrefs } from "./screenshot.js";
+import { initShotBlur } from "./shotblur.js";
 import { initShell, shellPrefs } from "./shell.js";
 import { initKnowledge } from "./knowledge.js";
 import { initShizuku } from "./shizuku.js";
 import { initWifiRadar } from "./wifiradar.js";
 import { initRevanced } from "./revanced.js";
 import { initFdroid } from "./fdroid.js";
+import { initRecovery } from "./recovery.js";
 import { initPeople } from "./people.js";
 import { initCalendar } from "./calendar.js";
 import { initBackup } from "./backup.js";
+import { createProgress, countBytes } from "./progress.js";
+import { initMirrorDrop } from "./mirrordrop.js";
+import { initStorageMap } from "./storagemap.js";
+import { initBattery } from "./battery.js";
+import { initMemory } from "./memory.js";
+import { initFolderSync } from "./foldersync.js";
+import { initClipSync } from "./clipsync.js";
+import { initRepair } from "./repair.js";
+import { loadShortcuts, comboOf, usableCombo, comboLabel } from "./shortcuts.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
 const $ = (id) => document.getElementById(id);
@@ -48,21 +62,33 @@ let people = null; // Contacts: photos, edit, delete, duplicates (./people.js), 
 let calendarTab = null; // Calendar tab (./calendar.js)
 let backup = null; // Phone backup, restore and the automatic photo copy (./backup.js)
 let revancedTab = null; // ReVanced page: patch an app on this computer (./revanced.js)
+let recoveryTab = null; // SD card recovery page (./recovery.js)
+let storageTab = null; // Storage map page (./storagemap.js)
+let batteryTab = null; // Battery health page (./battery.js)
+let memoryTab = null; // Memory page (./memory.js)
+let folderSync = null; // Folder sync page, and the pairs that sync when a phone connects (./foldersync.js)
+let repairTab = null; // Repair page: jobs, reports and tests for repair shops (./repair.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
 let shizukuCard = null; // The Shizuku page (./shizuku.js), set up at the end of this file
 let downloads = null; // the download manager (./downloads.js), set up at the end of this file
 let links = null; // Phone links on the Overview and the Call buttons (./links.js), set up at the end of this file
-const credentialStore = new AdbWebCredentialStore("DroidDesk");
+const credentialStore = new AdbWebCredentialStore("Andromon");
 
 // ---------- helpers ----------
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
+// The browser's own words when a USB read or write to the phone fails half-way.
+const isUsbTransferError = (e) => /transfer(In|Out)|transfer error has occurred/i.test(String(e?.message || e));
 function showError(e) {
   console.error(e);
   const box = $("errBox");
-  box.textContent = e instanceof Error ? e.message : String(e);
+  box.textContent = isUsbTransferError(e)
+    ? "The USB connection to the phone was interrupted. Usually another program took the phone over (Android Studio, " +
+      "an adb server, scrcpy): close it, run “adb kill-server” in a terminal, then connect again. A loose cable, " +
+      "a USB hub, or changing the phone's USB mode while connected does the same."
+    : e instanceof Error ? e.message : String(e);
   box.hidden = false;
 }
 function clearError() { $("errBox").hidden = true; }
@@ -107,6 +133,40 @@ function download(blob, name) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+/**
+ * A file on this computer to write a big save into piece by piece, so it never sits whole in memory.
+ * Where it goes follows Settings › Saving files (a save window, or straight into the save folder).
+ * Resolves to { name, writable, abort } — `writable` takes Uint8Arrays (appended) or
+ * { type: "write", data, position } — or to null when the person cancels, or undefined where files
+ * can't be written this way (the caller then builds the file in memory and uses download()).
+ */
+async function saveStream(name, kind) {
+  const api = globalThis.andromon?.app;
+  if (api?.saveStart) {
+    const f = await api.saveStart(name, { kind });
+    if (!f) return null;
+    // Only the bytes in view go over IPC, not a larger buffer they're a window into.
+    const own = (d) => (d.byteOffset === 0 && d.byteLength === d.buffer.byteLength ? d : d.slice());
+    // Once aborted (here or by abort() below, even while a writer holds the stream), nothing more is
+    // written and a later close doesn't keep a half-written file.
+    let dropped = false;
+    const drop = () => { if (dropped) return Promise.resolve(); dropped = true; return api.saveAbort(f.id).catch(() => {}); };
+    const writable = new WritableStream({
+      write: (c) => (dropped ? undefined : c instanceof Uint8Array ? api.saveWrite(f.id, own(c)) : api.saveWrite(f.id, own(c.data), c.position)),
+      close: () => (dropped ? undefined : api.saveClose(f.id)),
+      abort: drop,
+    }, new CountQueuingStrategy({ highWaterMark: 4 }));
+    return { name: f.name, writable, abort: drop };
+  }
+  if (window.showSaveFilePicker) {
+    let h;
+    try { h = await window.showSaveFilePicker({ suggestedName: name }); }
+    catch (e) { if (e.name === "AbortError") return null; throw e; }
+    const writable = await h.createWritable();
+    return { name: h.name, writable, abort: () => writable.abort().catch(() => {}) };
+  }
+  return undefined;
+}
 function withSync(fn) {
   return track(async () => {
     const sync = await adb.sync();
@@ -141,15 +201,31 @@ const settingsLink = (text = "Change in Settings") => {
   return b;
 };
 
+// ---------- Repair desk (./repair.js) ----------
+// Hidden in this build: its sidebar entry is removed and the page can't be opened. Set to true to bring it back.
+const REPAIR_ENABLED = false;
+if (!REPAIR_ENABLED) document.querySelector('.ngroup[data-group="repair"]')?.remove();
+
+// ---------- technician mode (Repair): the customer's personal pages are hidden ----------
+const PRIVATE_VIEWS = new Set(["messages", "contacts", "calls", "calendar", "notifs", "photos", "music", "files", "storage", "sync", "backup"]);
+const PRIVACY_KEY = "andromon.repair.privacy";
+const privacyOn = () => { if (!REPAIR_ENABLED) return false; try { return localStorage.getItem(PRIVACY_KEY) === "1"; } catch { return false; } };
+function setPrivacy(on) {
+  try { localStorage.setItem(PRIVACY_KEY, on ? "1" : "0"); } catch {}
+  document.querySelector(".app").classList.toggle("privacy", !!on);
+  if (on && PRIVATE_VIEWS.has(current)) show("repair");
+  return !!on;
+}
+
 // ---------- navigation ----------
 let current = "overview";
 const loaders = { overview: loadOverview, backup: () => backup?.renderCard(), shizuku: () => Promise.all([shizukuCard?.render(), renderRamCard()]), apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
-  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
+  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), storage: () => storageTab.load(), sync: () => folderSync.load(), battery: () => batteryTab.load(), memory: () => memoryTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
-const offlineViews = { wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load() };
+const offlineViews = { repair: () => repairTab.load(), wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load(), recovery: () => recoveryTab.load() };
 let settingsUi = null;
 // The sidebar's tools are in groups. A group folds when its heading is clicked; which ones are folded is remembered.
-const NAV_FOLD_KEY = "dd.navClosed";
+const NAV_FOLD_KEY = "andromon.navClosed";
 function setNavGroup(g, open) {
   g.classList.toggle("closed", !open);
   g.querySelector(".nhead").setAttribute("aria-expanded", String(open));
@@ -174,19 +250,30 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], storage: ["What fills ", "your phone"], repair: ["Repair ", "desk"], sync: ["Folder ", "sync"], battery: ["Battery ", "health"], memory: ["Phone ", "memory"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
   $("title").replaceChildren(plain, el("i", { textContent: italic }));
-  document.title = `${$("nav").querySelector(`[data-view="${view}"]`).textContent} · Droid Desk`;
+  document.title = `${$("nav").querySelector(`[data-view="${view}"]`).textContent} · Andromon`;
 }
 function show(view) {
+  if (view === "repair" && !REPAIR_ENABLED) view = "overview";
+  if (privacyOn() && PRIVATE_VIEWS.has(view)) { toast("Technician mode is on: the customer's personal pages are hidden. Switch it off on the Repair page."); return; }
+  repairTab?.onShow(view);
+  memoryTab?.onShow(view);
+  if (view !== "apps") dropPendingInstall();
   if (view !== "mirror" && view !== "tests" && mirror) stopMirror("Mirroring stopped");
   autotest?.onShow(view);
   devtools?.onShow(view);
   apptesting?.onShow(view);
   if (view !== "photos") closeViewer();
+  // Photos and Music are drawn afresh each time they open; their tiles (thousands of pictures after
+  // scrolling a big gallery) aren't kept in the background.
+  if (current !== view && (current === "photos" || current === "music")) {
+    $(current === "photos" ? "phGrid" : "muBody").replaceChildren();
+    thumbObserver.disconnect();
+  }
   current = view;
   for (const b of $("nav").querySelectorAll("button[data-view]")) {
     b.classList.toggle("active", b.dataset.view === view);
@@ -204,7 +291,48 @@ function show(view) {
 // ---------- connection ----------
 if (!AdbDaemonWebUsbDeviceManager.BROWSER) {
   $("connectBtn").disabled = true;
-  showError("WebUSB is not available here. Use the Droid Desk desktop app, or open this page in desktop Chrome/Edge from http://localhost.");
+  showError("WebUSB is not available here. Use the Andromon desktop app, or open this page in desktop Chrome/Edge from http://localhost.");
+}
+
+// ---------- running as a web page (npm run web): what to install first, and how to set up ----------
+// The desktop app brings everything with it. In a browser a few things have to be in place first,
+// and they differ per system, so the welcome card spells them out for the computer this runs on.
+if (!globalThis.andromon) {
+  const ua = navigator.userAgent;
+  const os = /Windows/i.test(ua) ? "win" : /Mac OS X|Macintosh/i.test(ua) ? "mac" : /CrOS/i.test(ua) ? "cros" : /Linux/i.test(ua) ? "linux" : "other";
+  const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noopener noreferrer" });
+  const li = (...kids) => el("li", {}, ...kids);
+  const code = (t) => el("code", { textContent: t });
+  const b = (t) => el("b", { textContent: t });
+  const first = [
+    li(b("Google Chrome or Microsoft Edge"), " on this computer. Firefox and Safari can't reach a phone over USB.",
+      AdbDaemonWebUsbDeviceManager.BROWSER ? " This browser is fine." : " This browser can't, so open the page in one of those."),
+  ];
+  if (os === "win") first.push(li(b("The phone's USB driver. "), "Windows only lets the browser use the phone once its driver is installed. Get it from the phone's maker (Samsung, Xiaomi, Motorola…) or use Google's: ",
+    a("USB drivers for Android phones", "https://developer.android.com/studio/run/oem-usb"), "."));
+  else if (os === "linux") first.push(li(b("Permission to use the phone over USB. "), "On Debian or Ubuntu run ", code("sudo apt install android-sdk-platform-tools-common"),
+    " (other systems: the ", code("android-udev"), " package), then unplug the phone and plug it in again. ",
+    a("More about this", "https://developer.android.com/studio/run/device#setting-up"), "."));
+  else if (os === "mac" || os === "cros") first.push(li(b("Nothing else. "), os === "mac" ? "A Mac needs no driver for Android phones." : "A Chromebook needs no driver for Android phones."));
+  first.push(
+    li(b("No other program holding the phone. "), "If Android Studio, the Android SDK tools or scrcpy are installed, close them and run ", code("adb kill-server"),
+      " in a terminal. Only one program at a time can use the phone's USB connection."),
+    li(b("Nothing to install on the phone by hand. "), "The first time a tool needs it, Andromon puts its small helper app, Andromon Companion, on the phone and tells you."));
+  const setup = [
+    li("On the phone open ", b("Settings › About phone"), " and tap ", b("Build number"), " 7 times. This shows the developer options."),
+    li("Open ", b("Settings › System › Developer options"), " and turn on ", b("USB debugging"), ". On Xiaomi phones also turn on ", b("Install via USB"), "."),
+    li("Plug the phone into this computer with a USB cable that carries data (some cables only charge). If the phone asks what the cable is for, pick ", b("File transfer"), "."),
+    li("Click ", b("Connect phone"), " (the plug button at the top right), pick your phone in the list and click ", b("Connect"), "."),
+    li("On the phone, tick ", b("Always allow from this computer"), " and tap ", b("Allow"), ". The Overview opens when it is connected."),
+  ];
+  $("intro").replaceChildren(
+    el("h2", { textContent: "Set up Andromon in your browser" }),
+    el("div", { className: "muted", textContent: "This page talks to the phone directly over USB. Two short lists get you there: what this computer needs first, then how to connect." }),
+    el("h3", { style: "margin:18px 0 0", textContent: "1. Install first" }),
+    el("ol", { className: "steps" }, ...first),
+    el("h3", { style: "margin:18px 0 0", textContent: "2. Set up and connect" }),
+    el("ol", { className: "steps" }, ...setup),
+    el("p", { className: "muted", style: "margin-bottom:0", textContent: "Connecting over Wi‑Fi, Wi‑Fi file transfer, F-Droid, ReVanced, backups and SD card recovery need the Andromon desktop app; everything else works here." }));
 }
 
 // The header's Connect phone button is an icon: while it works, a spinner takes the icon's place and
@@ -223,19 +351,95 @@ $("connectBtn").addEventListener("click", async () => {
   try {
     const device = await AdbDaemonWebUsbDeviceManager.BROWSER.requestDevice();
     if (!device) return; // picker cancelled
+    if (usbConnecting) return toast("Already connecting to a phone…");
+    usbHeldBack.delete(device.serial); // asked for by hand: plugging it in again connects it again too
     connectBtnUi.start("Connecting…");
-    const connection = await connectUsb(device, connectBtnUi);
-    $("authBox").hidden = false;
-    const transport = await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore });
-    $("authBox").hidden = true;
-    startSession(transport, "Connected to " + device.serial);
+    usbConnecting = true;
+    startSession(await openUsbPhone(device, connectBtnUi), "Connected to " + device.serial);
   } catch (e) {
-    $("authBox").hidden = true;
     showError(e);
   } finally {
+    usbConnecting = false;
     connectBtnUi.stop();
   }
 });
+// Opens a USB phone and signs in to it (the phone may ask "Allow USB debugging?"). Returns the transport.
+// `release`: when another adb server holds the phone, stop it and try again (see connectUsb).
+let usbConnecting = false; // a USB connect is under way (button, plug-in or reconnect): one at a time
+async function openUsbPhone(device, btn, { release = true } = {}) {
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const connection = await connectUsb(device, btn, release);
+      $("authBox").hidden = false;
+      try { return await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore }); }
+      catch (e) {
+        // A phone left half-way through an earlier session (a reloaded page, another program) often fails
+        // the first read; opening the USB connection again clears it.
+        if (attempt || !isUsbTransferError(e)) throw e;
+        try { await device.raw.close(); } catch {}
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+  } finally {
+    $("authBox").hidden = true;
+  }
+}
+
+// ---------- connecting by itself when a phone is plugged in ----------
+// A phone plugged in (or already plugged in when the app opens) is connected without a click, and while
+// any phone is connected, adb run by other programs (the Android SDK, Android Studio, scrcpy) is closed so
+// only this app uses the phone. Both can be turned off in Settings › Phone link.
+const USB_AUTO_KEY = "andromon.usbAuto", TAKEOVER_KEY = "andromon.adbTakeover", LAST_USB_KEY = "andromon.lastUsb";
+const flagOn = (k) => { try { return localStorage.getItem(k) !== "0"; } catch { return true; } };
+const setFlag = (k, on) => { try { localStorage.setItem(k, on ? "1" : "0"); } catch {} return !!on; };
+const adbRelease = globalThis.andromon?.adb || null; // desktop app only
+// The clipboard shared both ways while a phone is connected (./clipsync.js). Off until switched on.
+const CLIP_KEY = "andromon.clipShare";
+const clipSync = initClipSync({ getAdb: () => adb, toast, isOn: () => { try { return localStorage.getItem(CLIP_KEY) === "1"; } catch { return false; } } });
+// Serials disconnected on purpose: not taken again until they are unplugged.
+const usbHeldBack = new Set();
+async function autoConnectUsb(raw = null) {
+  const usb = AdbDaemonWebUsbDeviceManager.BROWSER;
+  const rejoining = rejoin?.via === "usb";
+  if (!usb || adb || usbConnecting || wadbUi.attempting || (!flagOn(USB_AUTO_KEY) && !rejoining)) return;
+  let list = (await usb.getDevices().catch(() => []))
+    .filter((d) => !d.raw.opened && !usbHeldBack.has(d.serial) && (!raw || d.raw === raw));
+  if (rejoining && !flagOn(USB_AUTO_KEY)) list = list.filter((d) => d.serial === rejoin.serial);
+  if (!list.length || adb || usbConnecting) return;
+  let last = null; try { last = localStorage.getItem(LAST_USB_KEY); } catch {}
+  const device = list.find((d) => d.serial === rejoin?.serial) || list.find((d) => d.serial === last) || list[0];
+  usbConnecting = true;
+  clearError();
+  connectBtnUi.start("Connecting…");
+  try {
+    // With "Keep other programs off the phone" off, a phone that another adb server holds is left to it.
+    const transport = await openUsbPhone(device, connectBtnUi, { release: flagOn(TAKEOVER_KEY) });
+    if (adb) { transport.close().catch(() => {}); return; }
+    startSession(transport, `Connected to ${device.raw.productName || device.serial}`);
+  } catch (e) {
+    if (e instanceof AdbDaemonWebUsbDevice.DeviceBusyError)
+      toast("Another program is using the phone. Click Connect phone to take it over.");
+    else showError(e);
+  } finally {
+    usbConnecting = false;
+    connectBtnUi.stop();
+  }
+}
+if (navigator.usb) {
+  navigator.usb.addEventListener("connect", (e) => { setTimeout(() => autoConnectUsb(e.device).catch(console.warn), 700); });
+  navigator.usb.addEventListener("disconnect", (e) => { if (e.device?.serialNumber) usbHeldBack.delete(e.device.serialNumber); });
+}
+// While a phone is connected (USB or Wi‑Fi), the main process keeps closing other programs' adb.
+let takeoverOn = false;
+function syncTakeover() {
+  clipSync.sync(); // the shared clipboard follows the connection the same way
+  const want = !!adb && flagOn(TAKEOVER_KEY);
+  if (!adbRelease?.guard || want === takeoverOn) return;
+  takeoverOn = want;
+  adbRelease.guard(want, adb?.serial).then((r) => {
+    if (want && r?.closed?.length) toast(`Closed ${r.closed.join(", ")} so only Andromon uses the phone`);
+  }).catch(() => {});
+}
 let connectedVia = null; // "usb" | "wifi"
 const phoneVia = new WeakMap(); // Adb -> "usb" | "wifi"
 
@@ -248,8 +452,18 @@ async function openExtraUsbPhone(btn) {
   const transport = await AdbDaemonTransport.authenticate({ serial: device.serial, connection, credentialStore });
   const a = new Adb(transport);
   phoneVia.set(a, "usb");
+  addExtraPhone(a);
   return a;
 }
+// Phones open besides the main one (Developer › Phones), for Repair's Bench and Transfer.
+const extraPhones = new Set();
+function addExtraPhone(a) {
+  if (!a || a === adb || extraPhones.has(a)) return;
+  extraPhones.add(a);
+  const gone = () => extraPhones.delete(a);
+  a.disconnected.then(gone, gone);
+}
+const allPhones = () => [adb, ...extraPhones].filter(Boolean);
 // Makes `next` (an open Adb) the phone the whole app works with. The previous one stays open and is returned.
 async function swapMainPhone(next) {
   const prev = adb;
@@ -260,30 +474,40 @@ async function swapMainPhone(next) {
     if (devtools) await Promise.race([Promise.all([devtools.beforeDisconnect(), apptesting?.beforeDisconnect()]), wait(2500)]);
     resetSessionState();
   }
+  extraPhones.delete(next);
   startSession(next, `Now using ${next.banner?.model || next.serial}`, phoneVia.get(next) || "usb");
+  if (prev) addExtraPhone(prev);
   return prev;
 }
 // `transport` may also be an already open Adb (a phone made the main one in Developer › Phones).
 function startSession(transport, message, via = "usb") {
   const a = adb = transport instanceof Adb ? transport : new Adb(transport);
   connectedVia = via; phoneVia.set(a, via);
+  if (via === "usb") try { localStorage.setItem(LAST_USB_KEY, a.serial); } catch {}
+  closingOnPurpose = false;
+  if (rejoin) { rejoin.stopped = true; rejoin = null; } // connected (by hand or by the reconnect): nothing left to retry
+  renderRejoin();
   // Only the phone in use ends the session; others open in Developer › Phones handle their own.
   const lost = () => { if (adb === a) onDisconnected(); };
   a.disconnected.then(lost, lost);
   setConnected(true);
   toast(message);
+  syncTakeover();
   show(current);
   renderWadbIntro(); renderWadbSetup();
   startCallAlerts();
   autoStartRamHelper();
+  removeLegacyCompanion().catch(() => {});
   devtools?.onConnected();
   links?.onConnected();
   backup?.onConnected();
+  repairTab?.onConnected();
+  folderSync?.onConnected().catch(console.warn);
   apptesting?.onConnected();
 }
 
 // ---------- connect over Wi‑Fi (Wireless debugging; protocol work happens in ../wadb.js) ----------
-const wadbApi = globalThis.droidDesk?.wadb || null;
+const wadbApi = globalThis.andromon?.wadb || null;
 let wadbUi = { services: [], phones: [], auto: false, qr: null, status: "", attempting: false, quietUntil: 0 };
 const serialOf = (name) => String(name).replace(/^adb-/, "").replace(/-[^-]*$/, "");
 const onlineService = (serial) => wadbUi.services.find((s) => s.kind === "connect" && serialOf(s.name) === serial);
@@ -292,7 +516,7 @@ const onlineService = (serial) => wadbUi.services.find((s) => s.kind === "connec
 // ("Always allow from this computer") accepts it over Wi‑Fi without pairing.
 const wadbKeyReady = wadbApiReady();
 async function wadbApiReady() {
-  const api = globalThis.droidDesk?.wadb;
+  const api = globalThis.andromon?.wadb;
   if (!api) return;
   try {
     let key = null;
@@ -330,7 +554,7 @@ function portConnection(port) {
 }
 let portWaiter = null; // one connection attempt at a time
 window.addEventListener("message", (e) => {
-  if (e.source !== window || e.origin !== location.origin || e.data?.source !== "droiddesk-wadb" || !e.ports[0]) return;
+  if (e.source !== window || e.origin !== location.origin || e.data?.source !== "andromon-wadb" || !e.ports[0]) return;
   const w = portWaiter; portWaiter = null;
   if (w) w({ port: e.ports[0], meta: e.data.meta }); else e.ports[0].close();
 });
@@ -367,6 +591,7 @@ async function wadbConnect(target, btn) {
   try {
     const { transport, meta } = await wadbOpen(target);
     closeWadb();
+    lastWifiTarget = target?.serial ? { serial: String(target.serial) } : { host: meta.host, port: meta.port };
     startSession(transport, `Connected over Wi‑Fi to ${transport.banner.model || meta.host}`, "wifi");
   } catch (e) {
     showError(target?.serial && /refused|closed/i.test(e.message)
@@ -393,7 +618,7 @@ function renderWadbIntro() {
         el("div", { className: "grow" },
           el("b", { textContent: p.model || p.serial }),
           el("span", { className: p.svc ? "chip" : "chip warn", style: "margin-left:8px", textContent: p.svc ? `on Wi‑Fi · ${p.svc.host}` : "not on the network" }),
-          p.svc ? "" : el("div", { className: "sub", textContent: "On the phone: Droid Desk Companion › PC link › Turn on Wi‑Fi connection." })),
+          p.svc ? "" : el("div", { className: "sub", textContent: "On the phone: Andromon Companion › PC link › Turn on Wi‑Fi connection." })),
         go);
     }));
 }
@@ -450,7 +675,7 @@ async function setupWireless(status, box) {
   if (sdk < 30) throw new Error("This phone has Android 10 or older. Connecting over Wi‑Fi needs Android 11 or later, so keep using the cable.");
   const ip = (await sh("ip -4 -o addr show wlan0 2>/dev/null")).match(/inet (\d+\.\d+\.\d+\.\d+)/)?.[1];
   if (!ip) throw new Error("The phone isn't connected to Wi‑Fi. Connect it to the same Wi‑Fi as this computer, then try again.");
-  step("Preparing Droid Desk Companion on the phone…");
+  step("Preparing Andromon Companion on the phone…");
   companionInfo = await ensureCompanion(step);
   // Lets the companion's PC link screen switch Wireless debugging on and off with one tap later.
   await sh(`pm grant ${COMPANION_PKG} android.permission.WRITE_SECURE_SETTINGS`).catch(() => {});
@@ -483,6 +708,7 @@ async function setupWireless(status, box) {
     const sw = el("button", { className: "btn primary", textContent: "Switch to Wi‑Fi now", type: "button" });
     sw.onclick = async () => {
       busy(sw, true, "Switching…");
+      closingOnPurpose = true;
       try { await adb?.close(); } catch {}
       onDisconnected();
       await wait(800);
@@ -492,7 +718,7 @@ async function setupWireless(status, box) {
       el("b", { textContent: "✓ All set: this phone can connect over Wi‑Fi" }),
       el("ul", { className: "muted small" },
         el("li", { textContent: "You can unplug the cable." }),
-        el("li", { textContent: "Next time: on the phone open Droid Desk Companion › PC link › Turn on Wi‑Fi connection. Droid Desk shows the phone on its welcome screen (or connects by itself if you tick “Connect automatically”)." }),
+        el("li", { textContent: "Next time: on the phone open Andromon Companion › PC link › Turn on Wi‑Fi connection. Andromon shows the phone on its welcome screen (or connects by itself if you tick “Connect automatically”)." }),
         el("li", { textContent: "Wireless debugging stays on until you turn it off there, or the phone restarts." })),
       el("div", { className: "toolbar", style: "margin:8px 0 0" }, sw));
     return;
@@ -570,14 +796,14 @@ function renderWadb() {
         el("li", { textContent: "Phone and computer on the same Wi‑Fi." }),
         el("li", {}, "On the phone: ", el("b", { textContent: "Settings › Developer options › Wireless debugging" }), " (turn it on)."),
         el("li", {}, "Tap ", el("b", { textContent: "Pair device with QR code" }), " and scan this."),
-        el("li", { textContent: "Droid Desk pairs and connects by itself. You only do this once." })))
+        el("li", { textContent: "Andromon pairs and connects by itself. You only do this once." })))
     : el("div", { className: "muted", textContent: "Making a pairing code…" });
 
   const codeToggle = el("button", { className: "link", textContent: wadbUi.codeOpen ? "Hide" : "Pair with a 6-digit code instead", type: "button" });
   codeToggle.onclick = () => { wadbUi.codeOpen = !wadbUi.codeOpen; renderWadb(); };
   const parts = [
     el("div", { className: "toolbar", style: "justify-content:space-between" }, el("h2", { style: "margin:0", textContent: "Connect over Wi‑Fi" }), close),
-    el("p", { className: "muted small", style: "margin-top:0", textContent: "Uses Android's Wireless debugging (Android 11 and later). Everything in Droid Desk works the same as over USB. The connection is encrypted, and only computers you've paired can connect." }),
+    el("p", { className: "muted small", style: "margin-top:0", textContent: "Uses Android's Wireless debugging (Android 11 and later). Everything in Andromon works the same as over USB. The connection is encrypted, and only computers you've paired can connect." }),
   ];
   if (rows.length) parts.push(el("h3", { textContent: "Your phones" }), el("div", {}, ...rows));
   parts.push(el("h3", { textContent: "Pair a phone" }), qrPart,
@@ -626,24 +852,26 @@ if (wadbApi) {
 
 // Another adb server (SDK, Android Studio, scrcpy...) holding the phone's USB interface is the
 // usual reason a connect fails. In the desktop app, stop it and try again.
-async function connectUsb(device, btn) {
+async function connectUsb(device, btn, release = true) {
   const isBusy = (e) => e instanceof AdbDaemonWebUsbDevice.DeviceBusyError;
   try { return await device.connect(); }
-  catch (e) { if (!isBusy(e)) throw e; }
-  if (!window.droidDesk?.adb)
+  catch (e) { if (!isBusy(e) || !release) throw e; }
+  if (!window.andromon?.adb)
     throw new Error("The phone's USB debugging connection is in use by another program. Run `adb kill-server` (or close Android Studio / scrcpy / other phone tools) and try again.");
   btn.textContent = "Stopping other adb…";
-  await window.droidDesk.adb.release().catch(() => {});
+  const freed = await window.andromon.adb.release(device.serial).catch(() => null);
   btn.textContent = "Connecting…";
   for (let i = 0; i < 5; i++) {
     await wait(500 + i * 300);
     try {
       const connection = await device.connect();
-      toast("Stopped another adb server that was using the phone");
+      toast(freed?.closed?.length ? `Closed ${freed.closed.join(", ")}, which was using the phone` : "Stopped another adb server that was using the phone");
       return connection;
     } catch (e) { if (!isBusy(e)) throw e; }
   }
-  throw new Error("The phone's USB debugging connection is still in use. Droid Desk stopped adb, but another program took the phone back. Close Android Studio, scrcpy or other phone tools and try again.");
+  if (freed?.browsers?.length)
+    throw new Error(`A web page open in ${freed.browsers.join(", ")} is using the phone (a WebADB tool). Close that tab and try again.`);
+  throw new Error("The phone's USB debugging connection is still in use. Andromon stopped adb, but another program took the phone back. Close Android Studio, scrcpy or other phone tools and try again.");
 }
 
 $("disconnectBtn").addEventListener("click", async () => {
@@ -651,17 +879,76 @@ $("disconnectBtn").addEventListener("click", async () => {
   // Stop the companion's foreground service so its notification goes away.
   if (companionInfo) await Promise.race([companionCall("stop").catch(() => {}), wait(1500)]);
   if (devtools) await Promise.race([Promise.all([devtools.beforeDisconnect(), apptesting?.beforeDisconnect()]), wait(2500)]);
+  closingOnPurpose = true;
+  if (connectedVia === "usb" && adb) usbHeldBack.add(adb.serial); // still plugged in: don't connect it straight back
   try { await adb?.close(); } catch {}
   onDisconnected();
 });
 
 function onDisconnected() {
   if (!adb) return;
+  // Dropped by itself (cable, Wi‑Fi, a sleeping phone), or closed here on purpose?
+  const dropped = !closingOnPurpose, via = connectedVia, serial = adb.serial, view = current;
+  closingOnPurpose = false;
   if (connectedVia === "wifi") wadbUi.quietUntil = Date.now() + 60_000; // don't jump straight back in
   connectedVia = null;
   setTimeout(() => { renderWadbIntro(); renderWadbSetup(); }, 0);
   resetSessionState();
-  setConnected(false); toast("Phone disconnected"); if (!offlineViews[current]) show("overview"); else if (current === "fdroid") show("fdroid");
+  setConnected(false);
+  toast(dropped ? "The connection to the phone dropped. Reconnecting…" : "Phone disconnected");
+  if (!offlineViews[current]) show("overview"); else if (current === "fdroid") show("fdroid");
+  if (dropped && via) startRejoin(via, serial, view);
+}
+
+// ---------- reconnecting by itself after the link dropped ----------
+// A link that ends without the person asking (a loose cable, the phone asleep or briefly off the
+// Wi‑Fi) is opened again as soon as the phone is back, and the tool that was open comes back too.
+let closingOnPurpose = false; // set right before this app closes the link itself
+let lastWifiTarget = null;    // what the Wi‑Fi link in use was opened with
+let rejoin = null;            // the running attempt: { via, serial, view, stopped }
+function renderRejoin() {
+  const box = $("rejoinBox");
+  if (!rejoin || adb) { box.hidden = true; return; }
+  const job = rejoin;
+  const stop = el("button", { className: "btn sm", type: "button", textContent: "Stop trying" });
+  stop.onclick = () => { job.stopped = true; if (rejoin === job) rejoin = null; renderRejoin(); };
+  box.replaceChildren(el("div", { className: "toolbar", style: "margin:0;justify-content:space-between" },
+    el("div", {}, el("b", { textContent: "The connection to the phone dropped" }),
+      el("div", { className: "sub", textContent: job.via === "wifi"
+        ? "Reconnecting over Wi‑Fi… Wake the phone and keep it on the same Wi‑Fi as this computer."
+        : "Reconnecting… Check the USB cable and unlock the phone." })),
+    stop));
+  box.hidden = false;
+}
+async function startRejoin(via, serial, view) {
+  if (via === "wifi" && !lastWifiTarget) return;
+  const job = rejoin = { via, serial, view, stopped: false };
+  renderRejoin();
+  const live = () => !job.stopped && rejoin === job;
+  const until = Date.now() + (via === "wifi" ? 5 : 3) * 60_000;
+  for (let n = 0; live() && !adb && Date.now() < until; n++) {
+    await wait(n === 0 ? 1500 : via === "wifi" ? Math.min(15_000, 3000 * n) : 2500);
+    if (!live() || adb) break;
+    let transport = null;
+    try {
+      if (via === "wifi") {
+        if (wadbUi.attempting) continue;
+        wadbUi.attempting = true;
+        try { transport = (await wadbOpen(lastWifiTarget, 20_000)).transport; } finally { wadbUi.attempting = false; }
+      } else {
+        // The phone was already allowed in this app, so no picker is needed to find it again.
+        const device = (await AdbDaemonWebUsbDeviceManager.BROWSER.getDevices()).find((d) => d.serial === serial);
+        if (!device || usbConnecting) continue;
+        usbConnecting = true;
+        try { transport = await openUsbPhone(device, connectBtnUi, { release: flagOn(TAKEOVER_KEY) }); } finally { usbConnecting = false; }
+      }
+    } catch (e) { console.warn("reconnect", e); continue; }
+    if (!live() || adb) { transport.close().catch(() => {}); break; }
+    startSession(transport, "Reconnected to the phone", via);
+    if (view && view !== current && !$("nav").querySelector(`button[data-view="${view}"]`)?.disabled) show(view);
+    return;
+  }
+  if (rejoin === job) { rejoin = null; renderRejoin(); if (!adb) toast("Couldn't reconnect to the phone"); }
 }
 // Forgets everything that belongs to the phone in use (on disconnect, and when switching phones).
 function resetSessionState() {
@@ -671,9 +958,12 @@ function resetSessionState() {
   devtools?.onDisconnected();
   links?.onDisconnected();
   apptesting?.onDisconnected();
+  memoryTab?.onDisconnected();
+  dropPendingInstall();
   stopCallAlerts(); resetNotifs();
   adb = null; companionInfo = null; resetAppIcons();
-  people?.reset(); calendarTab?.onDisconnected(); backup?.onDisconnected(); mmsList = []; mmsThumbs.clear(); mmsWant.length = 0;
+  setTimeout(syncTakeover, 0); // later, so switching phones (reset, then a new session) keeps it running
+  people?.reset(); calendarTab?.onDisconnected(); backup?.onDisconnected(); folderSync?.onDisconnected(); repairTab?.onDisconnected(); mmsList = []; mmsThumbs.clear(); mmsWant.length = 0;
   smsList = null; threads = []; currentThread = null; contactsCache = null; contactNames = new Map(); callsCache = null;
   debloat = { ...debloat, phone: null };
   resetMedia();
@@ -702,6 +992,10 @@ async function loadOverview() {
     sh("df -k /data").catch(() => ""),
     sh("cat /proc/uptime").catch(() => ""),
   ]);
+  // The phone's own identifiers, blurred wherever they show up while Blur personal data is on (src/pii.js).
+  setKnownPii([adb.serial, props["ro.serialno"], props["ro.boot.serialno"]]);
+  Promise.all([sh("settings get global device_name"), sh("settings get secure bluetooth_name"), sh("cmd wifi status")].map((p) => p.catch(() => "")))
+    .then(([name, bt, wifi]) => setKnownPii([personalName(name), personalName(bt), wifi.match(/connected to "([^"]+)"/)?.[1]])).catch(() => {});
   const level = battery.match(/level:\s*(\d+)/)?.[1];
   const status = { 2: "Charging", 3: "Discharging", 4: "Not charging", 5: "Full" }[battery.match(/status:\s*(\d+)/)?.[1]] || "";
   const temp = battery.match(/temperature:\s*(\d+)/)?.[1];
@@ -764,17 +1058,17 @@ function renderQuick() {
 }
 
 // ---------- phone RAM manager (the companion's Memory screen, with ADB rights) ----------
-// Android only lets an app see and stop its own processes. Droid Desk can start a small helper from
+// Android only lets an app see and stop its own processes. Andromon can start a small helper from
 // the companion's APK as the shell user (ShellHelper.kt, like Shizuku): the companion's RAM manager
 // then lists running apps and stops them, until the phone restarts, even without the cable.
-const RAM_HELPER_CLASS = "dev.droiddesk.companion.ShellHelper";
-const RAM_HELPER_SOCKET = "droiddesk_helper";
+const RAM_HELPER_CLASS = "dev.andromon.companion.ShellHelper";
+const RAM_HELPER_SOCKET = "andromon_helper";
 const RAM_HELPER_MIN_COMPANION = 18; // first companion version with ShellHelper
-const RAM_AUTO_KEY = "dd-ram-helper-auto";
+const RAM_AUTO_KEY = "andromon-ram-helper-auto";
 const ramAuto = () => { try { return localStorage.getItem(RAM_AUTO_KEY) === "1"; } catch { return false; } };
 
 async function ramHelperRunning() {
-  return /@droiddesk_helper\b/.test(await sh("cat /proc/net/unix").catch(() => ""));
+  return /@andromon_helper\b/.test(await sh("cat /proc/net/unix").catch(() => ""));
 }
 async function companionVersionOnPhone() {
   const path = (await sh(`pm path ${COMPANION_PKG}`)).trim().split("\n")[0] || "";
@@ -837,7 +1131,7 @@ async function renderRamCard() {
       el("span", { className: `badge ${state[1]}`, textContent: state[0] })),
     el("p", { className: "muted", style: "margin:0 0 12px", textContent:
       "Lets the companion app's Memory screen list the apps in memory and stop them, the way App Manager does with ADB. " +
-      "Droid Desk starts a small helper on the phone with ADB rights. It can only list processes, stop apps and free memory, " +
+      "Andromon starts a small helper on the phone with ADB rights. It can only list processes, stop apps and free memory, " +
       "only the companion app can use it, and it keeps working after you unplug, until the phone restarts." }),
     el("div", { className: "toolbar", style: "margin:0" }, main,
       el("span", { className: "muted small", textContent: ramAuto() ? "Turns on by itself when a phone connects." : "" }),
@@ -899,7 +1193,7 @@ const iconWant = new Map(); // pkg -> [refs] waiting for that package
 const iconRefs = new WeakMap(); // icon element -> { icon, name, sub }
 let iconSource = null, iconCheck = null; // iconSource: null (not checked) | "ready" | "missing" | "outdated"
 let iconTimer = null, iconBusy = false;
-const ICON_HINT_OFF = "dd-icon-hint-off";
+const ICON_HINT_OFF = "andromon-icon-hint-off";
 
 const appInitial = (pkg) => (pkg.split(".").pop() || pkg).charAt(0).toUpperCase();
 
@@ -1001,8 +1295,8 @@ function renderIconHint() {
   later.onclick = () => { try { localStorage.setItem(ICON_HINT_OFF, "1"); } catch {} box.hidden = true; };
   box.replaceChildren(
     el("span", { textContent: update
-      ? "Update the Droid Desk Companion on the phone to show app icons and names."
-      : "App icons and names come from the Droid Desk Companion, a small helper app (about 200 KB) on the phone." }),
+      ? "Update the Andromon Companion on the phone to show app icons and names."
+      : "App icons and names come from the Andromon Companion, a small helper app (about 200 KB) on the phone." }),
     btn, later);
 }
 
@@ -1123,7 +1417,7 @@ async function openAppDetail(a) {
   const box = $("appDetail");
   box.hidden = false;
   box.replaceChildren(loadingBox(`Loading ${appMeta.get(a.pkg)?.label || a.pkg}…`));
-  box.scrollIntoView({ block: "start", behavior: "smooth" });
+  box.scrollIntoView({ block: "start", behavior: document.documentElement.dataset.motion === "reduce" ? "auto" : "smooth" });
   const info = parsePackageDump(await sh(`dumpsys package ${shQuote(a.pkg)}`), a.pkg);
   if (selectedApp !== a) return;
   if (info.versionName) a.version = info.versionName;
@@ -1236,6 +1530,13 @@ async function getDeviceFacts() {
 }
 
 let pendingInstall = null;
+// The picked APKs (and any game data) are held in memory until they're installed or set aside: also on
+// leaving the Apps page and on disconnect, as they can be hundreds of MB.
+function dropPendingInstall() {
+  if (!pendingInstall || pendingInstall.installing) return;
+  pendingInstall = null;
+  $("installPreview").hidden = true; $("installPreview").replaceChildren();
+}
 async function previewInstall(files) {
   if (!adb) return;
   clearError();
@@ -1307,30 +1608,37 @@ async function previewInstall(files) {
   const go = el("button", { className: "btn primary", textContent: installed ? (installed.versionCode === info.versionCode ? "Reinstall" : "Update") : "Install", type: "button" });
   go.onclick = async () => {
     const job = pendingInstall; if (!job) return;
+    job.installing = true;
     busy(go, true, "Installing…"); cancel.disabled = true;
-    try { await runInstall(job, (t) => { go.textContent = t; }); box.hidden = true; pendingInstall = null; }
+    const bar = createProgress({ el, fmtSize });
+    go.parentElement.before(bar.node); bar.node.style.marginTop = "14px";
+    try { await runInstall(job, (t, done, total) => bar.update(t, done, total)); box.hidden = true; pendingInstall = null; }
     catch (e) { showError(e); }
-    finally { if (go.isConnected) { busy(go, false); cancel.disabled = false; } }
+    finally { job.installing = false; bar.node.remove(); if (go.isConnected) { busy(go, false); cancel.disabled = false; } }
   };
   box.replaceChildren(head, stats, warnBox, permBox, el("div", { className: "toolbar", style: "margin:16px 0 0" }, go, cancel));
   box.hidden = false;
-  box.scrollIntoView({ block: "start", behavior: "smooth" });
+  box.scrollIntoView({ block: "start", behavior: document.documentElement.dataset.motion === "reduce" ? "auto" : "smooth" });
 }
 
 async function runInstall({ pkg, pick }, progress) {
-  const dir = `/data/local/tmp/droiddesk-${Date.now()}`;
+  const dir = `/data/local/tmp/andromon-${Date.now()}`;
   const parts = pick.chosen;
   const label = pkg.info.label || pkg.info.package;
   try {
     await sh(`mkdir -p ${shQuote(dir)}`);
     const remote = [];
+    // progress(text, done, total): the bytes copied to the phone so far, for the progress bar.
+    const upTotal = parts.reduce((n, p) => n + (p.bytes?.byteLength ?? p.size ?? 0), 0);
+    let up = 0;
     for (const [i, p] of parts.entries()) {
-      progress(`Uploading ${parts.length > 1 ? `${i + 1}/${parts.length}` : ""}…`);
+      const what = `Copying ${label} to the phone${parts.length > 1 ? ` (part ${i + 1} of ${parts.length})` : ""}`;
+      progress(what, up, upTotal);
       const path = `${dir}/${i}.apk`;
-      await withSync((s) => s.write({ filename: path, file: new Blob([p.bytes]).stream(), permission: 0o644 }));
+      await withSync((s) => s.write({ filename: path, file: countBytes(new Blob([p.bytes]).stream(), (b) => { up += b; progress(what, up, upTotal); }), permission: 0o644 }));
       remote.push({ path, size: p.size, name: `${i}_${(p.split || "base").replace(/[^\w.-]/g, "_")}` });
     }
-    progress("Installing…");
+    progress(`Installing ${label}…`);
     if (remote.length === 1) {
       const out = (await sh(`pm install -r ${shQuote(remote[0].path)}`)).trim();
       if (!/Success/.test(out)) throw new Error(`Install failed: ${out}`);
@@ -1353,13 +1661,16 @@ async function runInstall({ pkg, pick }, progress) {
       }
     }
     // Game data that ships next to the app (.xapk): Android/obb/<package>/...
+    const obbTotal = pkg.obb.reduce((n, o) => n + (o.bytes?.byteLength ?? 0), 0);
+    let obbDone = 0;
     for (const [i, o] of pkg.obb.entries()) {
       const rel = o.path.split("/").filter((x) => x && x !== "." && x !== "..").join("/");
       if (!/^Android\/obb\//i.test(rel)) continue;
-      progress(`Copying game data ${i + 1}/${pkg.obb.length}…`);
+      const what = `Copying game data${pkg.obb.length > 1 ? ` (${i + 1} of ${pkg.obb.length})` : ""}`;
+      progress(what, obbDone, obbTotal);
       const target = "/sdcard/" + rel;
       await sh(`mkdir -p ${shQuote(target.replace(/\/[^/]+$/, ""))}`);
-      await withSync((s) => s.write({ filename: target, file: new Blob([o.bytes]).stream(), permission: 0o660 }));
+      await withSync((s) => s.write({ filename: target, file: countBytes(new Blob([o.bytes]).stream(), (b) => { obbDone += b; progress(what, obbDone, obbTotal); }), permission: 0o660 }));
     }
     toast(`Installed ${label}`);
     loadApps().catch(showError);
@@ -1580,13 +1891,26 @@ async function refreshControls() {
 // The companion (../android) runs a foreground service with an abstract Unix socket. We reach it
 // through ADB with "localabstract:<name>" — over the USB cable only, nothing listens on Wi‑Fi.
 // It only accepts connections from adbd (shell uid), so other apps on the phone can't use it.
-const COMPANION_PKG = "dev.droiddesk.companion";
-const COMPANION_SOCKET = "droiddesk_companion";
-const COMPANION_VERSION = 29; // keep in sync with versionCode in android/app/build.gradle.kts
+const COMPANION_PKG = "dev.andromon.companion";
+// The same app installed under the product's old name (Droid Desk Companion); replaced by the one above.
+const LEGACY_COMPANION_PKG = "dev.droiddesk.companion";
+const COMPANION_SOCKET = "andromon_companion";
+const COMPANION_VERSION = 34; // keep in sync with versionCode in android/app/build.gradle.kts
 let companionInfo = null;
 
 class CompanionUnavailable extends Error {
   constructor(msg = "The companion app isn't running") { super(msg); }
+}
+// The person pressed Stop on the phone (PC link screen, its notification or tile). Andromon then
+// doesn't start the link again by itself: it waits until they press Start on the phone.
+class CompanionPaused extends CompanionUnavailable {
+  constructor() { super("The PC link is stopped on the phone. To use it again, open Andromon Companion on the phone and tap Start on the PC link screen."); this.paused = true; }
+}
+// Asks the companion whether the person stopped the link (LinkStateReceiver, companion 33+; older
+// ones don't answer, which reads as "not stopped").
+async function companionPausedOnPhone() {
+  const out = await sh(`am broadcast -n ${COMPANION_PKG}/.LinkStateReceiver 2>/dev/null`).catch(() => "");
+  return /data="paused"/.test(out);
 }
 
 function companionCall(method, params = {}) { return track(() => companionCallRaw(method, params)); }
@@ -1608,8 +1932,19 @@ async function companionCallRaw(method, params) {
   }
 }
 
+// The companion's PC link screen names the computer it is linked to: told once per phone connection.
+// Companions before version 32 answer "Unknown method", which is fine.
+const helloSent = new WeakSet();
+function sayHello() {
+  const a = adb;
+  if (!a || helloSent.has(a)) return;
+  helloSent.add(a);
+  const me = globalThis.andromon?.app?.computer?.() || Promise.resolve({ name: "", os: /Mac/.test(navigator.platform) ? "macOS" : /Win/.test(navigator.platform) ? "Windows" : "Linux", app: "web" });
+  me.then((c) => companionCall("link.hello", { computer: c.name || "", os: c.os || "", app: `Andromon ${c.app || ""}`.trim() })).catch((e) => { if (e instanceof CompanionUnavailable) helloSent.delete(a); }); // not running yet: try again next call
+}
 // Call the companion, restarting it once if it stopped (it exits after 15 idle minutes).
 async function cc(method, params) {
+  sayHello();
   try { return await companionCall(method, params); }
   catch (e) {
     if (!(e instanceof CompanionUnavailable)) throw e;
@@ -1621,6 +1956,7 @@ async function cc(method, params) {
 async function companionStatus() {
   try {
     const info = await companionCall("info");
+    if (info.version >= COMPANION_VERSION) sayHello();
     return { state: info.version >= COMPANION_VERSION ? "ready" : "outdated", info };
   } catch (e) { if (!(e instanceof CompanionUnavailable)) throw e; }
   const path = (await sh(`pm path ${COMPANION_PKG}`)).trim();
@@ -1632,9 +1968,9 @@ async function companionStatus() {
 async function installCompanion(progress) {
   progress("Uploading companion app…");
   const res = await fetch("companion.apk");
-  if (!res.ok) throw new Error("companion.apk is missing from this build of Droid Desk (run: npm run build:companion)");
+  if (!res.ok) throw new Error("companion.apk is missing from this build of Andromon (run: npm run build:companion)");
   const apk = await res.blob();
-  const tmp = "/data/local/tmp/droiddesk-companion.apk";
+  const tmp = "/data/local/tmp/andromon-companion.apk";
   await withSync((s) => s.write({ filename: tmp, file: apk.stream(), permission: 0o644 }));
   progress("Installing…");
   // -g grants the runtime permissions. Installing from adb also allow-lists the "restricted"
@@ -1654,6 +1990,8 @@ async function installCompanion(progress) {
   // them the phone screen asks the person instead, so failures here are fine.
   await sh(`appops set --uid ${COMPANION_PKG} MANAGE_EXTERNAL_STORAGE allow`).catch(() => {});
   await sh(`appops set ${COMPANION_PKG} GET_USAGE_STATS allow`).catch(() => {});
+  // Battery health: Android 14's own wear figure is only given to apps holding BATTERY_STATS.
+  await sh(`pm grant ${COMPANION_PKG} android.permission.BATTERY_STATS 2>/dev/null`).catch(() => {});
   await sh(`appops set ${COMPANION_PKG} WRITE_SMS allow`).catch(() => {}); // Messages › Restore: only the default SMS app may write otherwise
   // Find my phone: its "Found it" screen may open over the lock screen (an app-op on Android 14+).
   await sh(`appops set ${COMPANION_PKG} USE_FULL_SCREEN_INTENT allow 2>/dev/null`).catch(() => {});
@@ -1668,6 +2006,7 @@ async function waitForCompanion(tries, gap) {
 }
 
 async function startCompanion(progress) {
+  if (await companionPausedOnPhone()) throw new CompanionPaused();
   progress("Starting companion…");
   await sh(`am start-foreground-service -n ${COMPANION_PKG}/.CompanionService`).catch(() => {});
   let info = await waitForCompanion(8, 300);
@@ -1676,15 +2015,31 @@ async function startCompanion(progress) {
     await sh(`am start -n ${COMPANION_PKG}/.MainActivity --ez autostart true`);
     info = await waitForCompanion(15, 400);
   }
-  if (!info) throw new Error("The companion app didn't start. Open “Droid Desk Companion” on the phone once, then try again.");
+  if (!info) throw new Error("The companion app didn't start. Open “Andromon Companion” on the phone once, then try again.");
   return info;
 }
 
 async function ensureCompanion(progress = () => {}) {
   const st = await companionStatus();
-  if (st.state === "ready") return st.info;
-  if (st.state !== "stopped") await installCompanion(progress);
-  return startCompanion(progress);
+  if (st.state !== "ready" && st.state !== "stopped") await installCompanion(progress);
+  const info = st.state === "ready" ? st.info : await startCompanion(progress);
+  await removeLegacyCompanion(progress);
+  return info;
+}
+
+// Takes the old Droid Desk Companion off the phone once Andromon Companion is there, so the phone
+// doesn't run two copies (two notification listeners, two services, two sets of tiles). Checked when a
+// phone connects and after the companion is installed; never leaves a phone without a companion.
+const legacyChecked = new WeakSet();
+async function removeLegacyCompanion(progress = () => {}) {
+  if (!adb || legacyChecked.has(adb)) return;
+  const installed = async (pkg) => (await sh(`pm path ${pkg}`).catch(() => "")).trim().startsWith("package:");
+  if (!(await installed(LEGACY_COMPANION_PKG))) { legacyChecked.add(adb); return; }
+  if (!(await installed(COMPANION_PKG))) return; // not yet: the old one stays until the new one is installed
+  legacyChecked.add(adb);
+  progress("Removing the old Droid Desk Companion…");
+  await sh(`pkill -f '${LEGACY_COMPANION_PKG}.ShellHelpe[r]'; pm uninstall ${LEGACY_COMPANION_PKG}`).catch(() => {});
+  toast("Removed the old Droid Desk Companion. Andromon Companion replaces it.");
 }
 
 // For features outside the companion's own tabs (backup, automatic photo copy): is the companion
@@ -1732,11 +2087,11 @@ function showCompanionGate(gate, main, state, load) {
   };
   const li = (t) => el("li", { textContent: t });
   gate.replaceChildren(
-    el("h2", { textContent: state === "outdated" ? "Update the Droid Desk Companion" : "This needs the Droid Desk Companion" }),
-    el("p", { className: "muted", textContent: "Android only lets apps on the phone read messages, contacts, the call log and the photo/music library, so Droid Desk installs a small helper app (about 200 KB) over USB." }),
+    el("h2", { textContent: state === "outdated" ? "Update the Andromon Companion" : "This needs the Andromon Companion" }),
+    el("p", { className: "muted", textContent: "Android only lets apps on the phone read messages, contacts, the call log and the photo/music library, so Andromon installs a small helper app (about 200 KB) over USB." }),
     el("ul", { className: "muted" },
       li("It talks to this computer over the USB cable only. No internet, no accounts. (Its optional Wi‑Fi receive is off unless you turn it on, on the phone.)"),
-      li("It gets access to SMS, contacts, call log, calendar, photos, videos and music. You'll see a “Connected to Droid Desk” notification while it runs."),
+      li("It gets access to SMS, contacts, call log, calendar, photos, videos and music. You'll see a “Connected to Andromon” notification while it runs."),
       li("It stops by itself after 15 minutes without use. Remove it any time from the Apps tab.")),
     el("div", { className: "toolbar", style: "margin:12px 0 0" }, btn, status),
   );
@@ -1744,7 +2099,7 @@ function showCompanionGate(gate, main, state, load) {
 
 function needPermission(key, what) {
   if (companionInfo?.permissions && companionInfo.permissions[key] === false) {
-    throw new Error(`The companion doesn't have ${what} access. Remove “Droid Desk Companion” from the phone (Apps tab → dev.droiddesk.companion → Uninstall), then open this tab again so Droid Desk reinstalls it with access.`);
+    throw new Error(`The companion doesn't have ${what} access. Remove “Andromon Companion” from the phone (Apps tab → dev.andromon.companion → Uninstall), then open this tab again so Andromon reinstalls it with access.`);
   }
 }
 
@@ -1983,11 +2338,11 @@ function mmsBubble(t, m, note) {
   b.append(el("span", { className: "when", textContent: `${fmtDate(m.date, true)}${note} · MMS` }));
   return b;
 }
-// Group conversations are MMS, which Droid Desk can't send: offer a normal SMS to one person instead.
+// Group conversations are MMS, which Andromon can't send: offer a normal SMS to one person instead.
 function groupReply(t) {
   const sel = el("select", {}, ...t.people.map((a) => el("option", { value: a, textContent: nameFor(a) ? `${nameFor(a)} (${a})` : a })));
   return el("div", { className: "group-reply" },
-    el("div", { className: "muted small" }, "Droid Desk can't send group messages (MMS). Reply to everyone on the phone, or send a normal SMS to just ", sel, " :"),
+    el("div", { className: "muted small" }, "Andromon can't send group messages (MMS). Reply to everyone on the phone, or send a normal SMS to just ", sel, " :"),
     composer(() => sel.value));
 }
 
@@ -2084,10 +2439,10 @@ async function showSmsRestore(file) {
   restoreCard($("msgRestoreBox"), {
     title: sms.length ? `Restore ${n(sms.length)} text messages from ${file.name}?` : `Nothing to restore in ${file.name}`,
     notes: [
-      sms.length ? `${n(sms.filter((m) => m.type === 1).length)} received and ${n(sms.filter((m) => m.type !== 1).length)} sent or other messages. Messages that are already on the phone (same number, time and text) are skipped.` : "No text messages were found. The file should be an XML export from Droid Desk or from the “SMS Backup & Restore” app.",
-      mmsCount ? `${n(mmsCount)} MMS (pictures and group messages) in the file will be skipped: Android doesn't let Droid Desk write MMS.` : "",
+      sms.length ? `${n(sms.filter((m) => m.type === 1).length)} received and ${n(sms.filter((m) => m.type !== 1).length)} sent or other messages. Messages that are already on the phone (same number, time and text) are skipped.` : "No text messages were found. The file should be an XML export from Andromon or from the “SMS Backup & Restore” app.",
+      mmsCount ? `${n(mmsCount)} MMS (pictures and group messages) in the file will be skipped: Android doesn't let Andromon write MMS.` : "",
       bad ? `${n(bad)} entries couldn't be read and will be skipped.` : "",
-      sms.length ? "Droid Desk first allows the companion to write messages (an Android setting only a computer can change). A few phones ignore it; you'll be told if nothing could be stored." : "",
+      sms.length ? "Andromon first allows the companion to write messages (an Android setting only a computer can change). A few phones ignore it; you'll be told if nothing could be stored." : "",
     ],
     okLabel: sms.length ? `Restore ${n(sms.length)} messages` : "",
     run: async (say) => {
@@ -2256,7 +2611,7 @@ async function showCallsRestore(file) {
     title: calls.length ? `Restore ${n(calls.length)} calls from ${file.name}?` : `Nothing to restore in ${file.name}`,
     notes: [
       calls.length ? `${n(count(1))} incoming, ${n(count(2))} outgoing, ${n(count(3))} missed, ${n(calls.length - count(1) - count(2) - count(3))} other. Calls that are already in the phone's call log (same number, time, length and type) are skipped.`
-        : "No calls were found. The file should be a call-log CSV exported by Droid Desk, or a calls XML file.",
+        : "No calls were found. The file should be a call-log CSV exported by Andromon, or a calls XML file.",
       bad ? `${n(bad)} rows couldn't be read and will be skipped.` : "",
     ],
     okLabel: calls.length ? `Restore ${n(calls.length)} calls` : "",
@@ -2301,12 +2656,12 @@ function renderCalls() {
 // ---------- call alerts ----------
 // While a phone is connected (USB or Wi‑Fi), the companion streams call events over one long-lived
 // "events" connection (see CallWatch.kt). Incoming calls pop up here with Answer / Decline /
-// Silence, and as a system notification when Droid Desk isn't in front; missed calls stay until
+// Silence, and as a system notification when Andromon isn't in front; missed calls stay until
 // dismissed. Talking still happens on the phone: answering just picks up there.
-const notifyApi = globalThis.droidDesk?.notify || null;
+const notifyApi = globalThis.andromon?.notify || null;
 const CALL_PERMS = ["READ_PHONE_STATE", "ANSWER_PHONE_CALLS", "READ_CALL_LOG", "READ_CONTACTS"];
 const callAlerts = {
-  on: (() => { try { return localStorage.getItem("dd.callAlerts") !== "off"; } catch { return true; } })(),
+  on: (() => { try { return localStorage.getItem("andromon.callAlerts") !== "off"; } catch { return true; } })(),
   gen: 0, socket: null, state: "off", detail: "", call: null, timer: 0,
 };
 
@@ -2323,11 +2678,12 @@ function renderCallAlertCard() {
   const text = {
     off: callAlerts.on ? "Connect a phone to get call alerts here." : "Off. Turn on in Settings to see incoming calls on this computer.",
     starting: "Starting…",
-    on: "On. Incoming calls pop up here, and as a notification when Droid Desk is in the background.",
+    on: "On. Incoming calls pop up here, and as a notification when Andromon is in the background.",
     reconnecting: "Lost the link to the phone. Reconnecting…",
-    noperm: "The companion can't see calls yet. Allow “Phone” for Droid Desk Companion on the phone (Settings › Apps), then reconnect.",
-    missing: "Needs the Droid Desk Companion app on the phone.",
-    outdated: "Needs a newer Droid Desk Companion on the phone.",
+    paused: "Stopped on the phone. Tap Start in Andromon Companion › PC link to turn it back on.",
+    noperm: "The companion can't see calls yet. Allow “Phone” for Andromon Companion on the phone (Settings › Apps), then reconnect.",
+    missing: "Needs the Andromon Companion app on the phone.",
+    outdated: "Needs a newer Andromon Companion on the phone.",
     error: "Couldn't start call alerts.",
   }[st] || "";
   const kids = [el("div", { className: "grow" }, el("div", {}, el("b", { textContent: "Call alerts on this computer" })),
@@ -2370,15 +2726,25 @@ async function startCallAlerts() {
       const opened = await streamCallEvents(gen).catch((e) => { if (e?.outdated) throw e; return false; });
       if (!live()) return;
       fails = opened ? 0 : fails + 1;
-      setCallAlertState("reconnecting");
+      if (callAlerts.state !== "paused") setCallAlertState("reconnecting");
       await wait(Math.min(30_000, 2000 * 2 ** fails));
       if (!live()) return;
-      try { companionInfo = await startCompanion(() => {}); } catch {}
+      // Stopped on the phone: keep checking (at most every 30 s) and pick up again once they press Start.
+      try { companionInfo = await startCompanion(() => {}); if (callAlerts.state === "paused") setCallAlertState("reconnecting"); }
+      catch (e) { if (e instanceof CompanionPaused) setCallAlertState("paused"); }
     }
   } catch (e) {
     if (!live()) return;
     if (e?.outdated) setCallAlertState("outdated");
-    else setCallAlertState("error", e?.message || String(e));
+    else if (e instanceof CompanionPaused) {
+      setCallAlertState("paused");
+      setTimeout(() => { if (live() && callAlerts.state === "paused") startCallAlerts(); }, 15_000);
+    } else {
+      setCallAlertState("error", e?.message || String(e));
+      // Often the companion was just stopping or starting: try again a little later, as long as
+      // this phone is still the one connected and nothing else restarted the alerts meanwhile.
+      setTimeout(() => { if (live() && callAlerts.state === "error") startCallAlerts(); }, 15_000);
+    }
   }
 }
 
@@ -2397,7 +2763,9 @@ async function streamCallEvents(gen) {
   const watchdog = setInterval(async () => {
     if (checking || Date.now() - lastSeen < 50_000) return;
     checking = true;
-    const ok = await Promise.race([sh("echo ok").then((o) => /ok/.test(o), () => false), wait(8000).then(() => false)]);
+    // Two tries: a phone with its screen off can take a while to wake its Wi‑Fi for the first one.
+    const ask = (ms) => Promise.race([sh("echo ok").then((o) => /ok/.test(o), () => false), wait(ms).then(() => false)]);
+    const ok = (await ask(8000)) || (adb === phone && await ask(15_000));
     checking = false;
     if (adb !== phone || gen !== callAlerts.gen) return;
     if (ok) { lastSeen = Date.now(); socket.close().catch(() => {}); return; } // link fine, stream stuck: reopen it
@@ -2564,14 +2932,14 @@ async function callAction(what) {
 // WhatsApp, SMS, email… everything the phone shows, mirrored live over the same "events" stream
 // (NotifListener.kt). Each one can be answered (the app's own Reply, as on a smartwatch), its
 // buttons pressed ("Mark as read"…), or dismissed on the phone. Needs "Notification access" for the
-// companion, which Droid Desk turns on over adb the first time the person switches this on.
+// companion, which Andromon turns on over adb the first time the person switches this on.
 const NOTIF_LISTENER = `${COMPANION_PKG}/${COMPANION_PKG}.NotifListener`;
 const DEFAULT_QUICK = ["OK", "On my way", "Can't talk now, I'll call you later", "Thanks!", "👍"];
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const notifs = {
-  on: lsGet("dd.notifs", false), popups: lsGet("dd.notifPopups", true),
-  muted: new Set(lsGet("dd.notifMuted", [])), quick: lsGet("dd.quickReplies", DEFAULT_QUICK),
+  on: lsGet("andromon.notifs", false), popups: lsGet("andromon.notifPopups", true),
+  muted: new Set(lsGet("andromon.notifMuted", [])), quick: lsGet("andromon.quickReplies", DEFAULT_QUICK),
   items: new Map(), icons: new Map(), status: null, toasts: new Map(), sysIds: new Map(), seq: 0,
 };
 
@@ -2595,11 +2963,13 @@ function renderNotifCard() {
   };
   const st = notifs.status;
   let text;
-  if (!notifs.on) text = "Off. Turn on in Settings to see the phone's notifications here (WhatsApp, SMS, email…) and answer them from this computer. This gives Droid Desk Companion “Notification access” on the phone.";
+  if (!notifs.on) text = "Off. Turn on in Settings to see the phone's notifications here (WhatsApp, SMS, email…) and answer them from this computer. This gives Andromon Companion “Notification access” on the phone.";
   else if (!adb) text = "Connect a phone to see its notifications.";
-  else if (callAlerts.state === "missing" || callAlerts.state === "outdated") text = callAlerts.state === "missing" ? "Needs the Droid Desk Companion app on the phone." : "Needs a newer Droid Desk Companion on the phone.";
+  else if (callAlerts.state === "missing" || callAlerts.state === "outdated") text = callAlerts.state === "missing" ? "Needs the Andromon Companion app on the phone." : "Needs a newer Andromon Companion on the phone.";
+  else if (callAlerts.state === "paused") text = "The PC link is stopped on the phone. Tap Start in Andromon Companion › PC link to turn it back on.";
+  else if (!st && callAlerts.state === "error") text = `Couldn't reach Andromon Companion on the phone${callAlerts.detail ? ` (${callAlerts.detail})` : ""}. Trying again shortly…`;
   else if (!st) text = "Starting…";
-  else if (!st.access) text = "The phone hasn't given Droid Desk Companion “Notification access” yet.";
+  else if (!st.access) text = "The phone hasn't given Andromon Companion “Notification access” yet.";
   else text = "On. New notifications pop up here; reply, use their buttons or dismiss them on the phone.";
   const main = el("div", { className: "ctl" }, el("div", {}, el("div", {}, el("b", { textContent: "Phone notifications on this computer" })), el("div", { className: "sub", textContent: text })),
     settingsLink());
@@ -2608,7 +2978,7 @@ function renderNotifCard() {
     const allow = el("button", { className: "btn sm primary", type: "button", textContent: "Allow again" });
     allow.onclick = async () => { busy(allow, true, "…"); await grantNotifAccess(); startCallAlerts(); };
     const open = el("button", { className: "btn sm", type: "button", textContent: "Open the setting on the phone" });
-    open.onclick = () => sh("am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").then(() => toast("Turn on Droid Desk Companion on the phone"), showError);
+    open.onclick = () => sh("am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").then(() => toast("Turn on Andromon Companion on the phone"), showError);
     rows.push(el("div", { className: "toolbar", style: "margin:0" }, allow, open));
   }
   if (adb && notifs.on && (callAlerts.state === "missing" || callAlerts.state === "outdated")) {
@@ -2723,7 +3093,7 @@ function notifCard(n, popup) {
     const mute = el("button", { type: "button", textContent: notifs.muted.has(n.pkg) ? "Unmute" : "Mute", title: `Pop-ups from ${n.app}` });
     mute.onclick = () => {
       notifs.muted.has(n.pkg) ? notifs.muted.delete(n.pkg) : notifs.muted.add(n.pkg);
-      lsSet("dd.notifMuted", [...notifs.muted]); renderNotifs(); renderNotifCard();
+      lsSet("andromon.notifMuted", [...notifs.muted]); renderNotifs(); renderNotifCard();
     };
     head.append(mute);
   }
@@ -2831,30 +3201,36 @@ function closeNotifToast(key) {
 // We decode with WebCodecs (hardware) and send touches/keys back over the control socket.
 const SCRCPY_VERSION = "3.3.3";
 const MIRROR_QUALITY = {
+  low: { maxSize: 960, videoBitRate: 2_000_000 },
   fast: { maxSize: 1280, videoBitRate: 4_000_000 },
   balanced: { maxSize: 1920, videoBitRate: 8_000_000 },
   sharp: { maxSize: 0, videoBitRate: 16_000_000 },
 };
+// "Auto" starts here for each kind of link, and steps down this ladder when the picture falls behind.
+const MIRROR_LADDER = ["balanced", "fast", "low"];
+const autoStart = () => (connectedVia === "wifi" ? "fast" : "balanced");
+// Falling behind: the newest picture is this much older than the quickest one seen, for this many seconds in a row.
+const MIRROR_BEHIND_MS = 800, MIRROR_BEHIND_SECONDS = 3;
 let mirror = null; // { client, decoder, canvas, controller, screenOff, stopping }
 
 // The options on the mirror page, remembered between launches; Settings edits the same ones.
 const mirrorPrefs = {
-  QUALITY: [["fast", "Fast (720p · 4 Mbps)"], ["balanced", "Balanced (1080p · 8 Mbps)"], ["sharp", "Sharp (full resolution · 16 Mbps)"]],
+  QUALITY: [["auto", "Auto (adjusts to the cable or Wi‑Fi)"], ["low", "Low (540p · 2 Mbps, weak Wi‑Fi)"], ["fast", "Fast (720p · 4 Mbps)"], ["balanced", "Balanced (1080p · 8 Mbps)"], ["sharp", "Sharp (full resolution · 16 Mbps)"]],
   SOURCE: [["screen", "Phone screen"], ["back", "Back camera"], ["front", "Front camera"]],
   FPS: [["60", "Up to 60 a second"], ["30", "Up to 30 a second"], ["15", "Up to 15 a second"]],
   CODEC: [["h264", "H.264 (works everywhere)"], ["h265", "H.265 (sharper at the same speed)"]],
   get() {
-    let p = {}; try { p = JSON.parse(localStorage.getItem("dd.mirror")) || {}; } catch {}
+    let p = {}; try { p = JSON.parse(localStorage.getItem("andromon.mirror")) || {}; } catch {}
     const one = (list, v, d) => (list.some(([id]) => id === String(v)) ? v : d);
     return {
-      quality: one(this.QUALITY, p.quality, "balanced"), source: one(this.SOURCE, p.source, "screen"),
+      quality: one(this.QUALITY, p.quality, "auto"), source: one(this.SOURCE, p.source, "screen"),
       audio: p.audio !== false, screenOff: p.screenOff === true, fps: Number(one(this.FPS, p.fps, 60)),
       codec: one(this.CODEC, p.codec, "h264"), touches: p.touches === true, awake: p.awake !== false,
       lockOnStop: p.lockOnStop === true, clipboard: p.clipboard !== false,
     };
   },
   set(patch) {
-    try { localStorage.setItem("dd.mirror", JSON.stringify({ ...this.get(), ...patch })); } catch {}
+    try { localStorage.setItem("andromon.mirror", JSON.stringify({ ...this.get(), ...patch })); } catch {}
     this.show();
   },
   // The mirror page only says what is chosen; the options themselves are in Settings.
@@ -2869,8 +3245,12 @@ const mirrorPrefs = {
 };
 mirrorPrefs.show();
 $("mirrorSettings").addEventListener("click", () => show("settings"));
-// A control's label sits in a <span> beside its icon.
-const keyLabel = (btn, text) => { btn.querySelector("span").textContent = text; };
+// The controls are icons only: a control's name is its tooltip and what screen readers say.
+// `shown` is short text next to the icon, used only by Record for its running time.
+const keyLabel = (btn, text, shown = "") => {
+  btn.title = text; btn.setAttribute("aria-label", text);
+  const s = btn.querySelector("span"); if (s) s.textContent = shown;
+};
 
 // The control grid: [key, label, tooltip, icon] in named groups. What each does is in KEY_BUTTONS below.
 const MIRROR_KEYS = [
@@ -2879,36 +3259,49 @@ const MIRROR_KEYS = [
     ["closepanels", "Close panels", "Close the notification shade and quick settings", "panel-top-close"]]],
   ["Sound and power", [["voldown", "Vol −", "Volume down", "volume-1"], ["volup", "Vol +", "Volume up", "volume-2"], ["mutephone", "Mute phone", "Mute or unmute the phone's own sound", "volume-x"],
     ["power", "Power", "Power button", "power"], ["lock", "Lock", "Lock the phone (screen off)", "lock"], ["screen", "Screen off", "Turn the phone's own display off or on; mirroring continues", "eye-off", "mirrorScreenToggle"]]],
-  ["Media and brightness", [["prev", "Previous", "Previous track", "skip-back"], ["play", "Play / pause", "Play or pause", "play"], ["next", "Next", "Next track", "skip-forward"],
-    ["bdown", "Dimmer", "Brightness down", "sun-dim"], ["bup", "Brighter", "Brightness up", "sun"], ["rotate", "Rotate", "Rotate the phone's screen", "rotate-ccw"]]],
+  // In pairs, as the right-hand strip is two icons wide: Previous | Next, Play | Rotate, Dimmer | Brighter.
+  ["Media and brightness", [["prev", "Previous", "Previous track", "skip-back"], ["next", "Next", "Next track", "skip-forward"], ["play", "Play / pause", "Play or pause", "play"],
+    ["rotate", "Rotate", "Rotate the phone's screen", "rotate-ccw"], ["bdown", "Dimmer", "Brightness down", "sun-dim"], ["bup", "Brighter", "Brightness up", "sun"]]],
   ["View", [["full", "Full screen", "Fill this computer's screen", "maximize"], ["zoom", "Actual size", "Show the picture at its real size, or fit it to the window", "zoom-in"],
-    ["ontop", "Keep on top", "Keep this window above other windows while mirroring", "pin"]]],
+    ["ontop", "Keep on top", "Keep this window above other windows while mirroring", "pin"],
+    ["blurshot", "Blur frames", "Blur personal data in saved and copied frames (on or off; the same as Settings › Screenshot)", "eye-off"]]],
   ["Capture", [["shot", "Save frame", "Save the current picture as a PNG file", "camera"], ["copyframe", "Copy frame", "Copy the current picture to this computer's clipboard", "copy"],
     ["paste", "Paste", "Paste this computer's clipboard text on the phone", "clipboard-paste"], ["audio", "Mute", "Mute or unmute the phone's sound on this computer", "headphones"]]],
 ];
-$("mirrorKeys").replaceChildren(...MIRROR_KEYS.flatMap(([group, keys]) => [
-  el("div", { className: "mr-grp", textContent: group }),
-  ...keys.map(([k, label, title, ic, id]) => {
-    const b = el("button", { className: "mr-key", type: "button", title }, icon(ic), el("span", { textContent: label }));
+// Record sits at the end of the Capture row, two cells wide so its running time fits.
+const recordKey = (() => {
+  const b = el("button", { className: "mr-key mr-rec", type: "button", id: "mirrorRecord", title: "Record the mirrored screen (and sound) to an MP4 file" }, icon("circle-dot"), el("span"));
+  b.setAttribute("aria-label", "Record");
+  b.dataset.k = "record"; return b;
+})();
+// Two vertical strips beside the phone: Navigation on the left, the other groups on the right,
+// with a thin line between groups instead of a heading.
+const mirrorKeyGroup = ([group, keys]) => {
+  const row = el("div", { className: "mr-grp" }, ...keys.map(([k, label, title, ic, id]) => {
+    const b = el("button", { className: "mr-key", type: "button", title }, icon(ic));
+    b.setAttribute("aria-label", label);
     b.dataset.k = k; if (id) b.id = id;
     return b;
-  }),
-]), (() => {
-  const b = el("button", { className: "mr-key mr-rec", type: "button", id: "mirrorRecord", title: "Record the mirrored screen (and sound) to an MP4 file" }, icon("circle-dot"), el("span", { textContent: "Record" }));
-  b.dataset.k = "record"; return b;
-})());
+  }), ...(group === "Capture" ? [recordKey] : []));
+  row.setAttribute("role", "group"); row.setAttribute("aria-label", group);
+  return row;
+};
+$("mirrorNav").replaceChildren(...MIRROR_KEYS.filter(([g]) => g === "Navigation").map(mirrorKeyGroup));
+$("mirrorKeys").replaceChildren(...MIRROR_KEYS.filter(([g]) => g !== "Navigation").map(mirrorKeyGroup));
+const mirrorButtons = () => document.querySelectorAll("#mirrorNav button, #mirrorKeys button");
 
 function mirrorUi(on) {
   $("mirrorStart").hidden = on; $("mirrorStop").hidden = !on;
+  if (on) labelShortcuts();
   $("mirrorText").disabled = !on; $("mirrorType").querySelector("button").disabled = !on;
   if (!on) { // the view options end with the mirroring
     $("mirrorStage").classList.remove("actual");
     for (const k of ["zoom", "ontop"]) $("mirrorKeys").querySelector(`[data-k="${k}"]`).classList.remove("on");
-    globalThis.droidDesk?.win?.setOnTop(false).catch(() => {});
+    globalThis.andromon?.win?.setOnTop(false).catch(() => {});
   }
   $("mirrorKeys").querySelector('[data-k="audio"]').hidden = true;
   recUi(null);
-  for (const b of $("mirrorKeys").querySelectorAll("button")) b.disabled = !on;
+  for (const b of mirrorButtons()) b.disabled = !on && b.dataset.k !== "blurshot";
   $("mirrorIdle").hidden = on; $("mirrorStage").hidden = !on;
   $("mirrorRoot").classList.toggle("on", on);
   if (!on) { $("mirrorInfo").textContent = "Not mirroring"; keyLabel($("mirrorScreenToggle"), "Screen off"); $("mirrorScreenToggle").classList.remove("on"); }
@@ -2916,7 +3309,8 @@ function mirrorUi(on) {
 }
 mirrorUi(false);
 
-async function startMirror() {
+// `level` (a MIRROR_QUALITY key) is only given when Auto restarts the mirroring at a lower quality.
+async function startMirror(level) {
   if (!adb || mirror) return;
   if (!WebCodecsVideoDecoder.isSupported) throw new Error("This computer's browser engine can't decode video (WebCodecs missing).");
   const btn = $("mirrorStart"); busy(btn, true, "Starting…");
@@ -2924,13 +3318,15 @@ async function startMirror() {
   let client;
   try {
     const res = await fetch("scrcpy-server.jar");
-    if (!res.ok) throw new Error("scrcpy-server.jar is missing from this build of Droid Desk.");
+    if (!res.ok) throw new Error("scrcpy-server.jar is missing from this build of Andromon.");
     const jar = await res.blob();
     await AdbScrcpyClient.pushServer(adb, jar.stream(), DefaultServerPath);
 
     info.textContent = "Starting…";
     const prefs = mirrorPrefs.get(); // Settings › Screen mirror
-    const q = MIRROR_QUALITY[prefs.quality] || MIRROR_QUALITY.balanced;
+    const auto = prefs.quality === "auto";
+    level = level || (auto ? autoStart() : prefs.quality);
+    const q = MIRROR_QUALITY[level] || MIRROR_QUALITY.balanced;
     const source = prefs.source; // screen | back | front
     // H.265 only when this computer can decode it; a phone that can't encode it falls back below.
     let codec = prefs.codec;
@@ -2973,18 +3369,59 @@ async function startMirror() {
   client.output.pipeTo(new WritableStream({ write(line) { log.push(line); if (log.length > 40) log.shift(); console.debug("[scrcpy]", line); } })).catch(() => {});
 
   const canvas = $("mirrorCanvas");
-  const renderer = WebGLVideoFrameRenderer.isSupported ? new WebGLVideoFrameRenderer(canvas) : new BitmapVideoFrameRenderer(canvas);
+  // One renderer for the canvas, kept across mirror starts: a new one would leave the old one's
+  // program and texture (holding the last picture) in the canvas's graphics context.
+  const renderer = mirrorRenderer ??= WebGLVideoFrameRenderer.isSupported ? new WebGLVideoFrameRenderer(canvas) : new BitmapVideoFrameRenderer(canvas);
   const video = await client.videoStream;
   const decoder = new WebCodecsVideoDecoder({ codec: video.metadata.codec, renderer });
   const controller = client.controller;
-  const m = mirror = { client, decoder, canvas, controller, screenOff: false, stopping: false, log, videoConfig: null, rec: null, audio: null };
+  const prefsNow = mirrorPrefs.get();
+  const m = mirror = { client, decoder, canvas, controller, screenOff: false, stopping: false, log, videoConfig: null, rec: null, audio: null,
+    level: MIRROR_QUALITY[level] ? level : "balanced", auto: prefsNow.quality === "auto", via: connectedVia,
+    stats: { frames: 0, fps: 0, lagMs: 0, minOffset: Infinity, lastPts: -1, behind: 0, hinted: false } };
 
   const showSize = () => {
-    info.textContent = `${video.metadata.deviceName || "Phone"} · ${decoder.width || video.width}×${decoder.height || video.height}`;
+    const st = m.stats;
+    info.textContent = [
+      `${video.metadata.deviceName || "Phone"} · ${decoder.width || video.width}×${decoder.height || video.height}`,
+      st.fps ? `${st.fps} fps` : "",
+      m.via === "wifi" ? "Wi‑Fi" : "USB",
+      m.auto ? `Auto: ${{ low: "Low", fast: "Fast", balanced: "Balanced" }[m.level] || m.level}` : "",
+      st.lagMs >= 300 ? `${(st.lagMs / 1000).toFixed(1)} s behind` : "",
+    ].filter(Boolean).join(" · ");
   };
   decoder.sizeChanged(showSize);
+  // How far behind the phone the picture is: each frame's arrival time minus the time the phone
+  // captured it (pts), compared with the quickest frame so far. Clocks differ, but only the change counts.
+  const measure = (packet) => {
+    if (packet.type !== "data" || packet.pts === undefined) return;
+    const st = m.stats, pts = Number(packet.pts);
+    if (pts < st.lastPts) st.minOffset = Infinity; // the phone restarted its encoder (rotation): start over
+    st.lastPts = pts; st.frames++;
+    const offset = performance.now() * 1000 - pts;
+    if (offset < st.minOffset) st.minOffset = offset;
+    st.lagMs = Math.max(0, (offset - st.minOffset) / 1000);
+  };
+  m.statsTimer = setInterval(() => {
+    const st = m.stats;
+    st.fps = st.frames; st.frames = 0;
+    if (!st.fps) st.lagMs = 0; // nothing moved on the phone: nothing to be behind on
+    st.behind = st.lagMs > MIRROR_BEHIND_MS ? st.behind + 1 : 0;
+    showSize();
+    if (st.behind < MIRROR_BEHIND_SECONDS || m.stopping) return;
+    st.behind = 0;
+    const next = MIRROR_LADDER[MIRROR_LADDER.indexOf(m.level) + 1];
+    if (m.auto && next && !m.rec) {
+      // Waiting doesn't help: what is queued on the way has to be thrown away, so start again lighter.
+      stopMirror().then(() => startMirror(next)).then(() => toast(`The connection couldn't keep up, so the picture quality was lowered (${next})`)).catch(showError);
+    } else if (!st.hinted) {
+      st.hinted = true;
+      toast(m.auto ? "The picture is falling behind the phone. Move closer to the Wi‑Fi router or use the cable."
+        : "The picture is falling behind the phone. Pick a lower quality (or Auto) in Settings › Screen mirror.");
+    }
+  }, 1000);
   // Every packet also passes by the recorder, which copies it into an MP4 while recording is on.
-  const tap = new TransformStream({ transform(packet, ctl) { recordVideoPacket(m, packet); ctl.enqueue(packet); } });
+  const tap = new TransformStream({ transform(packet, ctl) { measure(packet); recordVideoPacket(m, packet); ctl.enqueue(packet); } });
   video.stream.pipeThrough(tap).pipeTo(decoder.writable).catch((e) => { if (mirror && !mirror.stopping) console.warn("video stream ended", e); });
   // The audio stream must always be consumed (or it stalls the connection), even if it fails to start.
   client.audioStream?.then((meta) => startAudio(m, meta)).catch((e) => console.warn("audio", e));
@@ -3012,6 +3449,7 @@ async function startMirror() {
 async function stopMirror(message) {
   const m = mirror; if (!m) return;
   m.stopping = true; mirror = null;
+  clearInterval(m.statsTimer);
   await stopRecording(m); // save what was recorded so far
   try { if (m.screenOff) await m.controller?.setScreenPowerMode(AndroidScreenPowerMode.Normal); } catch {}
   try { await m.client.close(); } catch {}
@@ -3032,15 +3470,20 @@ function startAudio(m, meta) {
   if (m.stopping || typeof AudioDecoder === "undefined") { meta.stream.pipeTo(sink).catch(() => {}); return; }
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: "interactive" });
   const gain = ctx.createGain(); gain.gain.value = audioMuted ? 0 : 1; gain.connect(ctx.destination);
-  let next = 0;
+  // Sound is scheduled a little ahead (the jitter buffer). Wi‑Fi delivers in bursts, so it starts
+  // with more, and each gap in the sound adds a little more, up to a quarter of a second.
+  let next = 0, ahead = m.via === "wifi" ? 0.12 : 0.06;
   const decoder = new AudioDecoder({
     output(data) {
       try {
         const buf = ctx.createBuffer(data.numberOfChannels, data.numberOfFrames, data.sampleRate);
         for (let c = 0; c < data.numberOfChannels; c++) data.copyTo(buf.getChannelData(c), { planeIndex: c, format: "f32-planar" });
         const now = ctx.currentTime;
-        // Keep ~60 ms of buffer; if playback fell behind or a backlog built up, restart the schedule.
-        if (next < now + 0.01 || next > now + 0.35) next = now + 0.06;
+        if (next < now + 0.01) { // ran dry: a gap was heard
+          if (next) ahead = Math.min(0.25, ahead + 0.03);
+          next = now + ahead;
+        } else if (next > now + ahead + 0.3) next = now + ahead; // a backlog built up: catch up
+
         const src = ctx.createBufferSource(); src.buffer = buf; src.connect(gain); src.start(next);
         next += buf.duration;
       } finally { data.close(); }
@@ -3073,26 +3516,38 @@ function setMuted(on) {
   keyLabel(mute, on ? "Unmute" : "Mute"); mute.classList.toggle("on", on);
 }
 
+let mirrorRenderer = null; // see startMirror
+
 // --- recording to MP4 (Mediabunny muxes the phone's own H.264 + Opus packets; nothing is re-encoded) ---
-const REC_LIMIT = 1.5 * 1024 ** 3; // the file is built in memory; stop before it gets too big
+// The file is written to disk as it's recorded (the place is asked for at the start), so a long recording
+// costs no memory. Where saving straight to a file isn't possible, it's built in memory and capped.
+const REC_LIMIT = 1.5 * 1024 ** 3;
 const hex2 = (n) => n.toString(16).padStart(2, "0");
 const bytesEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const fileStamp = () => new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 
 async function startRecording() {
-  const m = mirror; if (!m || m.rec) return;
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const m = mirror; if (!m || m.rec || m.recPicking) return;
+  let file;
+  m.recPicking = true;
+  try { file = await saveStream(`recording-${fileStamp()}.mp4`, "MP4 video"); }
+  finally { m.recPicking = false; }
+  if (file === null) return; // cancelled
+  if (mirror !== m || m.rec) { file?.abort(); return; } // the mirror stopped while the save window was open
+  const output = file
+    ? new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: new StreamTarget(file.writable, { chunked: true }) })
+    : new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const video = new EncodedVideoPacketSource("avc");
   output.addVideoTrack(video);
   let audio = null;
   if (m.audio) { audio = new EncodedAudioPacketSource("opus"); output.addAudioTrack(audio); }
   await output.start();
-  const rec = m.rec = { output, video, audio, t0: null, bytes: 0, started: 0, queue: Promise.resolve(), error: null, audioStarted: false, stopping: false };
+  const rec = m.rec = { output, file, video, audio, t0: null, bytes: 0, started: 0, queue: Promise.resolve(), error: null, audioStarted: false, stopping: false };
   // Packets must reach the muxer in order, one at a time.
   rec.add = (source, packet, meta) => {
     rec.bytes += packet.data.byteLength;
     rec.queue = rec.queue.then(() => source.add(packet, meta)).catch((e) => { rec.error ||= e; });
-    if (rec.bytes > REC_LIMIT) stopRecording(m, "Recording stopped at 1.5 GB and saved. Start a new one to keep going.");
+    if (!rec.file && rec.bytes > REC_LIMIT) stopRecording(m, "Recording stopped at 1.5 GB and saved. Start a new one to keep going.");
   };
   // Ask the phone for a key frame now rather than waiting for the next one (up to 10 s).
   m.controller?.resetVideo?.().catch(() => {});
@@ -3145,13 +3600,15 @@ async function stopRecording(m, message) {
   recUi(m);
   try {
     await rec.queue;
-    if (rec.t0 == null) { await rec.output.cancel(); toast("Nothing was recorded yet"); return; }
+    if (rec.t0 == null) { await rec.file?.abort(); await rec.output.cancel(); toast("Nothing was recorded yet"); return; }
     if (rec.error) throw rec.error;
     await rec.output.finalize();
+    if (rec.file) { toast(message || `Saved ${rec.file.name} (${fmtSize(rec.bytes)})`); return; }
     const buf = rec.output.target.buffer;
     download(new Blob([buf], { type: "video/mp4" }), `recording-${fileStamp()}.mp4`);
     toast(message || `Saved recording (${fmtSize(buf.byteLength)})`);
   } catch (e) {
+    rec.file?.abort();
     showError(new Error("Couldn't save the recording: " + (e?.message || e)));
   }
 }
@@ -3161,9 +3618,9 @@ function recUi(m) {
   const rec = m === mirror ? m?.rec : null;
   b.classList.toggle("rec-on", !!rec);
   if (!rec) { keyLabel(b, "Record"); return; }
-  if (rec.t0 == null) { keyLabel(b, "Waiting for picture…"); return; }
-  const s = Math.floor((Date.now() - rec.started) / 1000);
-  keyLabel(b, `Stop ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · ${fmtSize(rec.bytes)}`);
+  if (rec.t0 == null) { keyLabel(b, "Waiting for picture…", "…"); return; }
+  const s = Math.floor((Date.now() - rec.started) / 1000), time = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  keyLabel(b, `Stop recording (${time}, ${fmtSize(rec.bytes)})`, time);
 }
 
 function setPhoneScreen(on) {
@@ -3254,8 +3711,25 @@ async function pressBack() {
   await mirror?.controller?.backOrScreenOn(AndroidKeyEventAction.Up).catch(() => {});
 }
 const META = (e) => (e.shiftKey ? 1 : 0) | (e.altKey ? 2 : 0) | (e.ctrlKey ? 0x1000 : 0);
+// Keyboard shortcuts for the controls (Settings › Screen mirror; ./shortcuts.js). A key that is a
+// shortcut runs its control and doesn't reach the phone, its release included.
+const swallowedKeys = new Set();
+function runShortcut(e) {
+  const combo = comboOf(e); if (!combo || !usableCombo(combo)) return false;
+  const action = Object.entries(loadShortcuts()).find(([, c]) => c === combo)?.[0];
+  if (!action || !KEY_BUTTONS[action]) return false;
+  e.preventDefault(); e.stopPropagation(); swallowedKeys.add(e.code);
+  if (!e.repeat || action === "volup" || action === "voldown") Promise.resolve(KEY_BUTTONS[action]()).catch(showError);
+  return true;
+}
+// Elsewhere on the mirror page (not in a text box) the shortcuts work too.
+document.addEventListener("keydown", (e) => {
+  if (current !== "mirror" || !mirror || e.target === mc || e.isComposing || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || "") || e.target?.isContentEditable) return;
+  runShortcut(e);
+});
 mc.addEventListener("keydown", (e) => {
   if (!mirror || e.isComposing) return;
+  if (runShortcut(e)) return;
   if ((e.metaKey || e.ctrlKey) && (e.key === "v" || e.key === "V")) return; // handled by the paste event
   if (autotest?.captureKey(e)) return;
   if (e.metaKey) return; // leave Cmd shortcuts to the PC
@@ -3269,6 +3743,7 @@ mc.addEventListener("keydown", (e) => {
   mirror.controller?.injectKeyCode({ action: AndroidKeyEventAction.Down, keyCode: code, repeat: e.repeat ? 1 : 0, metaState: META(e) }).catch(() => {});
 });
 mc.addEventListener("keyup", (e) => {
+  if (swallowedKeys.delete(e.code)) { e.preventDefault(); return; }
   if (!mirror || e.metaKey || e.key === "Escape" || (e.key.length === 1 && !e.ctrlKey && !e.altKey)) return;
   const code = AndroidKeyCode[e.code];
   if (code === undefined) return;
@@ -3287,6 +3762,15 @@ document.addEventListener("paste", (e) => {
 // --- toolbar ---
 $("mirrorStart").addEventListener("click", () => startMirror().catch(showError));
 $("mirrorStop").addEventListener("click", () => stopMirror());
+// Settings › Screenshot › Blur personal data, for the Screenshot page and Save frame / Copy frame (./shotblur.js).
+// The phone's screen is read with Test automation's reader (set up at the end of this file).
+const shotBlur = initShotBlur({ el, toast, readScreen: () => autotest.readScreen(), helperUp: () => autotest.helperUp() });
+/** The mirrored picture as a PNG, blurred when asked (the camera is not the phone's screen); null = nothing to use. */
+async function mirrorFrame(verb) {
+  const m = mirror; if (!m) return null;
+  if (!shotPrefs.get().blur || mirrorPrefs.get().source !== "screen") return m.decoder.snapshot();
+  return (await shotBlur.capture(() => m.decoder.snapshot(), { verb }))?.blob || null;
+}
 const KEY_BUTTONS = {
   back: pressBack,
   home: () => pressKey(AndroidKeyCode.AndroidHome),
@@ -3298,7 +3782,7 @@ const KEY_BUTTONS = {
   rotate: () => mirror?.controller?.rotateDevice(),
   screen: () => setPhoneScreen(mirror?.screenOff),
   shot: async () => {
-    const blob = await mirror?.decoder.snapshot();
+    const blob = await mirrorFrame("Save");
     if (blob) download(blob, `mirror-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
   },
   record: () => (mirror?.rec ? stopRecording(mirror) : startRecording()),
@@ -3313,11 +3797,12 @@ const KEY_BUTTONS = {
   zoom: () => { const on = $("mirrorStage").classList.toggle("actual"); mirrorKey("zoom").classList.toggle("on", on); keyLabel(mirrorKey("zoom"), on ? "Fit window" : "Actual size"); },
   ontop: async () => {
     const b = mirrorKey("ontop"), on = !b.classList.contains("on");
-    await globalThis.droidDesk?.win?.setOnTop(on);
+    await globalThis.andromon?.win?.setOnTop(on);
     b.classList.toggle("on", on);
   },
+  blurshot: () => { shotPrefs.set({ blur: !shotPrefs.get().blur }); toast(shotPrefs.get().blur ? "Saved and copied frames will be blurred" : "Saved and copied frames won't be blurred"); },
   copyframe: async () => {
-    const blob = await mirror?.decoder.snapshot(); if (!blob) return;
+    const blob = await mirrorFrame("Copy"); if (!blob) return;
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     toast("Picture copied");
   },
@@ -3328,16 +3813,36 @@ const KEY_BUTTONS = {
   },
 };
 const mirrorKey = (k) => $("mirrorKeys").querySelector(`[data-k="${k}"]`);
-// The text box under the controls: whatever is typed there is pasted on the phone, in any language.
+// The Blur frames key shows whether Blur personal data is on, wherever it was switched.
+function renderBlurKey() {
+  const b = mirrorKey("blurshot"), on = shotPrefs.get().blur;
+  b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+}
+addEventListener("andromon:shotprefs", renderBlurKey);
+renderBlurKey();
+// Each control's tooltip names its shortcut, refreshed when mirroring starts (they may have changed).
+function labelShortcuts() {
+  const map = loadShortcuts();
+  for (const b of mirrorButtons()) {
+    const base = (b.dataset.tip ??= b.title);
+    b.title = map[b.dataset.k] ? `${base} (${comboLabel(map[b.dataset.k])})` : base;
+  }
+}
+// Files dropped on the phone's screen: apps are installed, other files copied (./mirrordrop.js).
+initMirrorDrop({
+  $, el, toast, showError, fmtSize, sh, shQuote, withSync, cc, isMirroring: () => !!mirror,
+  openPackageFiles, selectSplits, getDeviceFacts, runInstall,
+});
+// The text box under the phone's screen: whatever is typed there is pasted on the phone, in any language.
 $("mirrorType").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = $("mirrorText").value; if (!text || !mirror?.controller) return;
   mirror.controller.setClipboard({ sequence: 0n, paste: true, content: text }).then(() => { $("mirrorText").value = ""; }, showError);
 });
-$("mirrorKeys").addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-k]"); if (!b || !mirror) return;
+for (const strip of [$("mirrorNav"), $("mirrorKeys")]) strip.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-k]"); if (!b || (!mirror && b.dataset.k !== "blurshot")) return; // Blur frames can be set before mirroring
   Promise.resolve(KEY_BUTTONS[b.dataset.k]?.()).catch(showError);
-  if (b.dataset.k !== "full" && b.dataset.k !== "paste") mc.focus();
+  if (mirror && b.dataset.k !== "full" && b.dataset.k !== "paste") mc.focus();
 });
 
 // The Screenshot page lives in ./screenshot.js (set up at the end of this file).
@@ -3351,7 +3856,7 @@ let shotTab = null;
 // "Remove" uninstalls the package for the current user only (pm uninstall -k --user 0): the APK stays
 // on the system partition, so it can always be restored here, and a factory reset brings it back.
 const UAD_URL = "https://raw.githubusercontent.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation/main/resources/assets/uad_lists.json";
-const UAD_CACHE = "droiddesk-uad-v1";
+const UAD_CACHE = "andromon-uad-v1";
 const SAFETY = {
   Recommended: { rank: 1, hint: "Safe to remove for most people." },
   Advanced: { rank: 2, hint: "Removes a feature you may use. Read the description." },
@@ -3424,10 +3929,10 @@ function showDebloatIntro() {
   };
   box.replaceChildren(
     el("h2", { textContent: "Remove pre-installed apps you don't use" }),
-    el("p", { className: "muted", textContent: "Droid Desk uses the package list from Universal Android Debloater Next Generation (UAD-ng), a community project. For thousands of pre-installed Google, manufacturer and carrier packages, it says what each one does and how safe it is to remove." }),
+    el("p", { className: "muted", textContent: "Andromon uses the package list from Universal Android Debloater Next Generation (UAD-ng), a community project. For thousands of pre-installed Google, manufacturer and carrier packages, it says what each one does and how safe it is to remove." }),
     el("ul", { className: "muted" },
       el("li", { textContent: "Removal is for your user only. Nothing is deleted from the system partition, so you can restore any package here, and a factory reset brings everything back." }),
-      el("li", { textContent: "The list (about 2 MB) is downloaded from GitHub once and kept on this computer. It's GPL-3.0 licensed and isn't bundled with Droid Desk." }),
+      el("li", { textContent: "The list (about 2 MB) is downloaded from GitHub once and kept on this computer. It's GPL-3.0 licensed and isn't bundled with Andromon." }),
     ),
     btn,
   );
@@ -3583,7 +4088,7 @@ const parentDir = (p) => String(p || "").replace(/\/[^/]*$/, "");
 function needMedia(kinds) {
   const p = companionInfo?.permissions || {};
   const missing = kinds.filter((k) => p[{ image: "MEDIA_IMAGES", video: "MEDIA_VIDEO", audio: "MEDIA_AUDIO" }[k]] === false);
-  if (missing.length) throw new Error(`The companion doesn't have access to ${missing.includes("audio") ? "music" : "photos and videos"}. On the phone, open Settings › Apps › Droid Desk Companion › Permissions and allow “Photos and videos” / “Music and audio”, or remove the companion so Droid Desk reinstalls it with access.`);
+  if (missing.length) throw new Error(`The companion doesn't have access to ${missing.includes("audio") ? "music" : "photos and videos"}. On the phone, open Settings › Apps › Andromon Companion › Permissions and allow “Photos and videos” / “Music and audio”, or remove the companion so Andromon reinstalls it with access.`);
 }
 
 // ---- thumbnails: requested in batches as tiles scroll into view, cached (LRU) as data URLs ----
@@ -3619,7 +4124,7 @@ async function pumpThumbs() {
         const b64 = got[k.split(":")[1]];
         const url = b64 ? `data:image/jpeg;base64,${b64}` : "";
         thumbs.set(k, url);
-        if (thumbs.size > 3000) thumbs.delete(thumbs.keys().next().value);
+        if (thumbs.size > 1500) thumbs.delete(thumbs.keys().next().value);
         for (const img of imgs) if (url) img.src = url; else img.closest(".mtile, .mcard")?.classList.add("nothumb");
       }
     }
@@ -3629,25 +4134,32 @@ async function pumpThumbs() {
 // ---- reading files from the phone ----
 async function pullBlob(it, onBytes) {
   return withSync(async (s) => {
-    const reader = s.read(it.path).getReader(); const parts = []; let n = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value.slice()); n += value.length; onBytes?.(n); }
-    return new Blob(parts, { type: it.mime || "" });
+    // Folded into the Blob every 16 MB: a Blob made from Blobs only refers to them, and the browser keeps
+    // big ones on disk, so the page holds at most 16 MB of a large video at a time instead of all of it.
+    const reader = s.read(it.path).getReader(); let parts = [], held = 0, n = 0, blob = new Blob([]);
+    for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      parts.push(value.slice()); held += value.length; n += value.length; onBytes?.(n);
+      if (held >= 16 * 1024 * 1024) { blob = new Blob([blob, ...parts]); parts = []; held = 0; }
+    }
+    return new Blob([blob, ...parts], { type: it.mime || "" });
   });
 }
 
 /** Copies items into a folder the person picks (album/artist subfolders when there are several). */
 async function exportMedia(items, progressEl, groupOf) {
   if (!items.length) return;
-  if (!window.showDirectoryPicker) throw new Error("Copying to a folder needs the Droid Desk desktop app.");
+  if (!window.showDirectoryPicker) throw new Error("Copying to a folder needs the Andromon desktop app.");
   let dir;
-  try { dir = await window.showDirectoryPicker({ id: "droiddesk-media", mode: "readwrite" }); }
+  try { dir = await window.showDirectoryPicker({ id: "andromon-media", mode: "readwrite" }); }
   catch (e) { if (e.name === "AbortError") return; throw e; }
   const groups = new Set(items.map(groupOf).filter(Boolean));
   const total = items.reduce((s, it) => s + (it.size || 0), 0);
   let done = 0, count = 0, failed = 0;
-  progressEl.hidden = false;
-  const show = (extra = "") => { progressEl.textContent = `Copying ${count} of ${items.length} · ${fmtSize(done)} of ${fmtSize(total)}${extra}`; };
-  const t0 = performance.now();
+  const bar = createProgress({ el, fmtSize });
+  progressEl.replaceChildren(bar.node); progressEl.hidden = false;
+  let current = "";
+  const show = () => bar.update(items.length > 1 ? `Copying ${current} (${Math.min(count + 1, items.length)} of ${items.length})` : `Copying ${current}`, done, total);
   try {
     await withSync(async (s) => {
       for (const it of items) {
@@ -3659,12 +4171,13 @@ async function exportMedia(items, progressEl, groupOf) {
             name = safeFileName(it.name).replace(/(\.[^.]*)?$/, ` (${i})$1`);
           }
           const w = await (await target.getFileHandle(name, { create: true })).createWritable();
+          current = it.name; show();
           const reader = s.read(it.path).getReader();
           try {
             for (;;) {
               const { done: end, value } = await reader.read(); if (end) break;
               await w.write(value.slice()); done += value.length;
-              show(` · ${fmtSize(done / Math.max(0.1, (performance.now() - t0) / 1000))}/s`);
+              show();
             }
             await w.close();
           } catch (e) { await w.abort().catch(() => {}); throw e; }
@@ -3672,7 +4185,7 @@ async function exportMedia(items, progressEl, groupOf) {
         count++; show();
       }
     });
-  } finally { progressEl.hidden = true; }
+  } finally { progressEl.hidden = true; progressEl.replaceChildren(); }
   toast(`Copied ${count - failed} file${count - failed === 1 ? "" : "s"} to “${dir.name}”${failed ? ` · ${failed} failed` : ""}`);
 }
 
@@ -3682,7 +4195,9 @@ async function addMediaFiles(files, dirFor, progressEl) {
   const total = files.reduce((s, f) => s + f.size, 0);
   let done = 0, i = 0;
   const paths = [];
-  progressEl.hidden = false;
+  const bar = createProgress({ el, fmtSize });
+  bar.update(`Adding ${files.length} file${files.length === 1 ? "" : "s"} to the phone…`);
+  progressEl.replaceChildren(bar.node); progressEl.hidden = false;
   try {
     const dirs = new Set(files.map(dirFor));
     for (const d of dirs) await sh(`mkdir -p ${shQuote(d)}`);
@@ -3695,15 +4210,15 @@ async function addMediaFiles(files, dirFor, progressEl) {
           try { await s.stat(`${dir}/${name}`); } catch { break; }
           name = safeFileName(f.name).replace(/(\.[^.]*)?$/, ` (${n})$1`);
         }
-        progressEl.textContent = `Adding ${i} of ${files.length} · ${f.name}`;
-        await s.write({ filename: `${dir}/${name}`, file: f.stream(), permission: 0o660, mtime: Math.floor(f.lastModified / 1000) });
-        done += f.size;
+        const what = files.length > 1 ? `Adding ${f.name} (${i} of ${files.length})` : `Adding ${f.name}`;
+        bar.update(what, done, total);
+        await s.write({ filename: `${dir}/${name}`, file: countBytes(f.stream(), (b) => { done += b; bar.update(what, done, total); }), permission: 0o660, mtime: Math.floor(f.lastModified / 1000) });
         paths.push(`${dir}/${name}`);
       }
     });
-    progressEl.textContent = "Adding to the phone's library…";
+    bar.update("Adding to the phone's library…");
     await cc("media.scan", { paths });
-  } finally { progressEl.hidden = true; }
+  } finally { progressEl.hidden = true; progressEl.replaceChildren(); }
   toast(`Added ${paths.length} file${paths.length === 1 ? "" : "s"} (${fmtSize(total)})`);
   return paths.length;
 }
@@ -3842,20 +4357,25 @@ function renderPhotoSelection() {
 
 function renderPhotoDups() {
   const st = media.photos, byKey = new Map(st.items.map((it) => [mkey(it), it]));
-  const groups = st.dups.map((g) => g.keys.map((k) => byKey.get(k)).filter(Boolean)).filter((g) => g.length > 1);
+  // Exact copies keep the oldest; look-alikes keep the biggest file, usually the best picture of the set.
+  const similar = !!st.dups.similar;
+  const groups = st.dups.map((g) => g.keys.map((k) => byKey.get(k)).filter(Boolean)).filter((g) => g.length > 1)
+    .map((g) => (similar ? [...g].sort((a, b) => b.size - a.size) : g));
   const extra = groups.flatMap((g) => g.slice(1));
-  const selectExtras = el("button", { className: "btn sm primary", textContent: "Select all extra copies", type: "button" });
+  const selectExtras = el("button", { className: "btn sm primary", textContent: similar ? "Select all but the biggest of each" : "Select all extra copies", type: "button" });
   selectExtras.onclick = () => { for (const it of extra) st.sel.add(mkey(it)); renderPhotoDups(); };
   const close = el("button", { className: "btn sm", textContent: "Back to gallery", type: "button" });
   close.onclick = () => { st.dups = null; renderPhotos(); };
   $("phDupHead").hidden = false;
   $("phDupHead").replaceChildren(el("div", { className: "toolbar", style: "margin:0" },
-    el("span", { style: "flex:1", textContent: groups.length
+    el("span", { style: "flex:1", textContent: similar
+      ? (groups.length ? `${groups.length} sets of photos that look alike · ${extra.length} could go · ${fmtSize(extra.reduce((s, it) => s + it.size, 0))}. Look before deleting: the biggest of each set is marked to keep.` : "No photos that look alike were found.")
+      : groups.length
       ? `${groups.length} sets of duplicates · ${extra.length} extra copies · ${fmtSize(extra.reduce((s, it) => s + it.size, 0))} can be freed. The oldest copy in each set is kept.`
       : "No duplicate photos or videos found." }),
     groups.length ? selectExtras : "", close));
   $("phGrid").replaceChildren(...groups.map((g) => el("div", { className: "mgroup card" },
-    el("div", { className: "sub", textContent: `${g.length} copies · ${fmtSize(g[0].size)} each · ${g.map((it) => it.album || "?").filter((v, i, a) => a.indexOf(v) === i).join(", ")}` }),
+    el("div", { className: "sub", textContent: `${g.length} ${similar ? "look alike" : `copies · ${fmtSize(g[0].size)} each`} · ${g.map((it) => it.album || "?").filter((v, i, a) => a.indexOf(v) === i).join(", ")}` }),
     el("div", { className: "mgrid" }, ...g.map((it, i) => photoTile(it, g, i === 0))))));
   renderPhotoSelection();
 }
@@ -3918,10 +4438,16 @@ async function showViewerItem() {
     body);
   $("viewer").hidden = false;
   try {
-    const blob = await pullBlob(it, (n) => { if (v.token === token && it.size > 2e6) body.firstChild.textContent = `Loading ${fmtSize(n)} of ${fmtSize(it.size)}…`; });
+    // Big files show a progress bar while they come over from the phone.
+    let bar = null;
+    const blob = await pullBlob(it, (n) => {
+      if (v.token !== token || it.size <= 2e6) return;
+      if (!bar) { bar = createProgress({ el, fmtSize }); body.replaceChildren(bar.node); }
+      bar.update(`Loading ${it.kind === "video" ? "video" : "photo"} from the phone…`, n, it.size);
+    });
     if (viewer !== v || v.token !== token) return;
     v.url = URL.createObjectURL(blob);
-    const m = it.kind === "video" ? el("video", { src: v.url, controls: true, autoplay: true }) : el("img", { src: v.url, alt: it.name });
+    const m = it.kind === "video" ? videoPlayer({ src: v.url, title: it.name }).node : el("img", { src: v.url, alt: it.name });
     body.replaceChildren(m);
   } catch (e) { if (viewer === v) body.replaceChildren(el("div", { textContent: `Couldn't open: ${e.message}` })); }
 }
@@ -3938,11 +4464,24 @@ $("phAddInput").addEventListener("change", async (e) => {
   const files = [...e.target.files]; e.target.value = "";
   if (!files.length) return;
   const st = media.photos;
-  // Into the album being viewed, otherwise Pictures/Droid Desk or Movies/Droid Desk.
+  // Into the album being viewed, otherwise Pictures/Andromon or Movies/Andromon.
   const albumDir = st.album ? parentDir(st.items.find((it) => (it.album || "(no album)") === st.album)?.path) : "";
   const root = (st.items.find((it) => /^\/storage\/emulated\/\d+\//.test(it.path))?.path.match(/^\/storage\/emulated\/\d+/) || ["/storage/emulated/0"])[0];
-  const dirFor = (f) => albumDir || `${root}/${f.type.startsWith("video/") ? "Movies" : "Pictures"}/Droid Desk`;
+  const dirFor = (f) => albumDir || `${root}/${f.type.startsWith("video/") ? "Movies" : "Pictures"}/Andromon`;
   try { await addMediaFiles(files, dirFor, $("phProgress")); await loadPhotos(true); } catch (err) { showError(err); }
+});
+// Photos that look alike (bursts, retakes, edits): the companion compares small versions of every
+// photo on the phone (a picture fingerprint), so nothing big is copied over.
+$("phSimilar").addEventListener("click", async () => {
+  const b = $("phSimilar"), p = $("phProgress"); busy(b, true, "Comparing…");
+  p.hidden = false; p.textContent = "Comparing every photo on the phone with the others… The first time can take a few minutes with many photos.";
+  try {
+    const groups = await cc("media.similar", { kind: "image" });
+    const dups = groups.map((g) => ({ size: Number(g.totalSize) || 0, keys: (g.ids || []).map((id) => `image:${id}`) })).filter((g) => g.keys.length > 1);
+    dups.similar = true;
+    media.photos.dups = dups; renderPhotos();
+  } catch (e) { showError(/Unknown method/i.test(e?.message) ? new Error("Finding similar photos needs a newer Andromon Companion. Open Messages, Contacts or Photos to update it.") : e); }
+  finally { p.hidden = true; busy(b, false); }
 });
 $("phDups").addEventListener("click", async () => {
   const b = $("phDups"); busy(b, true, "Searching…");
@@ -4058,7 +4597,7 @@ function renderMusicSelection() {
     onChange: renderMusic,
     onExport: (items) => exportMedia(items, $("muProgress"), (it) => it.artist || it.album),
     onDelete: async (items) => {
-      if (st.playing && items.some((it) => mkey(it) === mkey(st.playing))) stopSong();
+      musicDock?.remove(new Set(items.map(mkey)));
       const n = await deleteMedia(items);
       toast(`Deleted ${n} of ${items.length}`);
       st.sel.clear();
@@ -4085,44 +4624,41 @@ function renderMusicDups() {
   renderMusicSelection();
 }
 
-// ---- player: pulls the song over USB, plays it from memory ----
-const songCache = new Map(); // key -> blob URL (last few songs)
-async function playSong(list, index) {
-  const st = media.music, it = list[index]; if (!it) return;
-  st.queue = list; st.qi = index; st.playing = it;
-  const key = mkey(it), token = (st.playToken = (st.playToken || 0) + 1);
-  const box = $("muPlayer");
-  const art = el("img", { alt: "" }); art.dataset.thumb = key;
-  const audio = el("audio", { controls: true, autoplay: true });
-  const status = el("span", { className: "muted small", textContent: "Loading…" });
-  const prev = el("button", { className: "btn sm", textContent: "⏮", type: "button", title: "Previous" }); prev.onclick = () => playSong(list, index - 1); prev.disabled = index === 0;
-  const next = el("button", { className: "btn sm", textContent: "⏭", type: "button", title: "Next" }); next.onclick = () => playSong(list, index + 1); next.disabled = index >= list.length - 1;
-  const close = el("button", { className: "btn sm", textContent: "✕", type: "button", title: "Stop" }); close.onclick = stopSong;
-  box.replaceChildren(art, el("div", { style: "min-width:0;max-width:40%" }, el("b", { textContent: songTitle(it) }), el("div", { className: "muted small", textContent: [it.artist, it.album].filter(Boolean).join(" · ") }), status), prev, audio, next, close);
-  box.hidden = false;
-  if (thumbs.get(key)) art.src = thumbs.get(key); else { thumbWant.set(key, [art]); pumpThumbs(); }
-  if (current === "music") renderMusic();
-  try {
-    let url = songCache.get(key);
-    if (!url) {
-      const blob = await pullBlob(it, (n) => { if (st.playToken === token) status.textContent = `Loading ${fmtSize(n)} of ${fmtSize(it.size)}…`; });
-      url = URL.createObjectURL(blob);
-      songCache.set(key, url);
-      if (songCache.size > 6) { const [k, u] = songCache.entries().next().value; if (k !== key) { URL.revokeObjectURL(u); songCache.delete(k); } }
-    }
-    if (st.playToken !== token) return;
-    status.textContent = `${fmtDuration(it.duration)} · ${fmtSize(it.size)}`;
-    audio.src = url;
-    audio.onended = () => { if (index < list.length - 1) playSong(list, index + 1); };
-  } catch (e) { if (st.playToken === token) status.textContent = `Couldn't play: ${e.message}`; }
+// ---- player: the music dock at the bottom of the window (./player.js); songs come over USB one at a time ----
+const songCache = new Map(); // key -> blob URL (the last few songs, and the next one)
+const songBytes = new Map(); // key -> size, so the cache can be held under SONG_CACHE_BYTES
+const SONG_CACHE_BYTES = 150 * 1024 * 1024;
+let musicDock = null;
+async function songSource(it, onBytes) {
+  const key = mkey(it);
+  let url = songCache.get(key);
+  if (url) { songCache.delete(key); songCache.set(key, url); return url; } // most recently used last
+  const blob = await pullBlob(it, onBytes);
+  url = songCache.get(key) || URL.createObjectURL(blob); // fetched twice at once: keep the first
+  songCache.set(key, url); songBytes.set(key, blob.size);
+  // At most 6 songs and 150 MB (a few lossless albums' worth of tracks), but always the newest two:
+  // the one playing and the next one.
+  const total = () => [...songBytes.values()].reduce((a, b) => a + b, 0);
+  while (songCache.size > 2 && (songCache.size > 6 || total() > SONG_CACHE_BYTES)) {
+    const [k, u] = songCache.entries().next().value; URL.revokeObjectURL(u); songCache.delete(k); songBytes.delete(k);
+  }
+  return url;
 }
-function stopSong() {
-  const st = media.music;
-  st.playing = null; st.playToken = (st.playToken || 0) + 1;
-  $("muPlayer").querySelector("audio")?.pause();
-  $("muPlayer").hidden = true; $("muPlayer").replaceChildren();
-  if (current === "music") renderMusic();
+function playSong(list, index) {
+  musicDock ??= initMusicDock({ fmtSize, toast });
+  musicDock.play(list, index, {
+    key: mkey,
+    source: songSource,
+    meta: (it) => ({ title: songTitle(it), artist: it.artist || "", album: it.album || "", duration: Number(it.duration) / 1000 || 0 }),
+    art: (it, img) => {
+      const key = mkey(it); img.dataset.thumb = key;
+      if (thumbs.get(key)) img.src = thumbs.get(key); else { thumbWant.set(key, [img]); pumpThumbs(); }
+    },
+    onChange: (it) => { media.music.playing = it; if (current === "music") renderMusic(); },
+    onOpen: () => show("music"),
+  });
 }
+function stopSong() { musicDock?.stop(); }
 
 // music toolbar
 $("muView").addEventListener("click", (e) => { const b = e.target.closest("button[data-v]"); if (!b) return; media.music.view = b.dataset.v; media.music.group = null; media.music.dups = null; renderMusic(); });
@@ -4134,7 +4670,7 @@ $("muAddInput").addEventListener("change", async (e) => {
   const files = [...e.target.files]; e.target.value = "";
   if (!files.length) return;
   const root = (media.music.items.find((it) => /^\/storage\/emulated\/\d+\//.test(it.path))?.path.match(/^\/storage\/emulated\/\d+/) || ["/storage/emulated/0"])[0];
-  try { await addMediaFiles(files, () => `${root}/Music/Droid Desk`, $("muProgress")); await loadMusic(true); } catch (err) { showError(err); }
+  try { await addMediaFiles(files, () => `${root}/Music/Andromon`, $("muProgress")); await loadMusic(true); } catch (err) { showError(err); }
 });
 $("muDups").addEventListener("click", async () => {
   const b = $("muDups"); busy(b, true, "Searching…");
@@ -4144,22 +4680,23 @@ $("muDups").addEventListener("click", async () => {
 
 function resetMedia() {
   closeViewer(); stopSong();
+  storageTab?.reset();
   for (const st of [media.photos, media.music]) { st.items = []; st.loaded = false; st.sel.clear(); st.dups = null; }
   thumbs.clear(); thumbWant.clear();
   for (const u of songCache.values()) URL.revokeObjectURL(u);
-  songCache.clear();
+  songCache.clear(); songBytes.clear();
 }
 
 // ---------- Wi‑Fi transfer (LocalSend protocol; network code lives in ../localsend.js) ----------
 // Works with the free, open-source LocalSend app on the phone (or any LocalSend device) on the same
 // Wi‑Fi. No USB or developer options needed. Only available in the desktop app.
-const wifiApi = globalThis.droidDesk?.wifi || null;
+const wifiApi = globalThis.andromon?.wifi || null;
 let wifiState = { running: false, devices: [], incoming: null, method: "auto", link: null };
 const isMac = /Mac/.test(navigator.platform);
 const METHOD_NOTES = {
-  auto: "Direct link for big transfers (100 MB+) when the Wi‑Fi is slow and the phone has Droid Desk Companion; otherwise Same Wi‑Fi.",
-  lan: "Through your Wi‑Fi router. Works with Droid Desk Companion and the LocalSend app; this computer stays on its network.",
-  direct: "This computer joins a private Wi‑Fi from the phone for each transfer (Droid Desk Companion only). Fastest on slow networks; no internet here until it reconnects right after.",
+  auto: "Direct link for big transfers (100 MB+) when the Wi‑Fi is slow and the phone has Andromon Companion; otherwise Same Wi‑Fi.",
+  lan: "Through your Wi‑Fi router. Works with Andromon Companion and the LocalSend app; this computer stays on its network.",
+  direct: "This computer joins a private Wi‑Fi from the phone for each transfer (Andromon Companion only). Fastest on slow networks; no internet here until it reconnects right after.",
 };
 
 // The radar of nearby devices (./wifiradar.js). Clicking a device there is the same as its Send files… button.
@@ -4206,6 +4743,30 @@ function renderMethod() {
   $("wifiMethodNote").textContent = METHOD_NOTES[wifiState.method] || "";
 }
 
+// "Show code": a QR code with this computer's addresses, for Andromon Companion's Send › Scan code
+// when the phone doesn't find the computer by itself (networks that block discovery). It only
+// carries the addresses and the port; the phone still checks who answers there before sending.
+let wifiCodeOpen = false;
+function renderWifiCode() {
+  const s = wifiState, btn = $("wifiCodeBtn"), box = $("wifiCode");
+  const ips = s.running ? (s.addresses || []) : [];
+  if (!ips.length) wifiCodeOpen = false;
+  btn.disabled = !ips.length;
+  btn.textContent = wifiCodeOpen ? "Hide code" : "Show code";
+  box.hidden = !wifiCodeOpen;
+  if (!wifiCodeOpen) { box.replaceChildren(); return; }
+  const text = `andromon://send?ip=${ips.join(",")}&port=${s.port || 53317}`;
+  if (box.dataset.text === text && box.firstChild) return;
+  box.dataset.text = text;
+  const img = qrImage(text);
+  img.alt = "Code with this computer's address";
+  box.replaceChildren(img, el("ol", { className: "small" },
+    el("li", {}, "On the phone, open ", el("b", { textContent: "Andromon Companion" }), " and tap ", el("b", { textContent: "Receive" }), " in the bottom bar."),
+    el("li", {}, "Switch to ", el("b", { textContent: "Send" }), " and tap ", el("b", { textContent: "Scan code" }), "."),
+    el("li", {}, "Point the camera at this code. This computer then appears under “Send to”."),
+    el("li", { className: "muted" }, `Or type the address yourself: ${ips.join(" or ")}`)));
+}
+
 function renderWifi() {
   const s = wifiState;
   $("wifiSwitch").set(s.running);
@@ -4214,6 +4775,7 @@ function renderWifi() {
     : "Off. Turn on to send and receive files over Wi‑Fi.";
   $("wifiScan").disabled = !s.running;
   $("wifiFolder").textContent = s.saveDir || "";
+  renderWifiCode();
   renderMethod();
   const pc = s.running ? s.link?.pc : null;
   $("wifiLink").hidden = !pc;
@@ -4227,7 +4789,7 @@ function renderWifi() {
   wifiSendBtns.clear();
   if (!s.running) { box.replaceChildren(emptyBox("Turn on Wi‑Fi transfer to find nearby devices.")); return; }
   if (!s.devices.length) {
-    box.replaceChildren(emptyBox("Looking for devices… On your phone (same Wi‑Fi), turn on Receive in Droid Desk Companion, or open LocalSend. It appears here within a few seconds."));
+    box.replaceChildren(emptyBox("Looking for devices… On your phone (same Wi‑Fi), turn on Receive in Andromon Companion, or open LocalSend. It appears here within a few seconds."));
     return;
   }
   box.replaceChildren(...s.devices.map((d) => {
@@ -4337,7 +4899,7 @@ function wifiProgress(ev) {
     return;
   }
   const what = ev.dir === "in" ? `Receiving from ${ev.from?.alias || "device"}`
-    : ev.waiting ? `Waiting for ${ev.to} to accept…${ev.direct ? " (Direct link: accept in Droid Desk Companion on the phone)" : ""}`
+    : ev.waiting ? `Waiting for ${ev.to} to accept…${ev.direct ? " (Direct link: accept in Andromon Companion on the phone)" : ""}`
     : `Sending to ${ev.to}${ev.via ? ` via ${ev.via}` : ""}`;
   const bar = el("div", { className: "bar" }, el("i")); bar.firstChild.style.width = Math.round(frac * 100) + "%";
   box.replaceChildren(
@@ -4359,6 +4921,7 @@ if (wifiApi) {
   $("wifiScan").addEventListener("click", () => { wifiApi.scan().catch(showError); toast("Looking for devices…"); setTimeout(refreshWifiLink, 3000); });
   for (const b of document.querySelectorAll('[data-panel="wifi"] .to-settings')) b.addEventListener("click", () => show("settings"));
   $("wifiOpen").addEventListener("click", () => wifiApi.openFolder().catch(showError));
+  $("wifiCodeBtn").addEventListener("click", () => { wifiCodeOpen = !wifiCodeOpen; renderWifiCode(); });
   wifiApi.onEvent((ev) => {
     switch (ev.type) {
       case "devices": {
@@ -4444,7 +5007,7 @@ autotest = initAutotest({
   getAdb: () => adb, getMirror: () => mirror, startMirror, stopMirror,
   openRecBadge, companionPkg: COMPANION_PKG,
 });
-try { if (localStorage.getItem("dd.debug")) window.ddAutotest = autotest._debug; } catch {}
+try { if (localStorage.getItem("andromon.debug")) window.ddAutotest = autotest._debug; } catch {}
 
 // ---------- developer tab (see ./devtools.js and ./dev/*.js) ----------
 // ---------- ADB shell page (see ./shell.js); before the developer tools, which add saved snippets and history to it ----------
@@ -4467,9 +5030,21 @@ shizukuCard = initShizuku({ $, el, toast, sh, shQuote, actionBtn, getAdb: () => 
 
 // ---------- ReVanced page (see ./revanced.js) ----------
 revancedTab = initRevanced({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, appIdent, getAdb: () => adb });
-try { if (localStorage.getItem("dd.debug")) window.ddRevanced = revancedTab._debug; } catch {}
+try { if (localStorage.getItem("andromon.debug")) window.ddRevanced = revancedTab._debug; } catch {}
 
 // ---------- F-Droid page (see ./fdroid.js) ----------
+recoveryTab = initRecovery({ $, el, toast, showError, clearError, fmtSize });
+storageTab = initStorageMap({ $, el, sh, shQuote, fmtSize, toast, showError, armedClick, spinner });
+batteryTab = initBattery({ $, el, sh, cc, companionReady: companionAvailable, showError, spinner });
+memoryTab = initMemory({ $, el, sh, shQuote, fmtSize, toast, showError, spinner, actionBtn, appIdent, checkIcons: checkIconSource, getAdb: () => adb });
+repairTab = !REPAIR_ENABLED ? null : initRepair({
+  $, el, toast, showError, clearError, armedClick, fmtSize, busy, makeSwitch, sh, shQuote, withSync, download, track, cc,
+  getAdb: () => adb, companionReady: companionAvailable, allPhones, phoneName: (a) => a.banner?.model || a.serial, showView: (v) => show(v),
+  qrImage: (text) => { const img = qrImage(text); img.alt = "QR code"; return img; },
+  shopName: () => { try { return localStorage.getItem("andromon.repair.shop") || ""; } catch { return ""; } },
+  privacy: { get: privacyOn, set: setPrivacy },
+});
+folderSync = initFolderSync({ $, el, sh, shQuote, withSync, getSerial: () => adb?.serial || "", fmtSize, fmtDate, toast, showError, armedClick, makeSwitch });
 fdroidTab = initFdroid({ $, el, toast, showError, clearError, sh, shQuote, withSync, busy, fmtSize, spinner, actionBtn, getAdb: () => adb });
 
 // ---------- phone links (see ./links.js) ----------
@@ -4497,35 +5072,38 @@ backup = initBackup({
 // The header stays in place while a page scrolls; its height tells sticky parts of a page where to stop.
 new ResizeObserver(([e]) => document.querySelector(".app").style.setProperty("--head-h", `${Math.round(e.target.offsetHeight)}px`)).observe(document.querySelector("header.top"));
 // ---------- screenshot page (see ./screenshot.js) ----------
-shotTab = initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb: () => adb });
+shotTab = initScreenshot({ $, el, toast, showError, clearError, sh, shBytes, fmtSize, download, show, getAdb: () => adb, shotBlur });
 // ---------- files page (see ./files.js) ----------
-filesTab = initFiles({ $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, getAdb: () => adb, LinuxFileType });
+filesTab = initFiles({ $, el, toast, showError, clearError, busy, sh, shQuote, withSync, fmtSize, fmtDate, download, saveStream, getAdb: () => adb, LinuxFileType });
 // ---------- dropdown menus: every <select> gets the app's own menu (see ./dropdown.js) ----------
 initDropdowns();
 // ---------- download manager: the Downloads button in the page header (see ./downloads.js) ----------
 downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 // ---------- update check (updater.js): a pill in the header when a newer build is published ----------
 {
-  const updates = globalThis.droidDesk?.updates, pill = $("updBtn");
+  const updates = globalThis.andromon?.updates, pill = $("updBtn");
   const offer = (s) => { if (s?.last?.available) { pill.textContent = `Update to ${s.last.version}`; pill.hidden = false; } };
   pill.addEventListener("click", () => show("settings"));
-  updates?.onEvent((ev) => { if (ev.kind === "available") { offer(ev.status); toast(`Droid Desk ${ev.status.last.version} is available`); } });
+  updates?.onEvent((ev) => { if (ev.kind === "available") { offer(ev.status); toast(`Andromon ${ev.status.last.version} is available`); } });
   updates?.status().then(offer).catch(() => {});
 }
 // ---------- settings tab: appearance, sidebar and a few switches (see ./settings.js) ----------
 // With "Ask where to save each file" off, the main process saves downloads itself and says so here.
-globalThis.droidDesk?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
+globalThis.andromon?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
+document.querySelector(".app").classList.toggle("privacy", privacyOn()); // technician mode, as left last time
+const privacyBlur = initPrivacyBlur({ toast }); // Settings › Accessibility › Blur personal data
 settingsUi = initSettings({
+  privacyBlur,
   $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick, companionVersion: COMPANION_VERSION, scrcpyVersion: SCRCPY_VERSION,
   mirror: mirrorPrefs, shot: shotPrefs, shell: shellPrefs,
   downloads,
   notifs: {
     get: () => notifs.on,
-    set: (on) => { notifs.on = !!on; lsSet("dd.notifs", notifs.on); if (!notifs.on) resetNotifs(); startCallAlerts(); renderNotifCard(); },
+    set: (on) => { notifs.on = !!on; lsSet("andromon.notifs", notifs.on); if (!notifs.on) resetNotifs(); startCallAlerts(); renderNotifCard(); },
     muted: () => [...notifs.muted].map((pkg) => ({ pkg, label: notifs.icons.get(pkg)?.app || pkg })),
-    unmute: (pkg) => { notifs.muted.delete(pkg); lsSet("dd.notifMuted", [...notifs.muted]); renderNotifCard(); },
+    unmute: (pkg) => { notifs.muted.delete(pkg); lsSet("andromon.notifMuted", [...notifs.muted]); renderNotifCard(); },
     quick: () => notifs.quick,
-    setQuick: (lines) => { notifs.quick = lines.map((l) => l.trim()).filter(Boolean).slice(0, 12); lsSet("dd.quickReplies", notifs.quick); return notifs.quick; },
+    setQuick: (lines) => { notifs.quick = lines.map((l) => l.trim()).filter(Boolean).slice(0, 12); lsSet("andromon.quickReplies", notifs.quick); return notifs.quick; },
   },
   ramAuto: { get: ramAuto, set: (on) => { try { localStorage.setItem(RAM_AUTO_KEY, on ? "1" : "0"); } catch {} return !!on; } },
   photoCopy: () => backup?.auto,
@@ -4535,11 +5113,16 @@ settingsUi = initSettings({
     get: () => callAlerts.on,
     set: (on) => {
       callAlerts.on = !!on;
-      try { localStorage.setItem("dd.callAlerts", on ? "on" : "off"); } catch {}
+      try { localStorage.setItem("andromon.callAlerts", on ? "on" : "off"); } catch {}
       if (!on) hideCallPop();
       startCallAlerts();
     },
   },
-  notifPopups: { get: () => notifs.popups, set: (on) => { notifs.popups = !!on; lsSet("dd.notifPopups", notifs.popups); renderNotifCard(); } },
+  notifPopups: { get: () => notifs.popups, set: (on) => { notifs.popups = !!on; lsSet("andromon.notifPopups", notifs.popups); renderNotifCard(); } },
   wifiAuto: wadbApi ? { get: () => !!wadbUi.auto, set: async (on) => { wadbUi.auto = await wadbApi.setAuto(on); if (wadbUi.auto) maybeAutoConnect(); return wadbUi.auto; } } : null,
+  usbAuto: navigator.usb ? { get: () => flagOn(USB_AUTO_KEY), set: (on) => { setFlag(USB_AUTO_KEY, on); if (on) autoConnectUsb().catch(console.warn); return !!on; } } : null,
+  clipShare: clipSync.available ? { get: () => localStorage.getItem(CLIP_KEY) === "1", set: (on) => { setFlag(CLIP_KEY, on); clipSync.sync(); return !!on; } } : null,
+  adbTakeover: adbRelease?.guard ? { get: () => flagOn(TAKEOVER_KEY), set: (on) => { setFlag(TAKEOVER_KEY, on); syncTakeover(); return !!on; } } : null,
 });
+// A phone already plugged in when the app opens is connected straight away.
+autoConnectUsb().catch(console.warn);

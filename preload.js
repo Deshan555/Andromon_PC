@@ -1,4 +1,4 @@
-// Droid Desk — preload. Exposes a small, fixed API to the sandboxed UI for Wi‑Fi transfer
+// Andromon — preload. Exposes a small, fixed API to the sandboxed UI for Wi‑Fi transfer
 // (LocalSend protocol, implemented in localsend.js in the main process). No Node.js APIs leak through.
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
@@ -10,11 +10,19 @@ const call = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch((e
 // The phone's Android level and CPU types, for choosing an app version that fits (F-Droid page).
 const fdPhone = (p) => (p && Number(p.sdk) > 0 ? { sdk: Number(p.sdk), abis: Array.from(p.abis || [], String) } : null);
 
-contextBridge.exposeInMainWorld("droidDesk", {
-  // Stops any adb server on this PC so WebUSB can claim the phone.
-  adb: { release: () => call("adb:release") },
+contextBridge.exposeInMainWorld("andromon", {
+  // release(serial) closes the programs (adb servers and others) holding the phone so WebUSB can claim it.
+  // guard(true, serial) does that and keeps closing adb started by other programs while a phone is
+  // connected; guard(false) stops it. Both resolve to { closed: [names], browsers: [names], ... }.
+  adb: { release: (serial) => call("adb:release", String(serial || "")), guard: (on, serial) => call("adb:guard", !!on, String(serial || "")) },
   // Screen mirror › Keep on top: the window stays above other windows.
-  win: { setOnTop: (on) => call("win:setOnTop", !!on) },
+  // onZoomKey(cb): ⌘/Ctrl + − 0, caught in the main process; cb gets 1, -1 or 0 (back to 100%).
+  win: {
+    setOnTop: (on) => call("win:setOnTop", !!on),
+    onZoomKey: (cb) => { ipcRenderer.on("win:zoomKey", (_e, dir) => cb(Number(dir) || 0)); },
+  },
+  // Settings › Phone link › Share the clipboard: this computer's clipboard (text only).
+  clip: { read: () => call("clip:read"), write: (text) => call("clip:write", String(text ?? "")) },
   // Wireless debugging (wadb.js). The ADB byte stream itself arrives as a MessagePort, forwarded
   // below to the page with window.postMessage.
   wadb: {
@@ -72,12 +80,17 @@ contextBridge.exposeInMainWorld("droidDesk", {
     stat: (kind, rel) => call("bfs:stat", String(kind), String(rel || "")),
     list: (kind, rel, recursive) => call("bfs:list", String(kind), String(rel || ""), !!recursive),
     writeFile: (kind, rel, data, opts) => call("bfs:writeFile", String(kind), String(rel), typeof data === "string" ? data : new Uint8Array(data), { mtime: Number(opts?.mtime) || 0, replace: !!opts?.replace }),
-    open: (kind, rel) => call("bfs:open", String(kind), String(rel)),
+    open: (kind, rel, opts) => call("bfs:open", String(kind), String(rel), { replace: !!opts?.replace }),
+    trash: (kind, rel) => call("bfs:trash", String(kind), String(rel)),
+    forget: (kind) => call("bfs:forget", String(kind)),
     write: (id, data) => call("bfs:write", Number(id), new Uint8Array(data)),
     close: (id, opts) => call("bfs:close", Number(id), { mtime: Number(opts?.mtime) || 0 }),
     abort: (id) => call("bfs:abort", Number(id)),
     readFile: (kind, rel) => call("bfs:readFile", String(kind), String(rel)),
     read: (kind, rel, offset, length) => call("bfs:read", String(kind), String(rel), Number(offset) || 0, Number(length) || 0),
+    secretSet: (text) => call("bfs:secretSet", String(text || "")),
+    secretGet: () => call("bfs:secretGet"),
+    secretHas: () => call("bfs:secretHas"),
     recordGet: (serial) => call("bfs:recordGet", String(serial)),
     recordSet: (serial, record) => call("bfs:recordSet", String(serial), record && typeof record === "object" ? record : {}),
   },
@@ -141,6 +154,7 @@ contextBridge.exposeInMainWorld("droidDesk", {
     lookup: (pkgs, phone) => call("fd:lookup", Array.from(pkgs || [], String), fdPhone(phone)),
     app: (pkg, phone) => call("fd:app", String(pkg), fdPhone(phone)),
     icon: (pkg) => call("fd:icon", String(pkg)),
+    shot: (pkg, i) => call("fd:shot", String(pkg), Number(i) || 0),
     fetch: (pkg, code) => call("fd:fetch", String(pkg), Number(code)),
     read: (offset, length) => call("fd:read", Number(offset) || 0, Number(length) || 0),
     save: () => call("fd:save"),
@@ -152,13 +166,19 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("fd:event", h);
     },
   },
-  // Settings page: where saved files go, and the size of what Droid Desk has downloaded (appsettings.js).
+  // Settings page: where saved files go, and the size of what Andromon has downloaded (appsettings.js).
   app: {
     info: () => call("app:info"),
+    computer: () => call("app:computer"),
     openData: () => call("app:openData"),
     saveOpen: () => call("app:saveOpen"),
     saveAsk: (ask) => call("app:saveAsk", !!ask),
     saveChoose: () => call("app:saveChoose"),
+    // A big file written in pieces: open (asks where, or picks a free name in the save folder) -> write… -> close or abort.
+    saveStart: (name, opts) => call("save:open", String(name), opts || {}),
+    saveWrite: (id, data, position) => call("save:write", id, data, position),
+    saveClose: (id) => call("save:close", id),
+    saveAbort: (id) => call("save:abort", id),
     onEvent: (cb) => {
       const h = (_e, ev) => cb(ev);
       ipcRenderer.on("app:event", h);
@@ -180,11 +200,30 @@ contextBridge.exposeInMainWorld("droidDesk", {
       return () => ipcRenderer.removeListener("upd:event", h);
     },
   },
-  // Settings › This computer: the tools Droid Desk can use (Java, adb…) and whether they are installed (requirements.js).
+  // SD card recovery (recovery.js): PhotoRec on a card in this computer's reader, or on an image file.
+  recovery: {
+    status: () => call("rc:status"),
+    install: () => call("rc:install"),
+    drives: () => call("rc:drives"),
+    chooseOut: () => call("rc:chooseOut"),
+    chooseImage: () => call("rc:chooseImage"),
+    start: (opts) => call("rc:start", { source: String(opts?.source || ""), drive: String(opts?.drive || ""), what: String(opts?.what || "") }),
+    stop: () => call("rc:stop"),
+    open: (dir) => call("rc:open", String(dir || "")),
+    openSite: () => call("rc:openSite"),
+    onEvent: (cb) => {
+      const h = (_e, ev) => cb(ev);
+      ipcRenderer.on("rc:event", h);
+      return () => ipcRenderer.removeListener("rc:event", h);
+    },
+  },
+  // Settings › This computer: the tools Andromon can use (Java, adb…) and whether they are installed (requirements.js).
   system: {
     requirements: (force) => call("sys:requirements", !!force),
     openPage: (id) => call("sys:openPage", String(id)),
     install: (id) => call("sys:install", String(id)),
+    adbChoose: () => call("sys:adbChoose"),
+    adbReset: () => call("sys:adbReset"),
   },
   devnet: {
     listen: (ruleId, port) => call("devnet:listen", String(ruleId), Number(port)),
@@ -198,7 +237,7 @@ contextBridge.exposeInMainWorld("droidDesk", {
     stop: () => call("wifi:stop"),
     scan: () => call("wifi:scan"),
     // Opens a native file picker in the main process and sends the chosen files.
-    // method: "auto" | "lan" (same Wi‑Fi) | "direct" (Droid Desk Companion's Direct link)
+    // method: "auto" | "lan" (same Wi‑Fi) | "direct" (Andromon Companion's Direct link)
     pickAndSend: (fingerprint, method) => call("wifi:pickAndSend", String(fingerprint), String(method || "")),
     // Files dropped onto the window: only their paths cross the bridge.
     sendFiles: (fingerprint, files, method) => call("wifi:sendPaths", String(fingerprint),
@@ -220,10 +259,10 @@ contextBridge.exposeInMainWorld("droidDesk", {
 
 // Port-forwarding connections (devnet) go to the page the same way.
 ipcRenderer.on("devnet:port", (e, meta) => {
-  window.postMessage({ source: "droiddesk-devnet", meta }, window.location.origin, e.ports);
+  window.postMessage({ source: "andromon-devnet", meta }, window.location.origin, e.ports);
 });
 
 // Hand the wireless-ADB MessagePort to the page (ports can't cross contextBridge directly).
 ipcRenderer.on("wadb:port", (e, meta) => {
-  window.postMessage({ source: "droiddesk-wadb", meta }, window.location.origin, e.ports);
+  window.postMessage({ source: "andromon-wadb", meta }, window.location.origin, e.ports);
 });

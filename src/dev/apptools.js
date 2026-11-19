@@ -292,7 +292,7 @@ export function mount(root, ctx) {
         for (const f of files) entries[f.name] = [new Uint8Array(await f.blob.arrayBuffer()), { level: 0 }];
         const zip = new Blob([zipSync(entries)]);
         download(zip, `${p}-${ver}.apks`);
-        apkNote.textContent = `This app is split into ${files.length} APKs, so they were saved together as ${p}-${ver}.apks (${fmtSize(zip.size)}). Install it with Droid Desk's Apps tab or “adb install-multiple”.`;
+        apkNote.textContent = `This app is split into ${files.length} APKs, so they were saved together as ${p}-${ver}.apks (${fmtSize(zip.size)}). Install it with Andromon's Apps tab or “adb install-multiple”.`;
       }
     } finally { busy(saveB, false); }
   }

@@ -3,6 +3,8 @@
 // paint by renderer/theme.js; the colours themselves are CSS (see "themes" in index.html).
 
 import pkg from "../package.json";
+import { shortcutEditor } from "./shortcuts.js";
+import { setIconButtons } from "./iconbuttons.js";
 
 export const THEMES = [
   { id: "lime", label: "Lime", colors: ["#e3f786", "#9cd237"] },
@@ -12,25 +14,68 @@ export const THEMES = [
   { id: "graphite", label: "Graphite", colors: ["#dcdcd8", "#6c6d70"] },
 ];
 const MODES = [["system", "Same as computer"], ["light", "Light"], ["dark", "Dark"]];
+const TEXT_SIZES = [["100", "Default"], ["115", "Large"], ["130", "Larger"], ["150", "Largest"]];
+const FOLLOW = [["system", "Same as computer"], ["on", "On"], ["off", "Off"]];
+const ZOOMS = ["67", "75", "80", "90", "100", "110", "125", "150", "175", "200"]; // same list as renderer/theme.js
+const BUTTON_SIZES = [["default", "Default"], ["small", "Small"], ["smallest", "Smallest"]];
+// Accessibility settings and their defaults. renderer/theme.js reads the same keys before the page paints.
+const A11Y = { text: "100", zoom: "100", buttons: "default", icons: "off", contrast: "system", motion: "system", bold: "off", focus: "off", links: "off", font: "poppins" };
 
 export function initSettings(ctx) {
   const { $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick } = ctx;
-  const api = globalThis.droidDesk || {};
+  const api = globalThis.andromon || {};
   const root = document.documentElement;
   const app = document.querySelector(".app");
   const get = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
   const set = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
-  const mode = () => (["light", "dark"].includes(get("dd.theme")) ? get("dd.theme") : "system");
-  const accent = () => (THEMES.some((t) => t.id === get("dd.accent")) ? get("dd.accent") : "lime");
+  const mode = () => (["light", "dark"].includes(get("andromon.theme")) ? get("andromon.theme") : "system");
+  const accent = () => (THEMES.some((t) => t.id === get("andromon.accent")) ? get("andromon.accent") : "lime");
   function setMode(m) {
     if (m === "light" || m === "dark") root.dataset.theme = m; else delete root.dataset.theme;
-    set("dd.theme", m); render();
+    set("andromon.theme", m); render();
   }
   function setAccent(a) {
     if (a !== "lime") root.dataset.accent = a; else delete root.dataset.accent;
-    set("dd.accent", a); render();
+    set("andromon.accent", a); render();
   }
+
+  // ---------- accessibility ----------
+  const a11y = (k) => get("andromon.a11y." + k, A11Y[k]);
+  function setA11y(k, v) {
+    set("andromon.a11y." + k, v);
+    globalThis.ddA11y?.apply();
+    render();
+  }
+  function resetA11y() {
+    for (const k of Object.keys(A11Y)) { try { localStorage.removeItem("andromon.a11y." + k); } catch {} }
+    globalThis.ddA11y?.apply();
+    render();
+    toast("Accessibility settings are back to their defaults");
+  }
+  const a11yChanged = () => Object.keys(A11Y).some((k) => a11y(k) !== A11Y[k]);
+  // Icon buttons: theme.js's apply() switches them on and off from now on.
+  globalThis.ddIconButtons = setIconButtons;
+  setIconButtons(a11y("icons") === "on");
+
+  // App zoom: ⌘ + / ⌘ − / ⌘ 0 (Ctrl on Windows and Linux) step through ZOOMS. In the desktop app
+  // the main process catches these keys before Chromium's own zoom and sends them here.
+  function stepZoom(dir) {
+    const cur = ZOOMS.indexOf(a11y("zoom")), at = cur < 0 ? ZOOMS.indexOf("100") : cur;
+    const next = dir === 0 ? "100" : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, at + dir))];
+    if (next === ZOOMS[at] && dir !== 0) return;
+    set("andromon.a11y.zoom", next);
+    globalThis.ddA11y?.apply();
+    if (ready && !panel.hidden) render();
+    toast(`Zoom ${next}%`);
+  }
+  api.win?.onZoomKey?.(stepZoom);
+  addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const dir = { "=": 1, "+": 1, "-": -1, "_": -1, "0": 0 }[e.key];
+    if (dir === undefined) return;
+    e.preventDefault(); stepZoom(dir);
+  });
 
   // ---------- sidebar: full, or a narrow rail of icons ----------
   const railBtn = $("railBtn");
@@ -39,13 +84,15 @@ export function initSettings(ctx) {
   const isRail = () => app.classList.contains("rail");
   function setRail(on) {
     app.classList.toggle("rail", on);
-    set("dd.sidebar", on ? "rail" : "full");
+    set("andromon.sidebar", on ? "rail" : "full");
     railBtn.title = on ? "Expand the sidebar" : "Collapse the sidebar";
     railBtn.setAttribute("aria-pressed", String(on));
     railBtn.querySelector("span").textContent = on ? "Expand" : "Collapse";
     if (ready && !panel.hidden) render();
   }
   railBtn.addEventListener("click", () => setRail(!isRail()));
+  // Blur personal data can also be switched from the top bar, the Screenshot page or the mirror.
+  for (const ev of ["andromon:piiblur", "andromon:shotprefs"]) addEventListener(ev, () => { if (ready && !panel.hidden) render(); });
   addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")) {
       e.preventDefault(); setRail(!isRail());
@@ -130,9 +177,38 @@ export function initSettings(ctx) {
     return b;
   };
 
+  function accessibilitySection() {
+    const sw = (k, on = "on", off = "off") => makeSwitch(a11y(k) === on, (v) => { setA11y(k, v ? on : off); return v; });
+    const mod = /Mac/.test(navigator.platform) ? "⌘" : "Ctrl";
+    const rows = [
+      row("Text size", "Makes text, icons and buttons bigger together", select(TEXT_SIZES, a11y("text"), (v) => setA11y("text", v))),
+      row("App zoom", `Makes the whole window bigger or smaller. Also ${mod} + and ${mod} −, and ${mod} 0 to go back to 100%`,
+        select(ZOOMS.map((z) => [z, z === "100" ? "100% (default)" : z + "%"]), ZOOMS.includes(a11y("zoom")) ? a11y("zoom") : "100", (v) => setA11y("zoom", v))),
+      row("Button size", "Smaller buttons leave more room for everything else", select(BUTTON_SIZES, a11y("buttons"), (v) => setA11y("buttons", v))),
+      row("Icon buttons", "Buttons show an icon instead of words. Point at a button, or move to it with Tab, to see its name. Buttons with no matching icon keep their words", sw("icons")),
+      row("High contrast", "Darker text, visible edges around cards and buttons, solid backgrounds", select(FOLLOW, a11y("contrast"), (v) => setA11y("contrast", v))),
+      row("Bold text", "Thicker letters everywhere", sw("bold")),
+      row("Plain font", "The computer's own font instead of Poppins. Some people find it easier to read", sw("font", "plain", "poppins")),
+      row("Reduce motion", "No sliding, fading or pulsing. Loading circles still turn, slowly", select(FOLLOW, a11y("motion"), (v) => setA11y("motion", v))),
+      row("Strong focus outline", "A thick, bright ring around whatever the keyboard is on. Move with Tab and Shift + Tab", sw("focus")),
+      row("Underline links", "So links stand out without relying on colour", sw("links")),
+      ctx.privacyBlur && row("Blur personal data", `Blurs phone numbers, IMEI and serial numbers, messages, names, emails, addresses, Wi‑Fi names and IP addresses in this window, so it's safe to screenshot or share. Point at a blurred item to read it. Also ${mod} + Shift + P. Phone screenshots have their own switch in Screenshot below`,
+        makeSwitch(ctx.privacyBlur.get(), (v) => ctx.privacyBlur.set(v))),
+    ];
+    if (a11yChanged()) rows.push(row("Back to defaults", "Undo all the changes on this card", group(action("Reset", "Resetting…", async () => resetA11y()))));
+    return section("Accessibility", ...rows.filter(Boolean));
+  }
+
   function phoneLinkSection() {
-    const rows = [row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
-      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; }))];
+    const rows = [];
+    if (ctx.usbAuto) rows.push(row("Connect when a phone is plugged in", "Connects as soon as a phone's USB cable is plugged in, and to a phone already plugged in when Andromon opens",
+      makeSwitch(ctx.usbAuto.get(), (on) => ctx.usbAuto.set(on))));
+    if (ctx.adbTakeover) rows.push(row("Keep other programs off the phone", "While a phone is connected, Andromon closes adb in other programs (Android SDK, Android Studio, scrcpy) so only it uses the phone",
+      makeSwitch(ctx.adbTakeover.get(), (on) => ctx.adbTakeover.set(on))));
+    if (ctx.clipShare) rows.push(row("Share the clipboard", "Text copied on this computer can be pasted on the phone, and the other way round, while the phone is connected. Needs Andromon Companion",
+      makeSwitch(ctx.clipShare.get(), (on) => ctx.clipShare.set(on))));
+    rows.push(row("Call alerts", "Incoming calls pop up on this computer while a phone is connected",
+      makeSwitch(ctx.callAlerts.get(), (on) => { ctx.callAlerts.set(on); return on; })));
     if (ctx.wifiAuto) rows.push(row("Connect over Wi‑Fi automatically", "Connect to a phone you've paired as soon as it appears on the network",
       makeSwitch(ctx.wifiAuto.get(), (on) => ctx.wifiAuto.set(on))));
     rows.push(row("Turn on the phone RAM manager automatically", "Starts its helper on the phone each time a phone connects (see the Shizuku page)",
@@ -152,9 +228,9 @@ export function initSettings(ctx) {
   function notificationsSection() {
     const n = ctx.notifs, muted = n.muted();
     const rows = [
-      row("Phone notifications on this computer", "WhatsApp, SMS, email and the rest appear on the Notifications page, where you can answer them. Gives Droid Desk Companion “Notification access” on the phone",
+      row("Phone notifications on this computer", "WhatsApp, SMS, email and the rest appear on the Notifications page, where you can answer them. Gives Andromon Companion “Notification access” on the phone",
         makeSwitch(n.get(), (on) => { n.set(on); return on; })),
-      row("Notification pop-ups", "Show each new notification in the corner of this window, and as a system notification when Droid Desk is in the background",
+      row("Notification pop-ups", "Show each new notification in the corner of this window, and as a system notification when Andromon is in the background",
         makeSwitch(ctx.notifPopups.get(), (on) => { ctx.notifPopups.set(on); return on; })),
     ];
     if (muted.length) {
@@ -179,7 +255,8 @@ export function initSettings(ctx) {
       row("Picture size", "A smaller picture is quicker to share", select(t.SCALE, String(p.scale), (v) => t.set({ scale: Number(v) }))),
       row("Clean status bar", "For the capture only, the phone shows 12:00, a full battery and no notification icons", makeSwitch(p.clean, (on) => { t.set({ clean: on }); return on; })),
       row("Copy each screenshot", "Puts the picture on this computer's clipboard as soon as it is taken", makeSwitch(p.copy, (on) => { t.set({ copy: on }); return on; })),
-      row("Save each screenshot", "Saves the file as soon as it is taken (see Saving files for where)", makeSwitch(p.save, (on) => { t.set({ save: on }); return on; })));
+      row("Save each screenshot", "Saves the file as soon as it is taken (see Saving files for where)", makeSwitch(p.save, (on) => { t.set({ save: on }); return on; })),
+      row("Blur personal data", "Hides phone numbers, IMEI, messages, names, emails, addresses and Wi‑Fi names in screenshots and in the mirror's saved or copied frames. Only text Android can read out is found: pictures, games and some web pages aren't covered", makeSwitch(p.blur, (on) => { t.set({ blur: on }); return on; })));
   }
 
   function shellSection() {
@@ -212,7 +289,11 @@ export function initSettings(ctx) {
       row("Show touches on the phone", "Draws a dot on the phone's screen wherever it is touched while mirroring", makeSwitch(p.touches, (on) => { m.set({ touches: on }); return on; })),
       row("Keep the phone awake", "The phone's screen doesn't time out while mirroring", makeSwitch(p.awake, (on) => { m.set({ awake: on }); return on; })),
       row("Lock the phone when mirroring stops", "Turns the phone's screen off as soon as mirroring ends", makeSwitch(p.lockOnStop, (on) => { m.set({ lockOnStop: on }); return on; })),
-      row("Copy from the phone automatically", "Text copied on the phone lands in this computer's clipboard", makeSwitch(p.clipboard, (on) => { m.set({ clipboard: on }); return on; })));
+      row("Copy from the phone automatically", "Text copied on the phone lands in this computer's clipboard", makeSwitch(p.clipboard, (on) => { m.set({ clipboard: on }); return on; })),
+      // Keyboard shortcuts for the controls while mirroring (./shortcuts.js); folded away until wanted.
+      el("details", { className: "sc-details" },
+        el("summary", {}, el("b", { textContent: "Keyboard shortcuts" }), el("span", { className: "sub", textContent: " · keys that press the mirror's controls; they don't reach the phone" })),
+        shortcutEditor({ el, toast })));
   }
 
   function savingSection() {
@@ -227,13 +308,13 @@ export function initSettings(ctx) {
     return section("Saving files", ...rows);
   }
 
-  // ---------- updates: is a newer Droid Desk published, and get its installer ----------
+  // ---------- updates: is a newer Andromon published, and get its installer ----------
   let updNote = ""; // what the last "Check now" found, until the page is left
   function updateRows() {
     const u = data.upd, last = u?.last;
     const mine = u ? `Version ${u.current.version}${u.current.build ? ` (build ${u.current.build})` : ""}` : `Version ${pkg.version}`;
     const live = el("div", { className: "set-dl" }); live.dataset.dl = "up";
-    const text = [el("b", { textContent: last?.available ? `Droid Desk ${last.version} is available` : "Updates" })];
+    const text = [el("b", { textContent: last?.available ? `Andromon ${last.version} is available` : "Updates" })];
     const buttons = [];
     if (last?.available) {
       const size = last.installer ? ` · ${fmtSize(last.installer.size)}` : "";
@@ -243,7 +324,7 @@ export function initSettings(ctx) {
           el("ul", {}, ...last.changes.map((c) => el("li", { textContent: c })))));
       }
       if (u.downloaded) {
-        text.push(el("div", { className: "sub", textContent: `Downloaded to your Downloads folder as ${u.downloaded.name}. Opening it starts the installer; close Droid Desk when it asks.` }));
+        text.push(el("div", { className: "sub", textContent: `Downloaded to your Downloads folder as ${u.downloaded.name}. Opening it starts the installer; close Andromon when it asks.` }));
         buttons.push(action("Open installer", "Opening…", () => api.updates.install(), "primary"));
       } else if (last.installer) {
         const b = action("Download update", "Downloading…", () => api.updates.download(), "primary");
@@ -264,12 +345,12 @@ export function initSettings(ctx) {
     text.push(live);
     return [
       el("div", { className: "set-row" }, el("div", { className: "set-text" }, ...text), group(...buttons)),
-      row("Check for updates automatically", "Once a day when Droid Desk starts. Only asks GitHub for the newest version; nothing is installed by itself",
+      row("Check for updates automatically", "Once a day when Andromon starts. Only asks GitHub for the newest version; nothing is installed by itself",
         makeSwitch(u ? u.auto : true, async (on) => { data.upd = await api.updates.setAuto(on); return data.upd.auto; })),
     ];
   }
 
-  // ---------- this computer: the tools Droid Desk can use, and whether they are installed ----------
+  // ---------- this computer: the tools Andromon can use, and whether they are installed ----------
   function computerSection() {
     const sys = data.sys;
     const BADGE = { ok: ["Installed", "on"], old: ["Too old", "warn"], missing: ["Not installed", "warn"], optional: ["Optional", "neutral"], unknown: ["Can't tell", "neutral"] };
@@ -278,6 +359,10 @@ export function initSettings(ctx) {
       const buttons = [];
       if (it.install) buttons.push(action("Install", "Installing…", async () => { data.sys = await api.system.install(it.id); toast(`${it.name} is installed`); }, "primary"));
       if (it.page && it.state !== "ok") buttons.push(action(it.install ? "Download page" : "Get it", "Opening…", () => api.system.openPage(it.id)));
+      if (it.choose && api.system.adbChoose) {
+        buttons.push(action(it.custom ? "Change…" : "Choose adb…", "Choosing…", async () => { const s = await api.system.adbChoose(); if (s) { data.sys = s; toast("Andromon will use this adb"); } }));
+        if (it.custom) buttons.push(action("Find it by itself", "Resetting…", async () => { data.sys = await api.system.adbReset(); }));
+      }
       return el("div", { className: "set-row" },
         el("div", { className: "set-text" }, el("b", {}, it.name, " ", el("span", { className: `badge ${cls}`, textContent: label })),
           el("div", { className: "sub", textContent: it.why }), el("div", { className: "sub set-path", textContent: it.detail, title: it.detail })),
@@ -309,9 +394,9 @@ export function initSettings(ctx) {
     rows.push(dlRow("uad", "Debloat list", [source("Universal Android Debloater", "https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation")],
       uad === undefined ? "Checking…" : !uad ? "Not downloaded" : `${Object.keys(uad.list || {}).length.toLocaleString()} apps described` + (uad.fetchedAt ? ` · fetched ${fmtDate(uad.fetchedAt, true)}` : ""),
       dlAction("uad", uad ? "Update" : "Download", () => ctx.uad.update())));
-    rows.push(dlRow("", "Built into Droid Desk", [source("scrcpy", "https://github.com/Genymobile/scrcpy"), source("Droid Desk Companion", "https://github.com/Deshan555/Andromon-android")],
+    rows.push(dlRow("", "Built into Andromon", [source("scrcpy", "https://github.com/Genymobile/scrcpy"), source("Andromon Companion", "https://github.com/Deshan555/Andromon-android")],
       `Screen mirroring helper ${ctx.scrcpyVersion} · companion app ${ctx.companionVersion}. Nothing to download`));
-    if (api.app) rows.push(row("Droid Desk's data folder", "Settings, paired phones and everything listed above", group(action("Open folder", "Opening…", () => api.app.openData()))));
+    if (api.app) rows.push(row("Andromon's data folder", "Settings, paired phones and everything listed above", group(action("Open folder", "Opening…", () => api.app.openData()))));
     return section("Downloads and sources", ...rows);
   }
 
@@ -335,6 +420,7 @@ export function initSettings(ctx) {
         row("Colour theme", "The accent colour of cards, highlights and the logo", swatches),
         row("Collapse the sidebar", "Show only icons. Shortcut: Ctrl/⌘ + B", makeSwitch(isRail(), (on) => { setRail(on); return on; }))),
     ];
+    parts.push(accessibilitySection());
     parts.push(phoneLinkSection(), notificationsSection());
     parts.push(mirrorSection());
     parts.push(screenshotSection());
@@ -345,7 +431,7 @@ export function initSettings(ctx) {
     parts.push(downloadsSection());
     const a = (text, href) => el("a", { textContent: text, href, target: "_blank", rel: "noreferrer" });
     parts.push(section("About",
-      row("Droid Desk", `Version ${pkg.version}${data.upd?.current.build ? ` (build ${data.upd.current.build})` : ""} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
+      row("Andromon", `Version ${pkg.version}${data.upd?.current.build ? ` (build ${data.upd.current.build})` : ""} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
       ...(api.updates ? updateRows() : []),
       row("Source code", "", el("div", { className: "set-links" }, a("PC app", "https://github.com/Deshan555/Andromon_PC"), a("Android companion", "https://github.com/Deshan555/Andromon-android"))),
       row("Credits", "ADB by Tango (ya-webadb) · screen mirroring by scrcpy · Wi‑Fi transfer speaks the LocalSend protocol · icons by Lucide · Poppins type", "")));
@@ -353,7 +439,7 @@ export function initSettings(ctx) {
     showLive();
   }
 
-  setRail(get("dd.sidebar") === "rail");
+  setRail(get("andromon.sidebar") === "rail");
   ready = true;
   return { load: () => { render(); refresh(); }, setRail, isRail };
 }

@@ -58,7 +58,7 @@ export function mount(root, ctx) {
   ));
 
   let wanted = false, timer = null, tickNo = 0, running = false;
-  // What Droid Desk changed on the phone, so Disconnect can put it back.
+  // What Andromon changed on the phone, so Disconnect can put it back.
   let changedBattery = false, forcedDoze = false, enabledDoze = false;
   let prev = null; // { total, procs: Map(pid -> ticks) }
   let gfxPrev = null; // { t, frames, janky }
@@ -337,7 +337,7 @@ export function mount(root, ctx) {
     },
     hide() { stopTimer(); running = false; },
     connected() { cores = 0; changedBattery = false; forcedDoze = false; enabledDoze = false; },
-    // Clicking Disconnect: put back what Droid Desk faked, while the phone can still hear us.
+    // Clicking Disconnect: put back what Andromon faked, while the phone can still hear us.
     async beforeDisconnect() {
       wanted = false; stopTimer();
       const cmds = [];

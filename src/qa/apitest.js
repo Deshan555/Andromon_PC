@@ -113,7 +113,7 @@ function toPostman(col) {
 
 export function mount(root, ctx) {
   const { el, store, toast, showError, clearError } = ctx;
-  const api = globalThis.droidDesk?.api || null;
+  const api = globalThis.andromon?.api || null;
 
   let cols = store.get("api.collections", null) || [{ id: uid(), name: "My requests", requests: [newRequest({ name: "Example", url: "https://httpbin.org/get" })] }];
   let envs = store.get("api.envs", null) || [{ id: uid(), name: "Default", vars: [["baseUrl", "https://httpbin.org"]] }];
@@ -130,7 +130,7 @@ export function mount(root, ctx) {
   const side = el("div", { className: "at-side card" });
   const main = el("div", { className: "at-main" });
   root.append(el("div", { className: "at-layout" }, side, main));
-  if (!api) main.append(ctx.card("API tester", null, el("p", { className: "muted", textContent: "Sending requests needs the Droid Desk desktop app." })));
+  if (!api) main.append(ctx.card("API tester", null, el("p", { className: "muted", textContent: "Sending requests needs the Andromon desktop app." })));
 
   // ---------- sidebar: environment, collections ----------
   function renderSide() {
@@ -159,7 +159,7 @@ export function mount(root, ctx) {
     }
     const newCol = el("button", { className: "btn sm", type: "button", textContent: "New collection" });
     newCol.onclick = () => { const c = { id: uid(), name: `Collection ${cols.length + 1}`, requests: [newRequest()] }; cols.push(c); cur = { colId: c.id, reqId: c.requests[0].id }; saveCols(); renderAll(); };
-    const imp = el("button", { className: "btn sm", type: "button", textContent: "Import…", title: "A Postman collection (v2.1) or a Droid Desk export" });
+    const imp = el("button", { className: "btn sm", type: "button", textContent: "Import…", title: "A Postman collection (v2.1) or an Andromon export" });
     const impIn = el("input", { type: "file", accept: ".json,application/json", hidden: true });
     imp.onclick = () => impIn.click();
     impIn.onchange = async () => {
@@ -336,7 +336,7 @@ export function mount(root, ctx) {
       if (a.type === "bearer") box.append(el("div", { className: "dev-row at-grow" }, field("token", "Token or {{token}}")));
       if (a.type === "basic") box.append(el("div", { className: "dev-row at-grow" }, field("user", "User name"), field("pass", "Password", "password")));
       if (a.type === "apikey") box.append(el("div", { className: "dev-row at-grow" }, field("key", "Header name"), field("value", "Key or {{apiKey}}")));
-      box.append(el("p", { className: "dev-note", textContent: "Saved in this computer's Droid Desk profile as plain text. Put secrets in an environment variable you don't export." }));
+      box.append(el("p", { className: "dev-note", textContent: "Saved in this computer's Andromon profile as plain text. Put secrets in an environment variable you don't export." }));
     } else if (tab === "tests") {
       const rows = el("div", { className: "at-tests" });
       const draw = () => rows.replaceChildren(...r.tests.map((t, i) => {
@@ -505,7 +505,9 @@ export function mount(root, ctx) {
     if (res.body == null) {
       if (/^image\//i.test(res.type) && res.bodyBase64) {
         const bytes = Uint8Array.from(atob(res.bodyBase64), (c) => c.charCodeAt(0));
-        return el("img", { className: "at-img", src: URL.createObjectURL(new Blob([bytes], { type: res.type })), alt: "Image in the answer" });
+        const img = el("img", { className: "at-img", src: URL.createObjectURL(new Blob([bytes], { type: res.type })), alt: "Image in the answer" });
+        img.onload = img.onerror = () => URL.revokeObjectURL(img.src); // drawn again from the same answer each time
+        return img;
       }
       return el("p", { className: "muted", textContent: `Binary answer (${res.type || "unknown type"}, ${ctx.fmtSize(res.decodedSize)}).` });
     }

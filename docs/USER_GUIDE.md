@@ -1,10 +1,10 @@
-# Droid Desk user guide (PC app)
+# Andromon user guide (PC app)
 
-Droid Desk manages an Android phone from a Windows or macOS computer: messages, contacts, files, photos, apps, the phone's screen and more. This guide shows every page of the app and explains what each option does.
+Andromon manages an Android phone from a Windows or macOS computer: messages, contacts, files, photos, apps, the phone's screen and more. This guide shows every page of the app and explains what each option does.
 
-The companion app on the phone has its own guide: [Droid Desk Companion user guide](https://github.com/Deshan555/Andromon-android/blob/main/docs/USER_GUIDE.md).
+The companion app on the phone has its own guide: [Andromon Companion user guide](https://github.com/Deshan555/Andromon-android/blob/main/docs/USER_GUIDE.md).
 
-The screenshots were taken with an Android 12 emulator and made-up sample data.
+The screenshots were taken with the Mac app in full screen, connected to a real phone (Samsung Galaxy S20, Android 13), with **Blur personal data** turned on (Settings › Accessibility). The photo thumbnails were blurred as well.
 
 ## Contents
 
@@ -14,7 +14,7 @@ The screenshots were taken with an Android 12 emulator and made-up sample data.
 4. [Overview](#4-overview)
 5. [Communication](#5-communication): Messages, Contacts, Call log, Calendar, Notifications
 6. [Files & media](#6-files--media): Files, Photos, Music, Backup & restore, Wi‑Fi transfer
-7. [Device](#7-device): Apps, Debloat, ReVanced, F-Droid, Controls, Shizuku, Screen mirror, Screenshot
+7. [Device](#7-device): Apps, Debloat, ReVanced, F-Droid, Controls, Memory, Shizuku, Screen mirror, Screenshot
 8. [Developer](#8-developer): Test automation, App testing, Developer, Shell
 9. [Settings](#9-settings)
 10. [If something doesn't work](#10-if-something-doesnt-work)
@@ -24,20 +24,20 @@ The screenshots were taken with an Android 12 emulator and made-up sample data.
 ## 1. How the two apps work together
 
 ```
- Computer (Droid Desk)            USB cable or Wi‑Fi             Phone
+ Computer (Andromon)            USB cable or Wi‑Fi             Phone
  ─────────────────────            ─────────────────             ─────
  Files, Apps, Controls,   ──────  adb (Android's own  ───────►  Android itself
  Mirror, Screenshot, Shell        debugging link)
 
- Messages, Contacts, Calls, ────  the same adb link   ───────►  Droid Desk Companion
+ Messages, Contacts, Calls, ────  the same adb link   ───────►  Andromon Companion
  Calendar, Notifications,                                       (reads what Android only
  Photos, Music                                                  gives to apps on the phone)
 ```
 
-- Droid Desk talks to the phone over **adb**, the debugging link built into Android. Nothing has to be installed on the computer besides Droid Desk.
+- Andromon talks to the phone over **adb**, the debugging link built into Android. Nothing has to be installed on the computer besides Andromon.
 - Pages that work with Android directly (Files, Apps, Controls, Screen mirror, Screenshot, Shell…) need nothing on the phone.
-- Pages marked with **\*** in this guide need the **Droid Desk Companion**, a small helper app. Droid Desk offers to install it the first time you open one of these pages; you click **Install companion** once.
-- The companion only answers Droid Desk through the adb link. It can't be reached by other apps or from the network.
+- Pages marked with **\*** in this guide need the **Andromon Companion**, a small helper app. Andromon offers to install it the first time you open one of these pages; you click **Install companion** once.
+- The companion only answers Andromon through the adb link. It can't be reached by other apps or from the network.
 
 ## 2. Connecting a phone
 
@@ -47,27 +47,27 @@ The screenshots were taken with an Android 12 emulator and made-up sample data.
 
 1. On the phone: **Settings › About phone**, tap **Build number** 7 times. This switches on Developer options.
 2. **Settings › System › Developer options**: turn on **USB debugging**.
-3. Plug in the cable, click **Connect phone** (the plug button at the top right), pick the phone, then tap **Allow** on the phone. Tick "Always allow from this computer" to skip this next time.
+3. Plug in the cable, click **Connect phone** (the plug button at the top right), pick the phone, then tap **Allow** on the phone. Tick "Always allow from this computer" to skip this next time. After the first time, Andromon connects by itself as soon as the phone is plugged in, or when it opens with the phone already plugged in. While the phone is connected, Andromon closes adb in other programs (Android SDK, Android Studio, scrcpy) so nothing else can use the phone. Both can be turned off in **Settings › Phone link**.
 
 ### Without a cable (Android 11 and newer)
 
 | Way | Steps |
 |---|---|
 | Easiest | Connect once with the cable and click **Use this phone without the cable** on the Overview. Afterwards, turn on the Wi‑Fi connection in the companion (**PC link › Wi‑Fi**) and the phone appears under **Your phones over Wi‑Fi**. |
-| QR code | Click **Connect over Wi‑Fi**. On the phone: **Developer options › Wireless debugging › Pair device with QR code**, and scan the code Droid Desk shows. |
+| QR code | Click **Connect over Wi‑Fi**. On the phone: **Developer options › Wireless debugging › Pair device with QR code**, and scan the code Andromon shows. |
 | 6-digit code | In the same window, choose **Pair with a 6-digit code** and type the address and code from the phone's **Pair device with pairing code** screen. |
 | By address | **Connect by address**: type the IP address and port from the Wireless debugging screen. For networks that hide devices from each other. |
 
 You pair only once. The computer and the phone must be on the same Wi‑Fi.
 
-The dot next to "Droid Desk" in the sidebar is green while a phone is connected. **Disconnect** (top right) ends the session.
+The dot next to "Andromon" in the sidebar is green while a phone is connected. **Disconnect** (top right) ends the session.
 
 ## 3. The window
 
 - **Sidebar:** the pages, in four groups. Click a group's heading to fold it; **Developer** starts folded. Pages that need a phone are greyed out until one is connected. **Wi‑Fi transfer**, **F-Droid** and **Settings** work without a phone.
 - **Collapse** (bottom of the sidebar, or Ctrl/⌘ + B) shrinks the sidebar to icons.
-- **Downloads button** (the arrow at the top right) lists what Droid Desk is downloading or has downloaded: the ReVanced tools, the F-Droid catalogue and apps, the debloat list.
-- A **spinning circle** in the top bar means Droid Desk is talking to the phone.
+- **Downloads button** (the arrow at the top right) lists what Andromon is downloading or has downloaded: the ReVanced tools, the F-Droid catalogue and apps, the debloat list.
+- A **spinning circle** in the top bar means Andromon is talking to the phone.
 - Buttons that delete or change something important ask twice: the first click turns the button into **Confirm?**, the second click does it.
 
 ## 4. Overview
@@ -114,7 +114,7 @@ The dot next to "Droid Desk" in the sidebar is green while a phone is connected.
 
 - Filter by **All / Incoming / Outgoing / Missed**, search by number or name.
 - **Export CSV** saves the list; **Restore…** adds the calls from such a file that aren't in the log yet.
-- **Call alerts on this computer** (the switch at the top): while a phone is connected, incoming calls pop up in Droid Desk with **Answer**, **Decline** and **Silence**. Answering picks up on the phone; you still talk on the phone. Missed calls stay on screen with **Call back** and **Message**.
+- **Call alerts on this computer** (the switch at the top): while a phone is connected, incoming calls pop up in Andromon with **Answer**, **Decline** and **Silence**. Answering picks up on the phone; you still talk on the phone. Missed calls stay on screen with **Call back** and **Message**.
 
 ### Calendar\*
 
@@ -128,7 +128,7 @@ The dot next to "Droid Desk" in the sidebar is green while a phone is connected.
 
 ![Notifications](screenshots/notifs.png)
 
-- Off until you turn on **Phone notifications on this computer**. Droid Desk then gives the companion Android's "Notification access".
+- Off until you turn on **Phone notifications on this computer**. Andromon then gives the companion Android's "Notification access".
 - Every notification on the phone (chat apps, SMS, e‑mail…) appears here and as a pop-up.
 - **Reply** from the computer where the app supports it, press the notification's own buttons ("Mark as read"…), **dismiss** one or **clear all**.
 - Mute pop-ups per app, search, and filter by app.
@@ -220,7 +220,7 @@ Patches an app with [ReVanced](https://revanced.app) on the computer and install
 3. Tick the patches you want (ReVanced's own choice is pre-ticked) and set their options.
 4. **Patch**, then **Install on the phone** or **Save the APK…**.
 
-The page can also install **GmsCore** (needed to sign in with a Google account in patched YouTube) and **ReVanced Manager**. Apps the Play Store installed in several parts can't be taken from the phone: drop a full APK instead. Droid Desk never downloads the apps themselves.
+The page can also install **GmsCore** (needed to sign in with a Google account in patched YouTube) and **ReVanced Manager**. Apps the Play Store installed in several parts can't be taken from the phone: drop a full APK instead. Andromon never downloads the apps themselves.
 
 ### F-Droid
 
@@ -230,7 +230,8 @@ Browse and install free and open-source apps from [F-Droid](https://f-droid.org)
 
 - **Download the catalogue** (about 25 MB) once; **Check for new apps** updates it later.
 - **Search**, pick a **category**, sort by **Recently updated / Newest / A to Z**.
-- Click an app for its description, version, size, permissions, F-Droid's notes about it (ads, tracking…), every version and its links.
+- Click an app for its screenshots, description, version, size, permissions, F-Droid's notes about it (ads, tracking…), every version and its links.
+- Click a **screenshot** to see it at full size; the arrow keys or the ‹ › buttons step through, **Esc** closes. If an app shows no screenshots and the page says the catalogue is from before they were kept, press **Check for new apps** once.
 - **Install** downloads the newest stable version that fits the phone and installs it.
 - **On this phone** lists the phone's apps that F-Droid has. **Updates** lists those with a newer version; update one at a time or **Update all**.
 - Without a phone you can still browse and **Save the APK…** to the computer.
@@ -250,6 +251,22 @@ Switches for the phone's own settings. Every change applies to the phone at once
 | **System** | Do Not Disturb, stay awake while charging, media volume |
 | **Power** | Wake, lock, restart (normal, recovery, bootloader), power off |
 
+### Memory
+
+How much of the phone's RAM is in use, and which apps hold it. Everything here works over the cable alone: no root, Shizuku or companion app is needed (with the companion installed, apps show their names and icons).
+
+- The big card shows **RAM in use**, how much is available and a verdict ("Normal · plenty of free memory"). The figures follow the phone every few seconds while the page is open.
+- Below it: **Available**, **Compressed swap** (memory Android squeezes less used apps into), **Apps in memory** and **Cached apps**.
+- **Apps in memory** lists every app with something running, biggest first, with its state: **In use**, **Visible**, **Running**, **Recent** or **Cached**. **Background only** hides the ones on screen.
+
+| Button | What it does |
+|---|---|
+| **Stop** | Force-stops that app, as **Settings › Apps › Force stop** does. Anything unsaved in it is lost. For an app on screen, click twice to confirm. |
+| **Free memory** | Ends the background apps Android would close first. Apps in use are left alone. |
+| **Refresh** | Reads the list again. |
+
+Android's own processes, the home screen, Google Play services and the companion are shown as **Kept**: stopping them would only make the phone restart them. Cached apps don't slow the phone; Android ends them by itself when memory is needed.
+
 ### Shizuku
 
 [Shizuku](https://shizuku.rikka.app) is a free app that lends other apps on the phone the rights of adb. The companion uses it so its Freezer, Memory and Battery saver work later without the computer. This page shows whether Shizuku is installed and running.
@@ -263,7 +280,7 @@ Switches for the phone's own settings. Every change applies to the phone at once
 
 After the first start, give the companion its permission: in the companion, **Settings › Privileged access › Grant permission**.
 
-Below it on the same page is **Phone RAM manager**, Droid Desk's own helper for phones without Shizuku: it starts a small helper on the phone so the companion's Memory screen can list and stop apps. It lasts until the phone restarts.
+Below it on the same page is **Phone RAM manager**, Andromon's own helper for phones without Shizuku: it starts a small helper on the phone so the companion's Memory screen can list and stop apps. It lasts until the phone restarts.
 
 ### Screen mirror
 
@@ -278,7 +295,7 @@ Shows the phone's screen live and lets you use it with the mouse and keyboard.
 | **Play the phone's sound here** | Sends the phone's sound to the computer (Android 11+). |
 | **Turn the phone's screen off while mirroring** | The phone's own display stays dark while you use it from the computer. |
 
-While mirroring: click = tap, drag = swipe, wheel = scroll, right-click or Esc = Back, and typing goes to the phone. Text copied on either side is shared. The panel on the right has **Back, Home, Recents, Vol −, Vol +, Power, Notifications, Rotate, Screen off, Save frame, Mute, Full screen** and **Record** (saves an MP4 with picture and sound). **Stop mirroring** ends it.
+While mirroring: click = tap, drag = swipe, wheel = scroll, right-click or Esc = Back, and typing goes to the phone. Text copied on either side is shared. The panel on the right has **Back, Home, Recents, Vol −, Vol +, Power, Notifications, Rotate, Screen off, Save frame, Mute, Full screen** and **Record** (saves an MP4 with picture and sound; it is written to the file as it records, so a long recording doesn't fill the computer's memory). **Stop mirroring** ends it.
 
 ### Screenshot
 
@@ -339,7 +356,9 @@ Runs any `adb shell` command and shows its output. The chips under the box are r
 | **Appearance** | Mode | Light, dark, or the same as the computer. |
 | | Colour theme | Lime, Ocean, Sunset, Violet or Graphite: the colour of highlights, cards and the logo. |
 | | Collapse the sidebar | Shows only icons (also Ctrl/⌘ + B). |
-| **Phone link** | Call alerts | Incoming calls pop up on the computer. |
+| **Phone link** | Connect when a phone is plugged in | Connects without a click when a phone's cable is plugged in, and to a phone already plugged in when Andromon opens. A phone you disconnect yourself isn't connected again until it is unplugged. |
+| | Keep other programs off the phone | Desktop app. While a phone is connected, closes adb run by other programs (Android SDK, Android Studio, scrcpy, a terminal) and keeps closing it if it starts again. Never closes a browser (a WebADB tab is named so you can close it) or another copy of Andromon. Turn it off if you use Android Studio or `adb` alongside Andromon. |
+| | Call alerts | Incoming calls pop up on the computer. |
 | | Notification pop-ups | A pop-up for each new phone notification (when Notifications is on). |
 | | Connect over Wi‑Fi automatically | Connects to a paired phone as soon as it appears on the network. |
 | **Screen mirror** | Picture quality, Show, sound, screen off, frame rate | The defaults used each time mirroring starts; the same choices as on the mirror page. |

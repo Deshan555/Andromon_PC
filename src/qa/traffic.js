@@ -49,11 +49,11 @@ const hdr = (pairs, name) => { name = name.toLowerCase(); const h = (pairs || []
 
 export function mount(root, ctx) {
   const { el, sh, toast, showError, clearError, busy, makeSwitch, fmtSize, store, card } = ctx;
-  const insp = globalThis.droidDesk?.inspector || null;
+  const insp = globalThis.andromon?.inspector || null;
   const net = ctx.net;
 
   if (!insp || !net) {
-    root.append(card("API calls", null, el("div", { className: "empty", textContent: "Seeing the phone's API calls needs the Droid Desk desktop app." })));
+    root.append(card("API calls", null, el("div", { className: "empty", textContent: "Seeing the phone's API calls needs the Andromon desktop app." })));
     return {};
   }
 
@@ -459,7 +459,7 @@ export function mount(root, ctx) {
           ...(e.error ? { comment: e.error } : {}),
         });
       }
-      const har = { log: { version: "1.2", creator: { name: "Droid Desk", version: "1" }, entries: harEntries } };
+      const har = { log: { version: "1.2", creator: { name: "Andromon", version: "1" }, entries: harEntries } };
       const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
       ctx.download(new Blob([JSON.stringify(har, null, 1)], { type: "application/json" }), `api-calls-${stamp}.har`);
       toast(`Exported ${harEntries.length} calls`);
@@ -470,7 +470,7 @@ export function mount(root, ctx) {
   const httpsState = el("div", { className: "dev-note" });
   const saveCa = el("button", { type: "button", className: "btn sm", textContent: "Save certificate" });
   saveCa.onclick = async () => {
-    try { ctx.download(new Blob([await insp.caPem()], { type: "application/x-x509-ca-cert" }), "DroidDesk-CA.crt"); }
+    try { ctx.download(new Blob([await insp.caPem()], { type: "application/x-x509-ca-cert" }), "Andromon-CA.crt"); }
     catch (e) { showError(e); }
   };
   const pushCa = el("button", { type: "button", className: "btn sm primary", textContent: "Put certificate on phone" });
@@ -481,7 +481,7 @@ export function mount(root, ctx) {
     try {
       const pem = await insp.caPem();
       await sh("mkdir -p /sdcard/Download");
-      await ctx.withSync((s) => s.write({ filename: "/sdcard/Download/DroidDesk-CA.crt", file: new Blob([pem]).stream(), permission: 0o644 }));
+      await ctx.withSync((s) => s.write({ filename: "/sdcard/Download/Andromon-CA.crt", file: new Blob([pem]).stream(), permission: 0o644 }));
       await sh("am start -a android.settings.SECURITY_SETTINGS >/dev/null 2>&1").catch(() => {});
       toast("Certificate copied to the phone's Download folder");
       steps.hidden = false;
@@ -490,14 +490,14 @@ export function mount(root, ctx) {
   const steps = el("ol", { className: "steps tr-steps", hidden: true },
     el("li", { textContent: "On the phone, Settings opened. Go to Security (or Security & privacy) › More security settings › Encryption & credentials." }),
     el("li", { textContent: "Tap Install a certificate › CA certificate, then Install anyway." }),
-    el("li", { textContent: "Pick DroidDesk-CA.crt from Download. The phone may ask for its screen lock." }),
+    el("li", { textContent: "Pick Andromon-CA.crt from Download. The phone may ask for its screen lock." }),
     el("li", { textContent: "To remove it later: Encryption & credentials › Trusted credentials › User." }));
   const nscPre = el("pre", { className: "out tr-pre tr-nsc", textContent: NSC_XML });
   const nscCopy = el("button", { type: "button", className: "btn sm", textContent: "Copy" });
   nscCopy.onclick = () => copy(NSC_XML, "Copied");
   function renderHttps() {
     httpsState.textContent = store.get("trafficDecrypt", false)
-      ? "Decryption is on: apps that trust Droid Desk's certificate show their HTTPS calls in full. Apps that don't (most release apps) fail to connect while capture is on; they show as “certificate refused”."
+      ? "Decryption is on: apps that trust Andromon's certificate show their HTTPS calls in full. Apps that don't (most release apps) fail to connect while capture is on; they show as “certificate refused”."
       : "Decryption is off: HTTPS calls show only the server name and the amount of data. Plain HTTP calls are shown in full.";
   }
   renderHttps();
@@ -509,7 +509,7 @@ export function mount(root, ctx) {
         startBtn,
         el("label", { className: "dev-lbl", textContent: "Proxy port" }), portIn,
         el("label", { className: "tr-sw" }, decryptSw, el("span", { textContent: "Decrypt HTTPS" }))),
-      el("p", { className: "dev-note", textContent: "While capture is on, the phone sends every app's web traffic through Droid Desk (it sets the phone's proxy to this computer, over the cable or Wi‑Fi link). Stop capture, or Disconnect, and the phone's proxy is cleared again." }),
+      el("p", { className: "dev-note", textContent: "While capture is on, the phone sends every app's web traffic through Andromon (it sets the phone's proxy to this computer, over the cable or Wi‑Fi link). Stop capture, or Disconnect, and the phone's proxy is cleared again." }),
       el("div", { className: "toolbar tr-bar" }, filterIn,
         el("label", { className: "tr-sw" }, apiSw, el("span", { textContent: "Only API calls" })),
         pauseBtn, clearBtn, harBtn, countLbl),
@@ -533,7 +533,7 @@ export function mount(root, ctx) {
     async connected() {
       running = false; capturePort = 0; captureAdb = null;
       renderState();
-      // Capture was still on when the cable was pulled (or Droid Desk was closed): give the phone its internet back.
+      // Capture was still on when the cable was pulled (or Andromon was closed): give the phone its internet back.
       const port = store.get("trafficOn", 0);
       if (port) {
         store.set("trafficOn", 0);

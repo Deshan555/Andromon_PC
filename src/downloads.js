@@ -1,13 +1,13 @@
-// Download manager: one list of everything Droid Desk downloads to this computer (ReVanced's tools,
+// Download manager: one list of everything Andromon downloads to this computer (ReVanced's tools,
 // F-Droid's catalogue and apps, the debloat list), with progress, speed, cancel and a short history.
 // The downloads themselves run in the main process (revanced.js, fdroid.js), which announce
 // { kind: "download", phase: "start" | "end" } and { kind: "progress", done, total } on their event
 // channels; this file only listens. The Downloads button at the top of every page opens the list.
 
-const HISTORY_KEY = "dd.downloads", HISTORY_MAX = 30;
+const HISTORY_KEY = "andromon.downloads", HISTORY_MAX = 30;
 
 export function initDownloads({ $, el, fmtSize, fmtDate, show }) {
-  const api = globalThis.droidDesk || {};
+  const api = globalThis.andromon || {};
   let items = []; // newest first: { id, src, title, from, done, total, speed, state, at, error, cancel }
   let seq = 0;
   const live = new Map(); // "<src>:<title>" -> the running item
@@ -58,7 +58,7 @@ export function initDownloads({ $, el, fmtSize, fmtDate, show }) {
   });
   listen("rv", api.revanced, () => api.revanced.cancel(), "revanced.app");
   listen("fd", api.fdroid, () => api.fdroid.cancel(), "f-droid.org");
-  listen("up", api.updates, () => api.updates.cancel(), "github.com"); // a new version of Droid Desk itself
+  listen("up", api.updates, () => api.updates.cancel(), "github.com"); // a new version of Andromon itself
 
   /** A download made by the page itself: fn(report) where report(done, total) moves the bar. */
   async function track(src, title, from, fn) {
