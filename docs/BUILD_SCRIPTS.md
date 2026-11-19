@@ -21,15 +21,14 @@ This page explains every script that turns the Andromon source into installers, 
 | `npm run build:renderer` | npm | Bundles `src/app.js` into `renderer/app.js` with esbuild. Every other build starts with this. |
 | `npm run dist:mac` / `dist:win` / `dist:linux` | npm | Bundles the page, then runs electron-builder for one system. Installers land in `dist/`. |
 | `build/release.py` | `python3` | Asks what to build, pulls the newest code, does the same build, then collects the installers, signs them and checks them. |
-| `scripts/release-manifest.js` | `node` (the GitHub workflow) | Writes `latest.json`, `CHANGELOG.md` and the release notes after a build on GitHub. |
-| `.github/workflows/desktop.yml` | GitHub Actions | A test build of every installer and the web zip, started by hand. Releases are built by `Andromon_Releases` (section 5). |
+| `scripts/release-manifest.js` | `node` (the release workflows) | Writes `latest.json`, `CHANGELOG.md` and the release notes after a build on GitHub. |
 | `npm run build:companion` | npm | Rebuilds the phone app in `../android` and copies its APK to `renderer/companion.apk`. |
 | `npm run build:uihelper` | npm | Rebuilds `renderer/ui-helper.jar` from `uihelper/src`. |
 
 There are two ways to make installers:
 
 - **On your computer**, with `build/release.py` (or the plain `npm run dist:*` commands). The result goes to `build/` (the installers are kept out of git by `.gitignore`).
-- **On GitHub**, by raising `version` in `package.json` and pushing to the `release` branch. `Andromon_Releases` builds and publishes it within the hour.
+- **On GitHub**, by raising `version` in `package.json` and pushing to the `automation` branch. The workflow builds it and publishes it in `Andromon_Releases`.
 
 The two don't depend on each other. The GitHub workflow does not use `release.py`.
 
@@ -203,35 +202,49 @@ The app's own update check does not read the release signature. It checks the do
 
 ## 5. Automatic builds on GitHub
 
-Releases are built and published by GitHub Actions in their own repository, [Deshan555/Andromon_Releases](https://github.com/Deshan555/Andromon_Releases), from the `release` branches of this repository and of [Andromon-android](https://github.com/Deshan555/Andromon-android).
+Releases are published in their own repository, [Deshan555/Andromon_Releases](https://github.com/Deshan555/Andromon_Releases), by `.github/workflows/automation.yml` in this repository. There is no `release` branch any more: **push a new version to the `automation` branch** and it is built and published straight away.
 
-**Making a release:** raise `version` in `package.json` (and the phone app's version in `android/app/build.gradle.kts`), then put the code on both `release` branches:
+**Making a release:** raise `version` in `package.json` (and bundle the newest phone app, see step 2), commit, and push to `automation`:
 
 ```sh
-git push origin main:release            # in pc/
-git -C ../android push origin main:release
+git switch automation && git merge main     # bring in what is ready
+git commit -am "Release 1.0.5"              # after raising "version"
+git push origin automation
 ```
 
-Within the hour, `Andromon_Releases/.github/workflows/build.yml` notices the new version and:
+On every push to `automation` the workflow:
 
-1. **New version?** Reads the version in `package.json` on this repository's `release` branch. It builds when `Andromon_Releases` has no release for it yet and it is newer than the newest one there (an old `release` branch never republishes an older version). It also runs from that repository's Actions tab, where **force** builds whatever is on the branches.
-2. **Phone app**: built from Andromon-android's `release` branch and signed with the `KEYSTORE_*` secrets of `Andromon_Releases`. Without them, the APK committed in `renderer/companion.apk` is used as it is, so bundle the newest one first (`npm run build:companion`, commit it).
-3. **Desktop**, with that phone app bundled: macOS `.dmg` (Apple Silicon, Intel; ad-hoc signed unless `CSC_LINK` is set), Windows setup `.exe` (x64, ARM64, both in one, and 32-bit on Electron 43.8.12), Linux `.AppImage` and `.deb` (x64, ARM64). The build number is that workflow's run number.
+1. **New version?** Reads the version in `package.json`. It builds only when `Andromon_Releases` has no release for it yet and it is newer than the newest one there; any other push builds nothing. **Actions › Release from automation › Run workflow** with **force** rebuilds a released version and replaces its files.
+2. **Phone app**: built from Andromon-android's `release` branch and signed with the `KEYSTORE_*` secrets. Without them, the APK committed in `renderer/companion.apk` is used as it is, so bundle the newest one first (`npm run build:companion`, commit it).
+3. **Desktop**, with that phone app bundled: macOS `.dmg` (Apple Silicon, Intel; ad-hoc signed unless `CSC_LINK` is set), Windows setup `.exe` (x64, ARM64, both in one, and 32-bit on Electron 43.8.12), Linux `.AppImage` and `.deb` (x64, ARM64). The build number is the workflow's run number.
 4. **Web**: `Andromon-Web-<version>.zip`, and the phone app as `Andromon-Companion-<version>.apk`.
-5. **Publish**: `SHA256SUMS.txt` (signed with `RELEASE_SIGNING_KEY` when set), then `scripts/release-manifest.js` with `RELEASE_REPOSITORY` (download links), `SOURCE_REPOSITORY` and `SOURCE_SHA` (the commits built), continuing from that repository's `latest.json` and `CHANGELOG.md`. The release `v<version>` is published at once, and its README, `latest.json` and `CHANGELOG.md` are updated.
+5. **Publish**: `SHA256SUMS.txt` (signed with `RELEASE_SIGNING_KEY` when set), then `scripts/release-manifest.js` with `RELEASE_REPOSITORY` (download links), continuing from `latest.json` and `CHANGELOG.md` in `Andromon_Releases`. The release `v<version>` is published there at once, and its README (from `.github/scripts/readme.js` there), `latest.json` and `CHANGELOG.md` are updated.
+
+6. **Netlify**: the same web build is deployed to Netlify as the live site, so the hosted web app always matches the newest release. Skipped (with a notice) when the Netlify secrets aren't set; it never holds up the release.
+
+**Only the web app:** **Actions › Release from automation › Run workflow** with **web** ticked builds the web version and deploys it to Netlify, without installers or a release (no `RELEASES_TOKEN` needed).
+
+**Setting up Netlify** (once):
+
+1. In Netlify, **Add new site › Deploy manually** and drop any folder (for example `dist/web` after `npm run build:web`); this only creates the site. Rename it under **Site configuration › Change site name** if you like.
+2. Copy its **Site ID** from **Site configuration › General › Site details**.
+3. Create a token: **User settings › Applications › Personal access tokens › New access token**.
+4. In this repository, add the secrets `NETLIFY_SITE_ID` and `NETLIFY_AUTH_TOKEN` (Settings › Secrets and variables › Actions).
+
+The site needs no build settings in Netlify: the workflow uploads the finished files (`dist/web`, with its `_headers` for caching and the APK's content type).
 
 The installed app's update check reads `latest.json` from `Andromon_Releases` (`updater.js`), so it sees a release as soon as it is published.
 
-| Secret in `Andromon_Releases` | Used for |
+| Secret in this repository | Used for |
 |---|---|
+| `RELEASES_TOKEN` (required) | Publishing in `Andromon_Releases`: a fine-grained personal access token for that repository with **Contents: Read and write** |
 | `RELEASE_SIGNING_KEY` | Signing `SHA256SUMS.txt` (the contents of `~/.andromon/release-signing-key.pem`) |
 | `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | Signing the phone app. Phones only accept an update signed with the same key as the app they have |
 | `CSC_LINK`, `CSC_KEY_PASSWORD` | Code signing on macOS and Windows |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Notarizing the macOS app |
+| `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` | Deploying the web version to Netlify |
 
-All are optional.
-
-**Test build:** `.github/workflows/desktop.yml` in this repository builds the same installers and the web zip from any branch when started by hand (**Actions › Test build › Run workflow**) and attaches them to the run. It publishes nothing.
+Nothing builds on a push to `main`. To try a change on every system without releasing it, build locally with `build/release.py` (section 3).
 
 ## 6. `scripts/release-manifest.js`
 
