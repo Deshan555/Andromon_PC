@@ -14,7 +14,7 @@ The screenshots were taken with the Mac app in full screen, connected to a real 
 4. [Overview](#4-overview)
 5. [Communication](#5-communication): Messages, Contacts, Call log, Calendar, Notifications
 6. [Files & media](#6-files--media): Files, Photos, Music, Backup & restore, Wi‑Fi transfer
-7. [Device](#7-device): Apps, Debloat, ReVanced, F-Droid, Controls, Shizuku, Screen mirror, Screenshot
+7. [Device](#7-device): Apps, Debloat, ReVanced, F-Droid, Controls, Memory, Shizuku, Screen mirror, Screenshot
 8. [Developer](#8-developer): Test automation, App testing, Developer, Shell
 9. [Settings](#9-settings)
 10. [If something doesn't work](#10-if-something-doesnt-work)
@@ -250,6 +250,22 @@ Switches for the phone's own settings. Every change applies to the phone at once
 | **Display** | Dark theme, auto-rotate, auto brightness, brightness, animations, show taps, screen timeout, font size, resolution and DPI override (with reset) |
 | **System** | Do Not Disturb, stay awake while charging, media volume |
 | **Power** | Wake, lock, restart (normal, recovery, bootloader), power off |
+
+### Memory
+
+How much of the phone's RAM is in use, and which apps hold it. Everything here works over the cable alone: no root, Shizuku or companion app is needed (with the companion installed, apps show their names and icons).
+
+- The big card shows **RAM in use**, how much is available and a verdict ("Normal · plenty of free memory"). The figures follow the phone every few seconds while the page is open.
+- Below it: **Available**, **Compressed swap** (memory Android squeezes less used apps into), **Apps in memory** and **Cached apps**.
+- **Apps in memory** lists every app with something running, biggest first, with its state: **In use**, **Visible**, **Running**, **Recent** or **Cached**. **Background only** hides the ones on screen.
+
+| Button | What it does |
+|---|---|
+| **Stop** | Force-stops that app, as **Settings › Apps › Force stop** does. Anything unsaved in it is lost. For an app on screen, click twice to confirm. |
+| **Free memory** | Ends the background apps Android would close first. Apps in use are left alone. |
+| **Refresh** | Reads the list again. |
+
+Android's own processes, the home screen, Google Play services and the companion are shown as **Kept**: stopping them would only make the phone restart them. Cached apps don't slow the phone; Android ends them by itself when memory is needed.
 
 ### Shizuku
 

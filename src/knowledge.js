@@ -107,6 +107,18 @@ const PAGES = {
     tips: ["Heat wears a battery fastest. Keeping the charge between about 20% and 80% helps it last."],
     tour: [["#batteryRoot .bh-stat.hero", "Health", "Capacity now against new."], [".bh-chart", "Charge history", "Shaded parts are charging."]],
   },
+  memory: {
+    name: "Memory",
+    intro: "How much of the phone's RAM is in use, which apps hold it, and stopping the ones you don't need.",
+    how: [
+      "The big card shows RAM in use; the figures follow the phone every few seconds while the page is open.",
+      "Apps in memory lists every app with something running, biggest first, and how Android rates it: In use, Visible, Running, Recent or Cached.",
+      "Stop force-stops one app, as Settings › Apps › Force stop does. Free memory ends the background apps Android would close first.",
+      "This works over ADB alone: no root, Shizuku or companion app needed. App names and icons come from the companion when it is installed.",
+    ],
+    tips: ["Cached apps don't slow the phone: Android keeps them so they reopen quickly and ends them by itself when memory is needed.", "A stopped app may start again by itself for alarms, messages or music. To keep one from running, disable it on the Apps page."],
+    tour: [["#memoryRoot .hero .card", "RAM in use", "How full the memory is, and Free memory."], [".mm-stats", "The figures", "Available memory, compressed swap and how many apps are in memory."], [".mm-row", "An app", "Its memory, its state and Stop."]],
+  },
   recovery: {
     name: "SD card recovery",
     intro: "Bring back deleted photos, videos and files from a memory card or USB stick in this computer.",

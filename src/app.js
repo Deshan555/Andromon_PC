@@ -38,6 +38,7 @@ import { createProgress, countBytes } from "./progress.js";
 import { initMirrorDrop } from "./mirrordrop.js";
 import { initStorageMap } from "./storagemap.js";
 import { initBattery } from "./battery.js";
+import { initMemory } from "./memory.js";
 import { initFolderSync } from "./foldersync.js";
 import { initClipSync } from "./clipsync.js";
 import { initRepair } from "./repair.js";
@@ -64,6 +65,7 @@ let revancedTab = null; // ReVanced page: patch an app on this computer (./revan
 let recoveryTab = null; // SD card recovery page (./recovery.js)
 let storageTab = null; // Storage map page (./storagemap.js)
 let batteryTab = null; // Battery health page (./battery.js)
+let memoryTab = null; // Memory page (./memory.js)
 let folderSync = null; // Folder sync page, and the pairs that sync when a phone connects (./foldersync.js)
 let repairTab = null; // Repair page: jobs, reports and tests for repair shops (./repair.js)
 let fdroidTab = null; // F-Droid page: free apps from F-Droid's catalogue (./fdroid.js)
@@ -218,7 +220,7 @@ function setPrivacy(on) {
 // ---------- navigation ----------
 let current = "overview";
 const loaders = { overview: loadOverview, backup: () => backup?.renderCard(), shizuku: () => Promise.all([shizukuCard?.render(), renderRamCard()]), apps: loadApps, controls: loadControls, debloat: () => loadDebloat(), revanced: () => revancedTab.load(),
-  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), storage: () => storageTab.load(), sync: () => folderSync.load(), battery: () => batteryTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
+  messages: () => loadMessages(), contacts: () => loadContacts(), calls: () => loadCalls(), files: () => filesTab.load(), storage: () => storageTab.load(), sync: () => folderSync.load(), battery: () => batteryTab.load(), memory: () => memoryTab.load(), photos: () => loadPhotos(), music: () => loadMusic(), notifs: () => loadNotifs(), calendar: () => calendarTab.load(), mirror: () => {}, tests: () => autotest.load(), dev: () => devtools.load(), qa: () => apptesting.load(), screen: () => {}, shell: () => $("shellCmd").focus() };
 // Views that work without a phone on USB.
 const offlineViews = { repair: () => repairTab.load(), wifi: () => loadWifi(), settings: () => settingsUi?.load(), fdroid: () => fdroidTab.load(), recovery: () => recoveryTab.load() };
 let settingsUi = null;
@@ -248,7 +250,7 @@ const HEADINGS = {
   overview: ["Your phone, ", "at a glance"], apps: ["Your ", "apps"], messages: ["Your ", "messages"], contacts: ["Your ", "people"],
   calls: ["Call ", "history"], notifs: ["Phone ", "notifications"], controls: ["Quick ", "controls"], debloat: ["Clean up ", "extra apps"], revanced: ["Patch apps with ", "ReVanced"], fdroid: ["Free apps from ", "F-Droid"], files: ["Your ", "files"],
   photos: ["Photos ", "& videos"], music: ["Your ", "music"], mirror: ["Your screen, ", "on your desk"], tests: ["Test ", "automation"], screen: ["Take a ", "screenshot"], dev: ["Developer ", "tools"], qa: ["App ", "testing"],
-  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], storage: ["What fills ", "your phone"], repair: ["Repair ", "desk"], sync: ["Folder ", "sync"], battery: ["Battery ", "health"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
+  shell: ["ADB ", "shell"], backup: ["Backup ", "& restore"], shizuku: ["Shizuku ", "on this phone"], wifi: ["Wi‑Fi ", "transfer"], storage: ["What fills ", "your phone"], repair: ["Repair ", "desk"], sync: ["Folder ", "sync"], battery: ["Battery ", "health"], memory: ["Phone ", "memory"], recovery: ["SD card ", "recovery"], settings: ["Settings", ""], calendar: ["Your ", "calendar"],
 };
 function setTitle(view) {
   const [plain, italic] = view === "overview" && !adb ? ["Connect ", "your phone"] : HEADINGS[view] || [view, ""];
@@ -259,6 +261,7 @@ function show(view) {
   if (view === "repair" && !REPAIR_ENABLED) view = "overview";
   if (privacyOn() && PRIVATE_VIEWS.has(view)) { toast("Technician mode is on: the customer's personal pages are hidden. Switch it off on the Repair page."); return; }
   repairTab?.onShow(view);
+  memoryTab?.onShow(view);
   if (view !== "apps") dropPendingInstall();
   if (view !== "mirror" && view !== "tests" && mirror) stopMirror("Mirroring stopped");
   autotest?.onShow(view);
@@ -955,6 +958,7 @@ function resetSessionState() {
   devtools?.onDisconnected();
   links?.onDisconnected();
   apptesting?.onDisconnected();
+  memoryTab?.onDisconnected();
   dropPendingInstall();
   stopCallAlerts(); resetNotifs();
   adb = null; companionInfo = null; resetAppIcons();
@@ -5032,6 +5036,7 @@ try { if (localStorage.getItem("andromon.debug")) window.ddRevanced = revancedTa
 recoveryTab = initRecovery({ $, el, toast, showError, clearError, fmtSize });
 storageTab = initStorageMap({ $, el, sh, shQuote, fmtSize, toast, showError, armedClick, spinner });
 batteryTab = initBattery({ $, el, sh, cc, companionReady: companionAvailable, showError, spinner });
+memoryTab = initMemory({ $, el, sh, shQuote, fmtSize, toast, showError, spinner, actionBtn, appIdent, checkIcons: checkIconSource, getAdb: () => adb });
 repairTab = !REPAIR_ENABLED ? null : initRepair({
   $, el, toast, showError, clearError, armedClick, fmtSize, busy, makeSwitch, sh, shQuote, withSync, download, track, cc,
   getAdb: () => adb, companionReady: companionAvailable, allPhones, phoneName: (a) => a.banner?.model || a.serial, showView: (v) => show(v),
