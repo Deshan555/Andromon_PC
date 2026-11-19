@@ -43,7 +43,7 @@ function pickInstaller(files, { platform, arch, appImage }) {
   const mine = (Array.isArray(files) ? files : []).filter((f) => f && f.platform === os && typeof f.name === "string");
   const kind = os === "linux" ? (appImage ? "AppImage" : "deb") : os === "mac" ? "dmg" : "exe";
   const ofKind = mine.filter((f) => f.kind === kind);
-  const cpu = arch === "arm64" ? "arm64" : "x64";
+  const cpu = arch === "arm64" ? "arm64" : arch === "ia32" ? "ia32" : "x64"; // ia32: the 32-bit Windows build
   // Exact CPU type first; then a file for every CPU type (the combined Windows setup); on a Mac with
   // Apple Silicon the Intel build also runs.
   return ofKind.find((f) => f.arch === cpu) || ofKind.find((f) => !f.arch)
