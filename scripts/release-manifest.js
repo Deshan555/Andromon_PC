@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Writes the release manifest and changelog after a build (run by .github/workflows/build.yml in
-// Deshan555/Andromon_Releases, and by hand):
+// Writes the release manifest and changelog after a build (run by .github/workflows/automation.yml here,
+// by .github/workflows/build.yml in Deshan555/Andromon_Releases, and by hand):
 //   latest.json    what the newest build is: version, build number, commit, and every installer with its
 //                  size, SHA-256 and download address
 //   CHANGELOG.md   one section per build, newest first, listing the commits since the build before it

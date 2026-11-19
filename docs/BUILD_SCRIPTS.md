@@ -21,7 +21,7 @@ This page explains every script that turns the Andromon source into installers, 
 | `npm run build:renderer` | npm | Bundles `src/app.js` into `renderer/app.js` with esbuild. Every other build starts with this. |
 | `npm run dist:mac` / `dist:win` / `dist:linux` | npm | Bundles the page, then runs electron-builder for one system. Installers land in `dist/`. |
 | `build/release.py` | `python3` | Asks what to build, pulls the newest code, does the same build, then collects the installers, signs them and checks them. |
-| `scripts/release-manifest.js` | `node` (the Andromon_Releases workflow) | Writes `latest.json`, `CHANGELOG.md` and the release notes after a build on GitHub. |
+| `scripts/release-manifest.js` | `node` (the release workflows) | Writes `latest.json`, `CHANGELOG.md` and the release notes after a build on GitHub. |
 | `npm run build:companion` | npm | Rebuilds the phone app in `../android` and copies its APK to `renderer/companion.apk`. |
 | `npm run build:uihelper` | npm | Rebuilds `renderer/ui-helper.jar` from `uihelper/src`. |
 
@@ -230,7 +230,13 @@ The installed app's update check reads `latest.json` from `Andromon_Releases` (`
 
 All are optional.
 
-This repository has no GitHub Actions workflows of its own: nothing builds on a push to `main` or `release` here. To try a change on every system before releasing it, build locally with `build/release.py` (section 3).
+### Releasing from the `automation` branch
+
+`.github/workflows/automation.yml` in this repository publishes straight away instead of waiting for the hourly check: **push a new version to the `automation` branch**. On every push there it reads the version in `package.json`; when `Andromon_Releases` has no release for it and it is newer than the newest one there, it builds the same files as above (phone app from Andromon-android's `release` branch, or the bundled APK; every desktop installer; the web zip) and publishes the release in `Andromon_Releases`, with its README, `latest.json` and `CHANGELOG.md`. A push that doesn't raise the version builds nothing; **Actions › Release from automation › Run workflow** with **force** rebuilds a released version and replaces its files.
+
+It needs the secret `RELEASES_TOKEN` in this repository: a fine-grained personal access token for `Deshan555/Andromon_Releases` with **Contents: Read and write**. The other secrets are the same as in the table above, set in this repository. Both workflows skip a version that is already released, so whichever gets to a new version first publishes it.
+
+Nothing builds on a push to `main` or `release` in this repository. To try a change on every system without releasing it, build locally with `build/release.py` (section 3).
 
 ## 6. `scripts/release-manifest.js`
 

@@ -1,0 +1,281 @@
+# Publishes an Andromon release when a new version is pushed to the "automation" branch.
+#
+# On every push to automation, the version in package.json is read. When Deshan555/Andromon_Releases has
+# no release for it yet and it is newer than the newest release there, this workflow:
+#   1. the phone app: built from Andromon-android (branch ANDROID_REF) and signed with the KEYSTORE_*
+#      secrets; without them, the APK bundled here (renderer/companion.apk) is used as it is
+#   2. the desktop installers, with that phone app bundled:
+#        macOS .dmg (Apple Silicon, Intel) · Windows setup .exe (x64, ARM64, both in one, 32-bit)
+#        Linux .AppImage and .deb (x64, ARM64)
+#   3. the web version (.zip)
+#   4. SHA256SUMS.txt (signed with RELEASE_SIGNING_KEY when set), latest.json and CHANGELOG.md, then
+#      publishes the release "v<version>" in Andromon_Releases and updates its README.md, latest.json
+#      and CHANGELOG.md. Installed apps read latest.json from there, so they see the update at once.
+# A push that doesn't raise the version builds nothing. "Run workflow" in the Actions tab does the same
+# for the branch picked; tick "force" to rebuild a version that is already released (files replaced).
+#
+# Secrets (Settings › Secrets and variables › Actions):
+#   RELEASES_TOKEN (required)   a token that can write to Deshan555/Andromon_Releases: a fine-grained
+#                               personal access token for that repository with "Contents: Read and write"
+#   RELEASE_SIGNING_KEY         signs SHA256SUMS.txt (the private half of build/release-signing-key.pub.pem)
+#   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+#                               the phone app's signing key, as in Andromon-android
+#   CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#                               code signing on macOS and Windows, notarizing on macOS
+name: Release from automation
+
+on:
+  push:
+    branches: [automation]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even when this version is already released (its files are replaced)"
+        type: boolean
+        default: false
+
+# One release at a time; a newer push waits rather than stopping a build halfway.
+concurrency:
+  group: automation-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASES_REPO: Deshan555/Andromon_Releases
+  ANDROID_REPO: Deshan555/Andromon-android
+  ANDROID_REF: release
+  # Electron 45 has no 32-bit Windows build; 43 is the newest that has one. Only the ia32 setup uses it.
+  ELECTRON_IA32: "43.8.12"
+
+jobs:
+  # ---------- is this a new version? ----------
+  detect:
+    name: New version?
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.v.outputs.build }}
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          HAS_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v$version"
+          if gh release view "$tag" --repo "$RELEASES_REPO" >/dev/null 2>&1; then exists=true; else exists=false; fi
+          # Only a version newer than the newest release there counts; "force" builds whatever is here.
+          newest="$(curl -fsSL "https://raw.githubusercontent.com/$RELEASES_REPO/HEAD/latest.json" 2>/dev/null | jq -r '.version // empty' || true)"
+          newer=true
+          if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$version" | sort -V | tail -1)" != "$version" ]; then newer=false; fi
+          if { [ "$exists" = false ] && [ "$newer" = true ]; } || [ "$FORCE" = true ]; then build=true; else build=false; fi
+          {
+            echo "### Andromon $tag"
+            echo "- Release $tag in $RELEASES_REPO: $exists"
+            echo "- Newest release there: ${newest:-none}"
+            echo "- Build and publish: $build"
+            [ "$build" = true ] || echo $'\nNothing to publish: raise "version" in package.json for a new release.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$build" = true ] && [ "$HAS_TOKEN" != true ]; then
+            echo "::error::Add the RELEASES_TOKEN secret (a token that can write to $RELEASES_REPO) to publish $tag"; exit 1
+          fi
+          { echo "build=$build"; echo "version=$version"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+
+  # ---------- the phone app ----------
+  phone:
+    name: Phone app
+    needs: detect
+    if: needs.detect.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: pc }
+      - uses: actions/checkout@v4
+        if: env.KEYSTORE_BASE64 != ''
+        with: { repository: "${{ env.ANDROID_REPO }}", ref: "${{ env.ANDROID_REF }}", path: android }
+      - uses: actions/setup-java@v4
+        if: env.KEYSTORE_BASE64 != ''
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        if: env.KEYSTORE_BASE64 != ''
+      - name: Build and sign the release APK
+        if: env.KEYSTORE_BASE64 != ''
+        working-directory: android
+        env:
+          ANDROMON_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ANDROMON_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          ANDROMON_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          trap 'rm -f "$RUNNER_TEMP/release.keystore"' EXIT
+          ANDROMON_KEYSTORE_FILE="$RUNNER_TEMP/release.keystore" ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../pc/renderer/companion.apk
+      - name: Check the APK
+        run: |
+          [ -n "$KEYSTORE_BASE64" ] || echo "::notice::No KEYSTORE_BASE64 secret: using the phone app bundled here (renderer/companion.apk)"
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$tools/aapt2" dump badging pc/renderer/companion.apk | head -1
+          "$tools/apksigner" verify --print-certs pc/renderer/companion.apk | grep -m2 "DN\|SHA-256"
+      - uses: actions/upload-artifact@v4
+        with: { name: companion, path: pc/renderer/companion.apk, if-no-files-found: error }
+
+  # ---------- desktop installers ----------
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: [detect, phone]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest }
+          - { name: Windows, os: windows-latest }
+          - { name: Linux, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run: { shell: bash }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: companion, path: renderer }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: package-lock.json }
+      - run: npm ci
+      # The app's update check compares this build number with the one in latest.json.
+      - name: Stamp the build number
+        run: |
+          node -e 'require("fs").writeFileSync("build-info.json", JSON.stringify({ build: Number(process.env.GITHUB_RUN_NUMBER) || 0, commit: process.env.GITHUB_SHA || "", date: new Date().toISOString() }) + "\n")'
+          cat build-info.json
+      - run: npm run build:renderer
+      - name: Build
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          signing=()
+          if [ -z "$CSC_LINK" ]; then
+            # No certificate: the macOS app gets an ad-hoc signature (unsigned, macOS calls a downloaded
+            # copy "damaged"); Windows and Linux stay unsigned.
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset CSC_LINK CSC_KEY_PASSWORD
+            [ "$RUNNER_OS" = macOS ] && signing=(-c.mac.identity=- -c.mac.hardenedRuntime=false)
+          fi
+          case "$RUNNER_OS" in
+            macOS)   npx electron-builder --mac "${signing[@]}" --publish never ;;
+            Windows) npx electron-builder --win --publish never
+                     npx electron-builder --win nsis:ia32 "-c.electronVersion=$ELECTRON_IA32" --publish never ;;
+            Linux)   npx electron-builder --linux AppImage:x64 AppImage:arm64 deb:x64 deb:arm64 --publish never ;;
+          esac
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+  # ---------- web version, and the phone app under its release name ----------
+  web:
+    name: Web
+    needs: [detect, phone]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: companion, path: renderer }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: package-lock.json }
+      - run: npm ci
+      - run: npm run build:web
+      - name: Collect
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+        run: |
+          mkdir -p out
+          cp dist/andromon-web.zip "out/Andromon-Web-$VERSION.zip"
+          cp renderer/companion.apk "out/Andromon-Companion-$VERSION.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: web-and-phone, path: out/*, if-no-files-found: error }
+
+  # ---------- publish in Andromon_Releases ----------
+  publish:
+    name: Publish in Andromon_Releases
+    needs: [detect, desktop, web]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.detect.outputs.tag }}
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+    steps:
+      # Full history: the changelog lists the commits since the previous release.
+      - uses: actions/checkout@v4
+        with: { path: pc, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ env.ANDROID_REPO }}", ref: "${{ env.ANDROID_REF }}", path: android, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ env.RELEASES_REPO }}", path: site, token: "${{ secrets.RELEASES_TOKEN }}" }
+      - uses: actions/download-artifact@v4
+        with: { path: files, merge-multiple: true }
+      - name: Checksums and release signature
+        env:
+          KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        working-directory: files
+        run: |
+          rm -f companion.apk # the phone app's working copy; it's in the release as Andromon-Companion-<version>.apk
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          if [ -n "$KEY" ]; then
+            printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.pem"
+            openssl pkeyutl -sign -inkey "$RUNNER_TEMP/key.pem" -rawin -in SHA256SUMS.txt -out "$RUNNER_TEMP/sig"
+            rm -f "$RUNNER_TEMP/key.pem"
+            base64 -w0 "$RUNNER_TEMP/sig" > SHA256SUMS.txt.sig && echo >> SHA256SUMS.txt.sig
+            openssl pkeyutl -verify -pubin -inkey ../pc/build/release-signing-key.pub.pem -rawin -in SHA256SUMS.txt -sigfile "$RUNNER_TEMP/sig"
+          else
+            echo "::warning::RELEASE_SIGNING_KEY is not set: SHA256SUMS.txt is not signed"
+          fi
+      # Continues from Andromon_Releases' latest.json and CHANGELOG.md (the previous release).
+      - name: Write latest.json, CHANGELOG.md and the release notes
+        env:
+          MANIFEST_OUT: ${{ github.workspace }}/site
+          RELEASE_REPOSITORY: ${{ env.RELEASES_REPO }}
+        run: node pc/scripts/release-manifest.js files "$RUNNER_TEMP/notes.md"
+      - name: Publish the release
+        run: |
+          cp site/latest.json site/CHANGELOG.md files/
+          ls -la files
+          if gh release view "$TAG" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            # Built again with "force": replace its files and description.
+            gh release upload "$TAG" files/* --clobber --repo "$RELEASES_REPO"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --repo "$RELEASES_REPO"
+          else
+            gh release create "$TAG" files/* --repo "$RELEASES_REPO" --target "$(git -C site rev-parse HEAD)" \
+              --title "Andromon $TAG" --notes-file "$RUNNER_TEMP/notes.md" --latest
+          fi
+          echo "Published [$TAG](https://github.com/$RELEASES_REPO/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Update README.md, latest.json and CHANGELOG.md in Andromon_Releases
+        working-directory: site
+        env:
+          SOURCE: ${{ github.repository }}@${{ github.sha }}
+        run: |
+          cp ../files/SHA256SUMS.txt .
+          if [ -f ../files/SHA256SUMS.txt.sig ]; then cp ../files/SHA256SUMS.txt.sig .; else rm -f SHA256SUMS.txt.sig; fi
+          cp ../pc/build/release-signing-key.pub.pem .
+          if [ -f .github/scripts/readme.js ]; then node .github/scripts/readme.js; else echo "::warning::No .github/scripts/readme.js in $RELEASES_REPO: README.md not updated"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md latest.json CHANGELOG.md SHA256SUMS.txt release-signing-key.pub.pem
+          git add -A SHA256SUMS.txt.sig 2>/dev/null || true # signed, or removed when unsigned
+          git diff --cached --quiet || git commit -m "Release $TAG" -m "Built from $SOURCE"
+          git pull --rebase --quiet
+          git push
