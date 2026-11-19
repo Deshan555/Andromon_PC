@@ -279,6 +279,12 @@ pc/
   package.json       Scripts and electron-builder config (dmg + nsis)
 ```
 
+## Licence
+
+Andromon is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License, version 3** (`GPL-3.0-only`), as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but **without any warranty**; see [LICENSE](LICENSE) for the full text. Copyright © 2026 The Andromon authors.
+
+The companion app ([Andromon-android](https://github.com/Deshan555/Andromon-android)) is under the same licence. The third-party components below keep their own licences, all of which can be combined with GPL-3.0; the installed app carries the licence text (`LICENSE` in its resources).
+
 ## Third-party code
 
 | Component | Licence | How it's used |

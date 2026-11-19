@@ -3,6 +3,7 @@
   "productName": "Andromon",
   "version": "1.0.5",
   "description": "Android phone manager for Windows, macOS and Linux (ADB over USB)",
+  "license": "GPL-3.0-only",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -37,6 +38,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "LICENSE",
       "localsend.js",
       "netlink.js",
       "wadb.js",
