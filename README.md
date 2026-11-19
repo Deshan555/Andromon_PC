@@ -208,21 +208,24 @@ It asks its questions in the terminal (no arguments): whether to pull the newest
 The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icns` / `.ico` by electron-builder), the Windows setup wizard's pictures (`installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`) and its welcome texts (`installer.nsh`), and the macOS disk image's background (`background.png`, `@2x`). The Windows wizard's pages: Welcome › install for me or for everyone › folder › installing › Finish (with "Run Andromon"), plus desktop and Start menu shortcuts and an uninstaller that keeps settings. Add `build/license.txt` to get a licence page.
 
 
-**Automatic builds:** every push to the `release` branch builds the macOS, Windows and Linux installers on GitHub (`.github/workflows/desktop.yml`). They are attached to the workflow run and collected in a **draft** GitHub Release named after the version in `package.json` (for example `v0.1.0`); open **Releases**, check it, and press **Publish**. Pushing the same version again replaces the files on that release, so raise `version` in `package.json` for a new one. 
-After each build the workflow commits two files to the `release` branch (`scripts/release-manifest.js`):
+**Automatic builds:** raise `version` in `package.json` and push to `main`: the workflow (`.github/workflows/desktop.yml`) sees that GitHub has no release for that version yet and builds everything on its own: macOS, Windows (x64, ARM64 and 32-bit) and Linux (x64 and ARM64) installers, the web build and the bundled phone app. They are collected in a **draft** GitHub Release named after the version (for example `v1.0.4`) with checksums, `latest.json` and the changelog; open **Releases**, check it, and press **Publish**. Pushes that don't change the version build nothing. [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md#5-automatic-builds-on-github) has the details. 
+When the release is published, the workflow commits two files to the `release` branch (`scripts/release-manifest.js`):
 
 - **`latest.json`**: the newest build. Version, build number, date, commit, the commit subjects since the previous build, and every installer with its platform, CPU type, size, SHA-256 and download address. The addresses work once that version's release is published. Always available at `https://raw.githubusercontent.com/Deshan555/Andromon_PC/release/latest.json`.
 - **`CHANGELOG.md`**: one section per build, newest first, listing the commits since the build before it. The same list is the description of the GitHub Release.
 
 **Update check** (`updater.js`, Settings › About): the app reads `latest.json` from the `release` branch, once a day at start-up (can be switched off) or on **Check now**. A build is newer when its version is higher, or when the version is the same and its build number is higher; the build number of an installed copy is stamped into `build-info.json` by the workflow (copies run from source have build 0 and are only offered a higher version). When there is one, a pill appears in the header and Settings lists what's new; **Download update** saves the installer for this computer (right platform and CPU type) to the Downloads folder through the download manager, checks its SHA-256 against `latest.json`, and **Open installer** starts it. Nothing is installed silently. The download works only once that version's release is published.
 
-Because the build adds commits to `release`, bring `main` into it with a merge rather than pushing `main` over it:
+The `release` branch only holds these two files for the update check; the workflow keeps it up to date, so you never push to it yourself.
+
+**Making a release:**
 
 ```sh
-git checkout release && git pull && git merge main && git push && git checkout main
+# 1. raise "version" in package.json (and the bundled phone app, if it changed: npm run build:companion)
+# 2. commit and push
+git commit -am "Release 1.0.5" && git push
+# 3. wait for the "Build desktop app" run, then open Releases, check the draft and press Publish
 ```
-
-The first time, create the branch with `git push origin main:release`.
 
 The workflow can also be started by hand from **Actions → Build desktop app → Run workflow**; that run only attaches the installers.
 

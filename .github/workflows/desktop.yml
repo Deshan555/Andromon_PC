@@ -1,45 +1,115 @@
-# Builds the Andromon installers on every push to the "release" branch:
-#   macOS    .dmg       (Apple Silicon + Intel)
-#   Windows  .exe       (setup wizard, x64 + ARM64)
-#   Linux    .AppImage and .deb (x64)
-# The installers are attached to the workflow run, and collected in a draft GitHub Release named
-# after the version in package.json (v0.1.0), which you review and publish yourself.
-# The build then commits two files to the release branch: latest.json (the newest build and its
-# installers) and CHANGELOG.md (what changed in each build).
-# It also runs from the "Actions" tab (Run workflow) and for a tag like v0.1.0; those runs only
-# attach the installers to the run.
+# Builds a new Andromon release by itself when the version in package.json changes.
+#
+#   1. Every push to main: the version in package.json is read. When GitHub has no release for it yet
+#      (no "v1.0.4" release, published or draft), it is a new release and everything below is built.
+#      Any other push to main builds nothing.
+#   2. The builds, side by side:
+#        macOS    .dmg                    Apple Silicon + Intel (ad-hoc signed unless CSC_LINK is set)
+#        Windows  setup .exe              x64, ARM64, both in one, and 32-bit (ia32, on Electron 43)
+#        Linux    .AppImage and .deb      x64 + ARM64
+#        Web      Andromon-Web-<v>.zip    the same app for Chrome or Edge, for any static host
+#        Android  Andromon-Companion-<v>.apk   the phone app bundled in renderer/companion.apk
+#   3. One draft GitHub Release "v<version>" with every file, SHA256SUMS.txt (signed when the
+#      RELEASE_SIGNING_KEY secret is set), latest.json (scripts/release-manifest.js), CHANGELOG.md, and
+#      the changes since the previous release as its description. You check it and press Publish.
+#   4. On Publish: latest.json and CHANGELOG.md are committed to the "release" branch. Installed apps
+#      read latest.json from there, so they are offered the update only once its files can be downloaded.
+#
+# Also runs for a pushed tag like v1.0.4 (it must match package.json), and by hand from the Actions tab
+# (Run workflow): that builds and keeps the files on the run; tick "Make the draft release" to also make
+# or refresh the draft release for the version in package.json.
 name: Build desktop app
 
 on:
-  workflow_dispatch:
   push:
-    branches: [release]
+    branches: [main]
     tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Make the draft release (or replace the files on an existing one)"
+        type: boolean
+        default: false
 
 # A newer push to the same branch replaces a build that is still running.
 concurrency:
-  group: desktop-${{ github.ref }}
+  group: desktop-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+env:
+  # Electron 45 has no 32-bit Windows build; 43 is the newest that has one. Only the ia32 setup uses it.
+  ELECTRON_IA32: "43.8.12"
+
 jobs:
+  # ---------- is this a new release? ----------
+  detect:
+    name: New release?
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    # Write access only so that draft releases are visible too (GitHub lists drafts only to tokens that
+    # can push); this job changes nothing.
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      build: ${{ steps.v.outputs.build }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          FORCE: ${{ inputs.release }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v$version"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then exists=true; else exists=false; fi
+          case "$EVENT:$REF" in
+            push:refs/tags/*)
+              if [ "$REF" != "refs/tags/$tag" ]; then
+                echo "::error::Tag ${REF#refs/tags/} doesn't match the version in package.json ($version)"; exit 1
+              fi
+              build=true; release=true ;;
+            push:*)
+              if [ "$exists" = true ]; then build=false; release=false; else build=true; release=true; fi ;;
+            *)
+              build=true; release="${FORCE:-false}" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Andromon $tag"
+            echo "- A release for $tag already exists on GitHub: $exists"
+            echo "- Build: $build"
+            echo "- Draft release: $release"
+            if [ "$build" = false ]; then echo; echo "Nothing to build. Raise \`version\` in package.json to make a new release."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------- desktop installers ----------
   build:
     name: Build (${{ matrix.name }})
+    needs: detect
+    if: needs.detect.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS
             os: macos-latest
-            script: dist:mac
           - name: Windows
             os: windows-latest
-            script: dist:win
           - name: Linux
             os: ubuntu-latest
-            script: dist:linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -55,12 +125,33 @@ jobs:
         run: |
           node -e 'require("fs").writeFileSync("build-info.json", JSON.stringify({ build: Number(process.env.GITHUB_RUN_NUMBER) || 0, commit: process.env.GITHUB_SHA || "", date: new Date().toISOString() }) + "\n")'
           cat build-info.json
-      # Unsigned build. To sign, add secrets and env vars:
-      #   macOS:   CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
-      #   Windows: CSC_LINK, CSC_KEY_PASSWORD (or an Azure Trusted Signing config)
-      - run: npm run ${{ matrix.script }} -- --publish never
+      - run: npm run build:renderer
+      # Code signing: add the secrets CSC_LINK and CSC_KEY_PASSWORD (plus APPLE_ID,
+      # APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID to notarize on macOS). Without them the macOS app
+      # gets an ad-hoc signature (otherwise macOS calls a downloaded copy "damaged") and Windows and
+      # Linux are unsigned.
+      - name: Build
+        shell: bash
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          signing=()
+          if [ -z "$CSC_LINK" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset CSC_LINK CSC_KEY_PASSWORD
+            [ "$RUNNER_OS" = macOS ] && signing=(-c.mac.identity=- -c.mac.hardenedRuntime=false)
+          fi
+          case "$RUNNER_OS" in
+            macOS)   npx electron-builder --mac "${signing[@]}" --publish never ;;
+            Windows) npx electron-builder --win --publish never
+                     npx electron-builder --win nsis:ia32 "-c.electronVersion=$ELECTRON_IA32" --publish never ;;
+            Linux)   npx electron-builder --linux AppImage:x64 AppImage:arm64 deb:x64 deb:arm64 --publish never ;;
+          esac
+          ls -la dist
       - uses: actions/upload-artifact@v4
         with:
           name: andromon-${{ matrix.name }}
@@ -71,12 +162,98 @@ jobs:
             dist/*.deb
           if-no-files-found: error
 
-  # Push to "release" only: put all installers in one draft release for this version, and record the
-  # build on the release branch itself in latest.json and CHANGELOG.md (scripts/release-manifest.js).
+  # ---------- web build and the phone app ----------
+  web:
+    name: Build (web and phone app)
+    needs: detect
+    if: needs.detect.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build:web
+      - name: Collect
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+        run: |
+          mkdir -p out
+          cp dist/andromon-web.zip "out/Andromon-Web-$VERSION.zip"
+          cp renderer/companion.apk "out/Andromon-Companion-$VERSION.apk"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: andromon-web-and-phone
+          path: out/*
+          if-no-files-found: error
+
+  # ---------- the draft release ----------
   release:
-    name: Draft release, manifest and changelog
-    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
-    needs: build
+    name: Draft release
+    needs: [detect, build, web]
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the changelog is made from the commits since the previous release
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: Checksums and release signature
+        env:
+          KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          cd files
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          if [ -n "$KEY" ]; then
+            # The private half of build/release-signing-key.pub.pem (~/.andromon/release-signing-key.pem).
+            printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.pem"
+            openssl pkeyutl -sign -inkey "$RUNNER_TEMP/key.pem" -rawin -in SHA256SUMS.txt -out "$RUNNER_TEMP/sig"
+            rm -f "$RUNNER_TEMP/key.pem"
+            base64 -w0 "$RUNNER_TEMP/sig" > SHA256SUMS.txt.sig && echo >> SHA256SUMS.txt.sig
+            openssl pkeyutl -verify -pubin -inkey ../build/release-signing-key.pub.pem -rawin -in SHA256SUMS.txt -sigfile "$RUNNER_TEMP/sig"
+          else
+            echo "::warning::RELEASE_SIGNING_KEY is not set: SHA256SUMS.txt is not signed"
+          fi
+      # Continues from the manifest and changelog on the release branch (the last published release).
+      - name: Write latest.json, CHANGELOG.md and the release notes
+        env:
+          MANIFEST_OUT: ${{ runner.temp }}/manifest
+        run: |
+          mkdir -p "$MANIFEST_OUT"
+          git show origin/release:latest.json > "$MANIFEST_OUT/latest.json" 2>/dev/null || rm -f "$MANIFEST_OUT/latest.json"
+          git show origin/release:CHANGELOG.md > "$MANIFEST_OUT/CHANGELOG.md" 2>/dev/null || rm -f "$MANIFEST_OUT/CHANGELOG.md"
+          node scripts/release-manifest.js files "$RUNNER_TEMP/notes.md"
+          cp "$MANIFEST_OUT/latest.json" "$MANIFEST_OUT/CHANGELOG.md" files/
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.detect.outputs.tag }}
+        run: |
+          ls -la files
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # The same version again (Run workflow, or the tag pushed): replace its files and description.
+            gh release upload "$TAG" files/* --clobber
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$TAG" files/* --draft --target "$GITHUB_SHA" \
+              --title "Andromon $TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          echo "Draft release $TAG is ready: open Releases, check it and press Publish." >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------- on Publish: let installed apps see it ----------
+  publish:
+    name: Offer the update to installed apps
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -84,34 +261,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: release
-          fetch-depth: 0 # the changelog is made from the commits since the previous build
-      - uses: actions/download-artifact@v4
-        with:
-          path: installers
-          merge-multiple: true
-      - name: Write latest.json and CHANGELOG.md
-        run: node scripts/release-manifest.js installers "$RUNNER_TEMP/release-notes.md"
-      - name: Create or update the draft release
+      - name: Commit latest.json and CHANGELOG.md to the release branch
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="v$(node -p "require('./package.json').version")"
-          ls -la installers
-          if gh release view "$version" >/dev/null 2>&1; then
-            # Same version pushed again: replace the files on the existing release.
-            # Its description becomes the changes since the previous build.
-            gh release upload "$version" installers/* --clobber
-            gh release edit "$version" --notes-file "$RUNNER_TEMP/release-notes.md"
-          else
-            gh release create "$version" installers/* --draft --target "$GITHUB_SHA" \
-              --title "Andromon $version" --notes-file "$RUNNER_TEMP/release-notes.md"
-          fi
-      # A push made with the workflow's own token does not start another build.
-      - name: Commit latest.json and CHANGELOG.md to the release branch
-        run: |
-          version="v$(node -p "require('./package.json').version")"
+          gh release download "$TAG" --pattern latest.json --pattern CHANGELOG.md --clobber
+          node -e 'const m = require("./latest.json"); if (`v${m.version}` !== process.env.TAG) { console.error(`latest.json is for v${m.version}, not ${process.env.TAG}`); process.exit(1); }'
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add latest.json CHANGELOG.md
-          git commit -m "Record build ${GITHUB_RUN_NUMBER} of ${version}"
+          if git diff --cached --quiet; then echo "Already up to date"; exit 0; fi
+          git commit -m "Offer $TAG to installed apps"
+          # A push made with the workflow's own token does not start another build.
           git push origin HEAD:release

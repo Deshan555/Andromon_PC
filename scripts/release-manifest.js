@@ -77,13 +77,28 @@ try {
       .map((l) => l.split("\t")).filter(([, subject]) => !/^(Release \d|Bump to \d)/.test(subject)).map(([sha, subject]) => ({ sha, subject })),
     since: since && aknown(since) ? since : "",
   };
-} catch (e) { console.warn(`Phone app not recorded (${e.message.split("\n")[0]})`); }
+} catch (e) {
+  // No ../android here (the GitHub workflow builds the pc repository alone): read the version from the
+  // APK in the folder with aapt2 from the Android SDK, without a list of changes.
+  const apk = files.find((f) => f.platform === "android");
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  try {
+    if (!apk || !sdk) throw e;
+    const tools = path.join(sdk, "build-tools");
+    const newest = fs.readdirSync(tools).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop();
+    const badging = execFileSync(path.join(tools, newest, "aapt2"), ["dump", "badging", path.join(dir, apk.name)], { encoding: "utf8" });
+    companion = {
+      version: badging.match(/versionName='([^']*)'/)?.[1] || "", versionCode: Number(badging.match(/versionCode='(\d+)'/)?.[1]) || 0,
+      build: 0, commit: "", changes: [], since: "", fromApk: true,
+    };
+  } catch (e2) { console.warn(`Phone app not recorded (${String(e2.message).split("\n")[0]})`); }
+}
 
 const manifest = {
   name: pkg.build?.productName || pkg.name, version: pkg.version, build, date, commit,
   release: `https://github.com/${repo}/releases/tag/${tag}`,
   changes: changes.map((c) => c.subject),
-  ...(companion ? { companion: { ...companion, changes: companion.changes.map((c) => c.subject) } } : {}),
+  ...(companion ? { companion: { ...companion, fromApk: undefined, changes: companion.changes.map((c) => c.subject) } } : {}),
   files,
 };
 fs.mkdirSync(outDir, { recursive: true });
@@ -100,8 +115,9 @@ const section = [
   ...(previous ? [] : ["", "First build recorded here: the list shows the latest commits, not everything before it."]),
   ...(companion ? [
     "", `### Phone app ${companion.version}${companion.build ? ` (build ${companion.build})` : ""}`, "",
-    ...list(companion.changes, "- No changes to the phone app."),
-    ...(companion.since ? [] : ["", "The list shows the phone app's latest commits, not everything before it."]),
+    ...(companion.fromApk ? [`- The phone app bundled in this build (version code ${companion.versionCode}). Its changes are in the Android repository.`]
+      : [...list(companion.changes, "- No changes to the phone app."),
+        ...(companion.since ? [] : ["", "The list shows the phone app's latest commits, not everything before it."])]),
   ] : []),
   "", "### Downloads", "",
   ...files.map((f) => `- ${{ mac: "macOS", windows: "Windows", linux: "Linux", android: "Android", web: "Web" }[f.platform]}${f.arch ? ` ${f.arch}` : ""} (${f.kind}): [${f.name}](${f.url}), ${(f.size / 1e6).toFixed(1)} MB`),

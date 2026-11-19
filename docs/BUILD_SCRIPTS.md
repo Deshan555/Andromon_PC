@@ -22,14 +22,14 @@ This page explains every script that turns the Andromon source into installers, 
 | `npm run dist:mac` / `dist:win` / `dist:linux` | npm | Bundles the page, then runs electron-builder for one system. Installers land in `dist/`. |
 | `build/release.py` | `python3` | Asks what to build, pulls the newest code, does the same build, then collects the installers, signs them and checks them. |
 | `scripts/release-manifest.js` | `node` (the GitHub workflow) | Writes `latest.json`, `CHANGELOG.md` and the release notes after a build on GitHub. |
-| `.github/workflows/desktop.yml` | GitHub Actions | Builds all three systems on every push to the `release` branch and drafts a GitHub Release. |
+| `.github/workflows/desktop.yml` | GitHub Actions | Notices a new version in `package.json` on a push to `main`, builds every system plus the web build and phone app, and drafts a GitHub Release. |
 | `npm run build:companion` | npm | Rebuilds the phone app in `../android` and copies its APK to `renderer/companion.apk`. |
 | `npm run build:uihelper` | npm | Rebuilds `renderer/ui-helper.jar` from `uihelper/src`. |
 
 There are two ways to make installers:
 
 - **On your computer**, with `build/release.py` (or the plain `npm run dist:*` commands). The result goes to `build/` (the installers are kept out of git by `.gitignore`).
-- **On GitHub**, by pushing to the `release` branch. The result is a draft GitHub Release.
+- **On GitHub**, by raising `version` in `package.json` and pushing to `main`. The result is a draft GitHub Release.
 
 The two don't depend on each other. The GitHub workflow does not use `release.py`.
 
@@ -203,29 +203,43 @@ The app's own update check does not read the release signature. It checks the do
 
 ## 5. Automatic builds on GitHub
 
-`.github/workflows/desktop.yml` runs on every push to the `release` branch, on a tag like `v0.1.0`, and by hand from **Actions › Build desktop app › Run workflow**.
+`.github/workflows/desktop.yml` notices a new release by itself: **raise `version` in `package.json` and push to `main`**. Nothing else is needed.
 
-**Job 1, build** runs three times side by side, on macOS, Windows and Linux runners:
+**Job 1, new release?** runs on every push to `main`. It reads the version in `package.json` and asks GitHub whether a release `v<version>` exists (published or draft). If not, this is a new release and the jobs below run; otherwise the run ends here and builds nothing. The run's summary says which.
 
-1. `npm ci`
-2. Stamps `build-info.json` with the run number as the build number, the commit and the date.
-3. `npm run dist:mac` (or `dist:win`, `dist:linux`) with `--publish never` and `CSC_IDENTITY_AUTO_DISCOVERY=false`.
-4. Attaches the installers to the workflow run.
+| Trigger | Builds | Draft release |
+|---|---|---|
+| Push to `main`, new version | yes | yes |
+| Push to `main`, version already released | no | no |
+| Push a tag like `v1.0.4` | yes (the tag must match `package.json`, or the run fails) | yes |
+| **Actions › Build desktop app › Run workflow** | yes | only with **Make the draft release** ticked (replaces the files on an existing one) |
+| **Publish** pressed on a release | no | – (job 5) |
 
-**Job 2, release** runs only for a push to `release`:
+**Job 2, build** runs on macOS, Windows and Linux runners side by side:
 
-1. Downloads the installers from all three builds into one folder.
-2. Runs `scripts/release-manifest.js` on that folder.
-3. Creates a draft GitHub Release named after the version, or replaces the files on the existing one, with the release notes as its description.
-4. Commits `latest.json` and `CHANGELOG.md` to the `release` branch.
+1. `npm ci`, then stamps `build-info.json` with the run number as the build number, the commit and the date.
+2. `npm run build:renderer`, then electron-builder with `--publish never`:
+   - macOS: `.dmg` for Apple Silicon and Intel. Ad-hoc signed (as `build/release.py` does) unless `CSC_LINK` is set.
+   - Windows: setup `.exe` for x64, ARM64 and both in one, then a 32-bit one (`ia32`) on Electron 43.8.12, the newest Electron with a 32-bit Windows build (`ELECTRON_IA32` at the top of the workflow).
+   - Linux: `.AppImage` and `.deb` for x64 and ARM64.
 
-You publish the draft release yourself. Because the workflow adds commits to `release`, bring `main` into it with a merge:
+**Job 3, web and phone app**: `npm run build:web` gives `Andromon-Web-<version>.zip`, and the phone app bundled in `renderer/companion.apk` becomes `Andromon-Companion-<version>.apk`. Bundle the newest phone app first (`npm run build:companion`, then commit `renderer/companion.apk`).
 
-```sh
-git checkout release && git pull && git merge main && git push && git checkout main
-```
+**Job 4, draft release**:
 
-The workflow's macOS build is left unsigned rather than ad-hoc signed, so its `.dmg` files can be called "damaged" on another Mac (see [section 4](#4-the-two-kinds-of-signing)). It also doesn't write `SHA256SUMS.txt` or a release signature; the SHA-256 of each installer is in `latest.json`.
+1. Collects every file from jobs 2 and 3 and writes `SHA256SUMS.txt`. With the `RELEASE_SIGNING_KEY` secret (the contents of `~/.andromon/release-signing-key.pem`) it also writes `SHA256SUMS.txt.sig` and checks it against `build/release-signing-key.pub.pem`; without it the run shows a warning.
+2. Runs `scripts/release-manifest.js`, continuing from `latest.json` and `CHANGELOG.md` on the `release` branch (the last published release). The phone app's version comes from the APK (`aapt2` in the runner's Android SDK); its list of changes is only written by a build made next to the `android` folder.
+3. Creates the draft GitHub Release `v<version>` with all files, `latest.json` and `CHANGELOG.md`, and the changes since the previous release as its description. Open **Releases**, check it and press **Publish**.
+
+**Job 5, offer the update** runs when a release is published: it copies that release's `latest.json` and `CHANGELOG.md` to the `release` branch. Installed apps read `latest.json` from there, so they are offered an update only once its files can be downloaded. Nothing else is pushed to `release`; there is no need to merge `main` into it any more.
+
+| Secret | Used for |
+|---|---|
+| `RELEASE_SIGNING_KEY` | Signing `SHA256SUMS.txt` |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | Code signing on macOS and Windows |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Notarizing the macOS app |
+
+All are optional. Add them under **Settings › Secrets and variables › Actions**.
 
 ## 6. `scripts/release-manifest.js`
 
@@ -243,7 +257,7 @@ It writes up to three files:
 
 How it finds what changed: it reads the commit of the previous build from the existing `latest.json` and lists the commits from there to the current one, leaving out merges and the workflow's own commits. With no previous build it lists the last 30 commits.
 
-It takes the repository, commit and build number from `GITHUB_REPOSITORY`, `GITHUB_SHA` and `GITHUB_RUN_NUMBER`, and falls back to `package.json` and git when they are not set. The installed app reads `latest.json` from the `release` branch to find updates, so the download addresses in it work only once that version's release is published.
+It takes the repository, commit and build number from `GITHUB_REPOSITORY`, `GITHUB_SHA` and `GITHUB_RUN_NUMBER`, and falls back to `package.json` and git when they are not set. The installed app reads `latest.json` from the `release` branch to find updates; the workflow puts it there only when the release is published, so its download addresses work. With `MANIFEST_OUT` it writes to another folder, and the phone app and web build in the folder are listed too (see the comment at the top of the script).
 
 ## 7. The helper builds
 
