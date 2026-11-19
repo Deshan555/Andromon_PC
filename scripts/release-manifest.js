@@ -14,6 +14,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
@@ -62,18 +63,41 @@ const range = previous?.commit && known(previous.commit) ? [`${previous.commit}.
 const changes = git("log", "--no-merges", "--format=%h%x09%s%x09%an", ...range).split("\n").filter(Boolean)
   .map((l) => l.split("\t")).filter(([, , author]) => author !== "github-actions[bot]").map(([sha, subject]) => ({ sha, subject }));
 
-// ---------- the phone app (../android) ----------
-// Version bumps ("Release 1.0.4") are left out of its list: the version is already in the manifest.
+// ---------- the phone app ----------
+// What is shipped decides: the version and version code come from the APK in the folder (read with aapt2
+// from the Android SDK). The commits since the previous release come from ../android, but only when that
+// checkout has the APK's version code; otherwise it is some other build of the phone app (for example an
+// older release branch while the APK bundled in renderer/companion.apk is newer), and only the APK's
+// version is recorded. The phone app's update check (Updates.kt) compares versionCode.
+// Version bumps ("Release 1.0.4") are left out of the list: the version is already in the manifest.
 let companion = null;
+const apkFile = files.find((f) => f.platform === "android");
+const fromApk = (() => {
+  if (!apkFile) return null;
+  const sdks = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT,
+    path.join(os.homedir(), "Library", "Android", "sdk"), path.join(os.homedir(), "Android", "Sdk")].filter(Boolean);
+  for (const sdk of sdks) {
+    try {
+      const tools = path.join(sdk, "build-tools");
+      const newest = fs.readdirSync(tools).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop();
+      const badging = execFileSync(path.join(tools, newest, "aapt2"), ["dump", "badging", path.join(dir, apkFile.name)], { encoding: "utf8" });
+      const versionCode = Number(badging.match(/versionCode='(\d+)'/)?.[1]) || 0;
+      if (versionCode) return { version: badging.match(/versionName='([^']*)'/)?.[1] || "", versionCode };
+    } catch {}
+  }
+  console.warn(`Couldn't read the version of ${apkFile.name} (no aapt2 found): using ../android's`);
+  return null;
+})();
+let fromRepo = null;
 const androidDir = path.join(root, "..", "android");
 try {
   const gradle = fs.readFileSync(path.join(androidDir, "app", "build.gradle.kts"), "utf8");
-  const agit = (...args) => execFileSync("git", args, { cwd: androidDir, encoding: "utf8" }).trim();
+  const agit = (...args) => execFileSync("git", args, { cwd: androidDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   const aknown = (sha) => { try { agit("cat-file", "-e", `${sha}^{commit}`); return true; } catch { return false; } };
   const acommit = agit("rev-parse", "HEAD");
   const since = previous?.companion?.commit || process.env.COMPANION_SINCE;
   const arange = since && aknown(since) ? [`${since}..${acommit}`] : ["-n", "30", acommit];
-  companion = {
+  fromRepo = {
     version: gradle.match(/versionName\s*=\s*"([^"]+)"/)?.[1] || "",
     versionCode: Number(gradle.match(/versionCode\s*=\s*(\d+)/)?.[1]) || 0,
     build: Number(gradle.match(/"BUILD_NUMBER",\s*"(\d+)"/)?.[1]) || 0,
@@ -82,21 +106,14 @@ try {
       .map((l) => l.split("\t")).filter(([, subject]) => !/^(Release \d|Bump to \d)/.test(subject)).map(([sha, subject]) => ({ sha, subject })),
     since: since && aknown(since) ? since : "",
   };
-} catch (e) {
-  // No ../android here (the GitHub workflow builds the pc repository alone): read the version from the
-  // APK in the folder with aapt2 from the Android SDK, without a list of changes.
-  const apk = files.find((f) => f.platform === "android");
-  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
-  try {
-    if (!apk || !sdk) throw e;
-    const tools = path.join(sdk, "build-tools");
-    const newest = fs.readdirSync(tools).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop();
-    const badging = execFileSync(path.join(tools, newest, "aapt2"), ["dump", "badging", path.join(dir, apk.name)], { encoding: "utf8" });
-    companion = {
-      version: badging.match(/versionName='([^']*)'/)?.[1] || "", versionCode: Number(badging.match(/versionCode='(\d+)'/)?.[1]) || 0,
-      build: 0, commit: "", changes: [], since: "", fromApk: true,
-    };
-  } catch (e2) { console.warn(`Phone app not recorded (${String(e2.message).split("\n")[0]})`); }
+} catch {}
+if (fromRepo && (!fromApk || fromRepo.versionCode === fromApk.versionCode)) {
+  companion = fromRepo;
+} else if (fromApk) {
+  companion = { ...fromApk, build: 0, commit: "", changes: [], since: "", fromApk: true };
+  if (fromRepo) console.warn(`../android is version code ${fromRepo.versionCode} but ${apkFile.name} is ${fromApk.versionCode}: recording the APK's version, without its changes`);
+} else if (apkFile) {
+  console.warn("Phone app not recorded: neither the APK nor ../android could be read");
 }
 
 const manifest = {
