@@ -11,7 +11,7 @@ This is the "Phase 1 – ADB-only" design.
 - **Andromon for macOS, Windows and Linux:** [Andromon_Releases](https://github.com/Deshan555/Andromon_Releases/releases). Each release lists its installers (`.dmg`, `.exe`, `.AppImage` / `.deb`) under **Assets**; pick the one for your computer.
 - **Andromon Companion for Android (APK) and the web version:** in the same [releases](https://github.com/Deshan555/Andromon_Releases/releases). You normally don't need it: Andromon installs its bundled copy on the phone by itself.
 
-Releases are built and published automatically from the `release` branch (see [Build installers](#build-installers)).
+Releases are built and published automatically from the `automation` branch (see [Build installers](#build-installers)).
 
 ## Features
 
@@ -207,7 +207,7 @@ It asks its questions in the terminal (no arguments): whether to pull the newest
 The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icns` / `.ico` by electron-builder), the Windows setup wizard's pictures (`installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`) and its welcome texts (`installer.nsh`), and the macOS disk image's background (`background.png`, `@2x`). The Windows wizard's pages: Welcome › install for me or for everyone › folder › installing › Finish (with "Run Andromon"), plus desktop and Start menu shortcuts and an uninstaller that keeps settings. Add `build/license.txt` to get a licence page.
 
 
-**Automatic builds:** releases are built and published in [Andromon_Releases](https://github.com/Deshan555/Andromon_Releases). Raise `version` in `package.json` and push to the `release` branch (`git push origin main:release`, and the same in the android repository): within the hour, the workflow there sees the new version, builds the macOS, Windows (x64, ARM64 and 32-bit) and Linux (x64 and ARM64) installers, the phone app and the web version, publishes the release, and updates its README, `latest.json` and `CHANGELOG.md`. Pushes that don't change the version build nothing. To publish at once instead, push the new version to the **`automation`** branch: `.github/workflows/automation.yml` builds everything and publishes the release in Andromon_Releases (it needs the `RELEASES_TOKEN` secret). [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md#5-automatic-builds-on-github) has the details. To try a change on every system without releasing it, build locally with `python3 build/release.py`.
+**Automatic builds:** releases are published in [Andromon_Releases](https://github.com/Deshan555/Andromon_Releases). Raise `version` in `package.json` and push to the **`automation`** branch: `.github/workflows/automation.yml` sees the new version, builds the macOS, Windows (x64, ARM64 and 32-bit) and Linux (x64 and ARM64) installers, the phone app and the web version, publishes the release there, and updates its README, `latest.json` and `CHANGELOG.md` (it needs the `RELEASES_TOKEN` secret). Pushes that don't change the version build nothing. [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md#5-automatic-builds-on-github) has the details. To try a change on every system without releasing it, build locally with `python3 build/release.py`.
 
 - **`latest.json`**: the newest release. Version, build number, date, commit, the changes since the previous release, and every file with its platform, CPU type, size, SHA-256 and download address. Always at `https://raw.githubusercontent.com/Deshan555/Andromon_Releases/HEAD/latest.json`.
 - **`CHANGELOG.md`**: one section per release, newest first: the desktop and phone app changes and the downloads. The same list is the release's description.
@@ -217,11 +217,11 @@ The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icn
 **Making a release:**
 
 ```sh
-# 1. raise "version" in package.json (and in ../android/app/build.gradle.kts for the phone app)
-# 2. commit, then put the code on the release branches
-git commit -am "Release 1.0.5" && git push && git push origin main:release
-git -C ../android push origin main:release
-# 3. within the hour it is published on https://github.com/Deshan555/Andromon_Releases/releases
+# 1. raise "version" in package.json (bundle the newest phone app first: npm run build:companion)
+# 2. commit on the automation branch and push it
+git switch automation && git merge main
+git commit -am "Release 1.0.5" && git push origin automation
+# 3. the "Release from automation" run publishes it on https://github.com/Deshan555/Andromon_Releases/releases
 ```
 
 **Optional tools:** Andromon needs nothing else to connect a phone. Java 17+ is needed only for ReVanced patching, and the Android platform tools (adb) only for people who use adb in a terminal. **Settings › This computer** shows what is installed, with its version and path (`requirements.js`), and offers Install (Windows, through winget) or the download page. The Windows setup wizard has an **Optional tools** page (`build/installer.nsh`): nothing is ticked by default, and a ticked tool is installed with winget before Andromon's files are copied. The `.deb` lists `default-jre` and `android-sdk-platform-tools-common` as recommended packages, so apt installs them alongside by default. The macOS disk image has no install step, so on a Mac use Settings.

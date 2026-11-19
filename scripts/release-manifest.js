@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Writes the release manifest and changelog after a build (run by .github/workflows/automation.yml here,
-// by .github/workflows/build.yml in Deshan555/Andromon_Releases, and by hand):
+// Writes the release manifest and changelog after a build (run by .github/workflows/automation.yml, and by hand):
 //   latest.json    what the newest build is: version, build number, commit, and every installer with its
 //                  size, SHA-256 and download address
 //   CHANGELOG.md   one section per build, newest first, listing the commits since the build before it
@@ -111,7 +110,7 @@ fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
 
 // ---------- CHANGELOG.md: the new section goes on top ----------
-const HEAD = "# Changelog\n\nEvery build of the `release` branch, newest first. Written by the build; don't edit by hand.\n";
+const HEAD = "# Changelog\n\nEvery Andromon release, newest first. Written by the build; don't edit by hand.\n";
 const list = (cs, none) => (cs.length ? cs.map((c) => `- ${c.subject} (\`${c.sha}\`)`) : [none]);
 const has = (platform) => files.some((f) => f.platform === platform);
 const section = [

@@ -1,5 +1,5 @@
 // Andromon — update check (main process). Releases are published in their own repository
-// (Deshan555/Andromon_Releases, built there by GitHub Actions from this repository's "release" branch),
+// (Deshan555/Andromon_Releases, published by .github/workflows/automation.yml from the "automation" branch),
 // which keeps a manifest of the newest build at MANIFEST_URL (latest.json, written by
 // scripts/release-manifest.js). This file
 // reads it, decides whether it is newer than the running app, picks the installer for this computer,
