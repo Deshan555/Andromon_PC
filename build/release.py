@@ -6,7 +6,7 @@
 A full build does these steps in order:
   1. pulls the newest code from GitHub (git pull --ff-only)
   2. asks which systems (macOS, Windows, Linux) and which CPU types (arm64, x64) to build for
-  3. builds the installers with electron-builder and collects them in a folder (../builds)
+  3. builds the installers with electron-builder and collects them in a folder (build/, next to this script)
   4. writes SHA256SUMS.txt, makes the release key when there is none yet, and signs the checksums
      (SHA256SUMS.txt.sig)
   5. checks every installer, the checksums and the signature
@@ -46,7 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-DEFAULT_OUT = ROOT.parent / "builds"
+DEFAULT_OUT = ROOT / "build"  # the installers sit beside the build resources; .gitignore keeps them out of git
 SUMS = "SHA256SUMS.txt"
 SIG = SUMS + ".sig"
 PUBLIC_KEY = Path(os.environ.get("ANDROMON_PUBLIC_KEY") or os.environ.get("DROID_DESK_PUBLIC_KEY")

@@ -3,3 +3,12 @@ dist/
 renderer/app.js
 renderer/app.js.map
 .DS_Store
+# Installers made by build/release.py (build/ also holds tracked build resources)
+build/*.dmg
+build/*.exe
+build/*.AppImage
+build/*.deb
+build/*.apk
+build/*.blockmap
+build/SHA256SUMS.txt
+build/SHA256SUMS.txt.sig

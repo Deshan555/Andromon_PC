@@ -28,7 +28,7 @@ This page explains every script that turns the Andromon source into installers, 
 
 There are two ways to make installers:
 
-- **On your computer**, with `build/release.py` (or the plain `npm run dist:*` commands). The result goes to `../builds`.
+- **On your computer**, with `build/release.py` (or the plain `npm run dist:*` commands). The result goes to `build/` (the installers are kept out of git by `.gitignore`).
 - **On GitHub**, by pushing to the `release` branch. The result is a draft GitHub Release.
 
 The two don't depend on each other. The GitHub workflow does not use `release.py`.
@@ -100,17 +100,17 @@ Start? (Y/n):
 |---|---|
 | Which systems? | One or more numbers, like `1,3`. The default is the system you are on. macOS is only offered on a Mac, because its build only works there; Windows and Linux installers can be built on a Mac. |
 | Which CPU types? | One CPU type or both, for every system chosen. This replaces the CPU types in `package.json`, so Linux can be built for arm64 too. |
-| Folder for the installers | Default `../builds`, next to the `pc` folder. Installers with the same name are replaced. |
+| Folder for the installers | Default `build/`, the folder that also holds `release.py` and the installer pictures; `.gitignore` keeps the installers out of git. Installers with the same name are replaced. |
 | Build number | Stamped into the app for its update check. Leave it at 0 for a build made by hand. |
 
 After a full build the folder holds:
 
 ```
-builds/
-  Andromon-0.1.0-arm64.dmg
-  Andromon-0.1.0-x64.dmg
-  Andromon-Setup-0.1.0-arm64.exe
-  Andromon-Setup-0.1.0-x64.exe
+build/
+  Andromon-1.0.4-arm64.dmg
+  Andromon-1.0.4-x64.dmg
+  Andromon-Setup-1.0.4-arm64.exe
+  Andromon-Setup-1.0.4-x64.exe
   SHA256SUMS.txt        one line per installer: its SHA-256 and its name
   SHA256SUMS.txt.sig    the release signature of SHA256SUMS.txt
 ```
@@ -258,7 +258,7 @@ Run them only after changing the phone app or the helper, and commit the new fil
 
 **Make a signed set of installers:** `python3 build/release.py`, press Enter at the menu, choose the systems and CPU types.
 
-**Try a build quickly without touching `../builds`:** choose one system and one CPU type, and type another folder (for example `/tmp/andromon-test`) at "Folder for the installers".
+**Try a build quickly without touching `build/`:** choose one system and one CPU type, and type another folder (for example `/tmp/andromon-test`) at "Folder for the installers".
 
 **After the first build, commit the public key:**
 
