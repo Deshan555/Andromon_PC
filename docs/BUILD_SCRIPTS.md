@@ -220,6 +220,19 @@ On every push to `automation` the workflow:
 4. **Web**: `Andromon-Web-<version>.zip`, and the phone app as `Andromon-Companion-<version>.apk`.
 5. **Publish**: `SHA256SUMS.txt` (signed with `RELEASE_SIGNING_KEY` when set), then `scripts/release-manifest.js` with `RELEASE_REPOSITORY` (download links), continuing from `latest.json` and `CHANGELOG.md` in `Andromon_Releases`. The release `v<version>` is published there at once, and its README (from `.github/scripts/readme.js` there), `latest.json` and `CHANGELOG.md` are updated.
 
+6. **Netlify**: the same web build is deployed to Netlify as the live site, so the hosted web app always matches the newest release. Skipped (with a notice) when the Netlify secrets aren't set; it never holds up the release.
+
+**Only the web app:** **Actions › Release from automation › Run workflow** with **web** ticked builds the web version and deploys it to Netlify, without installers or a release (no `RELEASES_TOKEN` needed).
+
+**Setting up Netlify** (once):
+
+1. In Netlify, **Add new site › Deploy manually** and drop any folder (for example `dist/web` after `npm run build:web`); this only creates the site. Rename it under **Site configuration › Change site name** if you like.
+2. Copy its **Site ID** from **Site configuration › General › Site details**.
+3. Create a token: **User settings › Applications › Personal access tokens › New access token**.
+4. In this repository, add the secrets `NETLIFY_SITE_ID` and `NETLIFY_AUTH_TOKEN` (Settings › Secrets and variables › Actions).
+
+The site needs no build settings in Netlify: the workflow uploads the finished files (`dist/web`, with its `_headers` for caching and the APK's content type).
+
 The installed app's update check reads `latest.json` from `Andromon_Releases` (`updater.js`), so it sees a release as soon as it is published.
 
 | Secret in this repository | Used for |
@@ -229,6 +242,7 @@ The installed app's update check reads `latest.json` from `Andromon_Releases` (`
 | `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | Signing the phone app. Phones only accept an update signed with the same key as the app they have |
 | `CSC_LINK`, `CSC_KEY_PASSWORD` | Code signing on macOS and Windows |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Notarizing the macOS app |
+| `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` | Deploying the web version to Netlify |
 
 Nothing builds on a push to `main`. To try a change on every system without releasing it, build locally with `build/release.py` (section 3).
 

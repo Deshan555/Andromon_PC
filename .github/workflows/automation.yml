@@ -11,8 +11,11 @@
 #   4. SHA256SUMS.txt (signed with RELEASE_SIGNING_KEY when set), latest.json and CHANGELOG.md, then
 #      publishes the release "v<version>" in Andromon_Releases and updates its README.md, latest.json
 #      and CHANGELOG.md. Installed apps read latest.json from there, so they see the update at once.
+#   5. the web version is deployed to Netlify as the live site (when NETLIFY_AUTH_TOKEN and
+#      NETLIFY_SITE_ID are set), so the hosted app always matches the newest release
 # A push that doesn't raise the version builds nothing. "Run workflow" in the Actions tab does the same
-# for the branch picked; tick "force" to rebuild a version that is already released (files replaced).
+# for the branch picked; tick "force" to rebuild a version that is already released (files replaced),
+# or "web" to only build the web version and deploy it to Netlify (no installers, no release).
 #
 # Secrets (Settings › Secrets and variables › Actions):
 #   RELEASES_TOKEN (required)   a token that can write to Deshan555/Andromon_Releases: a fine-grained
@@ -22,6 +25,9 @@
 #                               the phone app's signing key, as in Andromon-android
 #   CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
 #                               code signing on macOS and Windows, notarizing on macOS
+#   NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
+#                               deploying the web version: a Netlify personal access token, and the
+#                               Site ID of the Netlify site that hosts it (Site configuration › General)
 name: Release from automation
 
 on:
@@ -31,6 +37,10 @@ on:
     inputs:
       force:
         description: "Build even when this version is already released (its files are replaced)"
+        type: boolean
+        default: false
+      web:
+        description: "Only build the web version and deploy it to Netlify (no installers, no release)"
         type: boolean
         default: false
 
@@ -56,6 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.v.outputs.build }}
+      web: ${{ steps.v.outputs.web }}
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
     steps:
@@ -65,6 +76,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
           HAS_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
           FORCE: ${{ inputs.force }}
+          WEB_ONLY: ${{ inputs.web }}
         run: |
           version="$(node -p "require('./package.json').version")"
           tag="v$version"
@@ -74,23 +86,26 @@ jobs:
           newer=true
           if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$version" | sort -V | tail -1)" != "$version" ]; then newer=false; fi
           if { [ "$exists" = false ] && [ "$newer" = true ]; } || [ "$FORCE" = true ]; then build=true; else build=false; fi
+          # "web": only the web version, for Netlify. A release always deploys the web version too.
+          if [ "$WEB_ONLY" = true ] && [ "$FORCE" != true ]; then build=false; web=true; else web=$build; fi
           {
             echo "### Andromon $tag"
             echo "- Release $tag in $RELEASES_REPO: $exists"
             echo "- Newest release there: ${newest:-none}"
             echo "- Build and publish: $build"
-            [ "$build" = true ] || echo $'\nNothing to publish: raise "version" in package.json for a new release.'
+            echo "- Deploy the web version to Netlify: $web"
+            [ "$build" = true ] || [ "$web" = true ] || echo $'\nNothing to publish: raise "version" in package.json for a new release.'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$build" = true ] && [ "$HAS_TOKEN" != true ]; then
             echo "::error::Add the RELEASES_TOKEN secret (a token that can write to $RELEASES_REPO) to publish $tag"; exit 1
           fi
-          { echo "build=$build"; echo "version=$version"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+          { echo "build=$build"; echo "web=$web"; echo "version=$version"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
 
   # ---------- the phone app ----------
   phone:
     name: Phone app
     needs: detect
-    if: needs.detect.outputs.build == 'true'
+    if: needs.detect.outputs.web == 'true'
     runs-on: ubuntu-latest
     env:
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -130,6 +145,7 @@ jobs:
   desktop:
     name: Desktop (${{ matrix.name }})
     needs: [detect, phone]
+    if: needs.detect.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -208,6 +224,34 @@ jobs:
           cp renderer/companion.apk "out/Andromon-Companion-$VERSION.apk"
       - uses: actions/upload-artifact@v4
         with: { name: web-and-phone, path: out/*, if-no-files-found: error }
+
+  # ---------- the hosted web app on Netlify ----------
+  netlify:
+    name: Deploy web to Netlify
+    needs: [detect, web]
+    runs-on: ubuntu-latest
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      VERSION: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        with: { name: web-and-phone, path: out }
+      - name: Deploy
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "::notice::NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is not set: the web version was not deployed"
+            exit 0
+          fi
+          # The same files as Andromon-Web-<version>.zip in the release, with their _headers for Netlify.
+          mkdir site && unzip -q "out/Andromon-Web-$VERSION.zip" -d site
+          test -f site/index.html
+          npx --yes netlify-cli@17.38.1 deploy --dir site --prod --site "$NETLIFY_SITE_ID" \
+            --message "Andromon $VERSION ($GITHUB_SHA)" --json > deploy.json
+          url="$(jq -r '.url // .deploy_url' deploy.json)"
+          echo "Web version $VERSION is live at $url"
+          echo "Web version $VERSION deployed to Netlify: $url" >> "$GITHUB_STEP_SUMMARY"
 
   # ---------- publish in Andromon_Releases ----------
   publish:
