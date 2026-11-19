@@ -12,3 +12,4 @@ build/*.apk
 build/*.blockmap
 build/SHA256SUMS.txt
 build/SHA256SUMS.txt.sig
+build/*.zip
