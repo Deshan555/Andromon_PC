@@ -1895,7 +1895,7 @@ const COMPANION_PKG = "dev.andromon.companion";
 // The same app installed under the product's old name (Droid Desk Companion); replaced by the one above.
 const LEGACY_COMPANION_PKG = "dev.droiddesk.companion";
 const COMPANION_SOCKET = "andromon_companion";
-const COMPANION_VERSION = 34; // keep in sync with versionCode in android/app/build.gradle.kts
+const COMPANION_VERSION = 36; // keep in sync with versionCode in android/app/build.gradle.kts
 let companionInfo = null;
 
 class CompanionUnavailable extends Error {

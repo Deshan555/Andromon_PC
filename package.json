@@ -1,7 +1,7 @@
 {
   "name": "andromon",
   "productName": "Andromon",
-  "version": "0.1.0",
+  "version": "1.0.4",
   "description": "Android phone manager for Windows, macOS and Linux (ADB over USB)",
   "main": "main.js",
   "private": true,
