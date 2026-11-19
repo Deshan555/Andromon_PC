@@ -1,5 +1,7 @@
-// Andromon — update check (main process). The release build keeps a manifest of the newest build at
-// MANIFEST_URL (latest.json on the "release" branch, written by scripts/release-manifest.js). This file
+// Andromon — update check (main process). Releases are published in their own repository
+// (Deshan555/Andromon_Releases, built there by GitHub Actions from this repository's "release" branch),
+// which keeps a manifest of the newest build at MANIFEST_URL (latest.json, written by
+// scripts/release-manifest.js). This file
 // reads it, decides whether it is newer than the running app, picks the installer for this computer,
 // and can download that installer into the Downloads folder (SHA-256 checked) and open it.
 // Nothing is installed silently: the person runs the installer themselves.
@@ -9,8 +11,8 @@ const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const crypto = require("node:crypto");
 
-const REPO = "Deshan555/Andromon_PC";
-const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/release/latest.json`;
+const REPO = "Deshan555/Andromon_Releases";
+const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/HEAD/latest.json`;
 const DOWNLOAD_PREFIX = `https://github.com/${REPO}/releases/download/`;
 const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const MAX_SIZE = 600 * 1024 ** 2;

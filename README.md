@@ -8,11 +8,11 @@ This is the "Phase 1 – ADB-only" design.
 
 ## Download
 
-- **Andromon for macOS, Windows and Linux:** [Releases](https://github.com/Deshan555/Andromon_PC/releases). Each release lists its installers (`.dmg`, `.exe`, `.AppImage` / `.deb`) under **Assets**; pick the one for your computer.
-- **Andromon Companion for Android (APK):** [Releases of the companion app](https://github.com/Deshan555/Andromon-android/releases). You normally don't need it: Andromon installs its bundled copy on the phone by itself.
-- **Builds that are not released yet:** open the newest green run under [Actions](https://github.com/Deshan555/Andromon_PC/actions/workflows/desktop.yml) and download its **Artifacts** (needs a GitHub sign-in; kept for 90 days).
+- **Andromon for macOS, Windows and Linux:** [Andromon_Releases](https://github.com/Deshan555/Andromon_Releases/releases). Each release lists its installers (`.dmg`, `.exe`, `.AppImage` / `.deb`) under **Assets**; pick the one for your computer.
+- **Andromon Companion for Android (APK) and the web version:** in the same [releases](https://github.com/Deshan555/Andromon_Releases/releases). You normally don't need it: Andromon installs its bundled copy on the phone by itself.
+- **Test builds that are not released:** open the newest green **Test build** run under [Actions](https://github.com/Deshan555/Andromon_PC/actions/workflows/desktop.yml) and download its **Artifacts** (needs a GitHub sign-in; kept for 90 days).
 
-Releases are made by the build as **drafts**: a release shows on the Releases page once it has been published (see [Build installers](#build-installers)).
+Releases are built and published automatically from the `release` branch (see [Build installers](#build-installers)).
 
 ## Features
 
@@ -208,26 +208,22 @@ It asks its questions in the terminal (no arguments): whether to pull the newest
 The installers' look is in `build/`: `icon.png` (the app icon, turned into `.icns` / `.ico` by electron-builder), the Windows setup wizard's pictures (`installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`) and its welcome texts (`installer.nsh`), and the macOS disk image's background (`background.png`, `@2x`). The Windows wizard's pages: Welcome › install for me or for everyone › folder › installing › Finish (with "Run Andromon"), plus desktop and Start menu shortcuts and an uninstaller that keeps settings. Add `build/license.txt` to get a licence page.
 
 
-**Automatic builds:** raise `version` in `package.json` and push to `main`: the workflow (`.github/workflows/desktop.yml`) sees that GitHub has no release for that version yet and builds everything on its own: macOS, Windows (x64, ARM64 and 32-bit) and Linux (x64 and ARM64) installers, the web build and the bundled phone app. They are collected in a **draft** GitHub Release named after the version (for example `v1.0.4`) with checksums, `latest.json` and the changelog; open **Releases**, check it, and press **Publish**. Pushes that don't change the version build nothing. [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md#5-automatic-builds-on-github) has the details. 
-When the release is published, the workflow commits two files to the `release` branch (`scripts/release-manifest.js`):
+**Automatic builds:** releases are built and published in [Andromon_Releases](https://github.com/Deshan555/Andromon_Releases). Raise `version` in `package.json` and push to the `release` branch (`git push origin main:release`, and the same in the android repository): within the hour, the workflow there sees the new version, builds the macOS, Windows (x64, ARM64 and 32-bit) and Linux (x64 and ARM64) installers, the phone app and the web version, publishes the release, and updates its README, `latest.json` and `CHANGELOG.md`. Pushes that don't change the version build nothing. [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md#5-automatic-builds-on-github) has the details; **Actions › Test build** here builds the installers from any branch without releasing them.
 
-- **`latest.json`**: the newest build. Version, build number, date, commit, the commit subjects since the previous build, and every installer with its platform, CPU type, size, SHA-256 and download address. The addresses work once that version's release is published. Always available at `https://raw.githubusercontent.com/Deshan555/Andromon_PC/release/latest.json`.
-- **`CHANGELOG.md`**: one section per build, newest first, listing the commits since the build before it. The same list is the description of the GitHub Release.
+- **`latest.json`**: the newest release. Version, build number, date, commit, the changes since the previous release, and every file with its platform, CPU type, size, SHA-256 and download address. Always at `https://raw.githubusercontent.com/Deshan555/Andromon_Releases/HEAD/latest.json`.
+- **`CHANGELOG.md`**: one section per release, newest first: the desktop and phone app changes and the downloads. The same list is the release's description.
 
-**Update check** (`updater.js`, Settings › About): the app reads `latest.json` from the `release` branch, once a day at start-up (can be switched off) or on **Check now**. A build is newer when its version is higher, or when the version is the same and its build number is higher; the build number of an installed copy is stamped into `build-info.json` by the workflow (copies run from source have build 0 and are only offered a higher version). When there is one, a pill appears in the header and Settings lists what's new; **Download update** saves the installer for this computer (right platform and CPU type) to the Downloads folder through the download manager, checks its SHA-256 against `latest.json`, and **Open installer** starts it. Nothing is installed silently. The download works only once that version's release is published.
-
-The `release` branch only holds these two files for the update check; the workflow keeps it up to date, so you never push to it yourself.
+**Update check** (`updater.js`, Settings › About): the app reads `latest.json` from Andromon_Releases, once a day at start-up (can be switched off) or on **Check now**. A build is newer when its version is higher, or when the version is the same and its build number is higher; the build number of an installed copy is stamped into `build-info.json` by the workflow (copies run from source have build 0 and are only offered a higher version). When there is one, a pill appears in the header and Settings lists what's new; **Download update** saves the installer for this computer (right platform and CPU type) to the Downloads folder through the download manager, checks its SHA-256 against `latest.json`, and **Open installer** starts it. Nothing is installed silently. The download works only once that version's release is published.
 
 **Making a release:**
 
 ```sh
-# 1. raise "version" in package.json (and the bundled phone app, if it changed: npm run build:companion)
-# 2. commit and push
-git commit -am "Release 1.0.5" && git push
-# 3. wait for the "Build desktop app" run, then open Releases, check the draft and press Publish
+# 1. raise "version" in package.json (and in ../android/app/build.gradle.kts for the phone app)
+# 2. commit, then put the code on the release branches
+git commit -am "Release 1.0.5" && git push && git push origin main:release
+git -C ../android push origin main:release
+# 3. within the hour it is published on https://github.com/Deshan555/Andromon_Releases/releases
 ```
-
-The workflow can also be started by hand from **Actions → Build desktop app → Run workflow**; that run only attaches the installers.
 
 **Optional tools:** Andromon needs nothing else to connect a phone. Java 17+ is needed only for ReVanced patching, and the Android platform tools (adb) only for people who use adb in a terminal. **Settings › This computer** shows what is installed, with its version and path (`requirements.js`), and offers Install (Windows, through winget) or the download page. The Windows setup wizard has an **Optional tools** page (`build/installer.nsh`): nothing is ticked by default, and a ticked tool is installed with winget before Andromon's files are copied. The `.deb` lists `default-jre` and `android-sdk-platform-tools-common` as recommended packages, so apt installs them alongside by default. The macOS disk image has no install step, so on a Mac use Settings.
 
