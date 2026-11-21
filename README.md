@@ -8,10 +8,16 @@ This is the "Phase 1 – ADB-only" design.
 
 ## Download
 
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDeshan555%2FAndromon_Releases%2Fmaster%2Fstats%2Fbadge.json)](https://github.com/Deshan555/Andromon_Releases/blob/master/stats/DOWNLOADS.md)
+[![Latest release](https://img.shields.io/github/v/release/Deshan555/Andromon_Releases?label=latest)](https://github.com/Deshan555/Andromon_Releases/releases/latest)
+[![Latest release downloads](https://img.shields.io/github/downloads/Deshan555/Andromon_Releases/latest/total?label=latest%20release)](https://github.com/Deshan555/Andromon_Releases/releases/latest)
+
 - **Andromon for macOS, Windows and Linux:** [Andromon_Releases](https://github.com/Deshan555/Andromon_Releases/releases). Each release lists its installers (`.dmg`, `.exe`, `.AppImage` / `.deb`) under **Assets**; pick the one for your computer.
 - **Andromon Companion for Android (APK) and the web version:** in the same [releases](https://github.com/Deshan555/Andromon_Releases/releases). You normally don't need it: Andromon installs its bundled copy on the phone by itself.
 
 Releases are built and published automatically from the `automation` branch (see [Build installers](#build-installers)).
+
+**Download stats:** `.github/workflows/download-stats.yml` runs every day (and from **Run workflow**) and saves GitHub's real download counts in Andromon_Releases' [`stats/`](https://github.com/Deshan555/Andromon_Releases/tree/master/stats): `DOWNLOADS.md` (per release and platform), `history.csv` (one line per day), `downloads.json` and the `badge.json` behind the badge above. Only installers, the phone app and the web build are counted, not `latest.json`, `CHANGELOG.md` or `SHA256SUMS.txt`. By hand: `node scripts/download-stats.js [folder]`.
 
 ## Features
 
