@@ -11,6 +11,8 @@
 #   4. SHA256SUMS.txt (signed with RELEASE_SIGNING_KEY when set), latest.json and CHANGELOG.md, then
 #      publishes the release "v<version>" in Andromon_Releases and updates its README.md, latest.json
 #      and CHANGELOG.md. Installed apps read latest.json from there, so they see the update at once.
+#      It also copies the bug report form (build/releases-repo/ISSUE_TEMPLATE) there and turns on
+#      Discussions, which Report a bug and Send feedback in the apps and on the website open.
 #   5. the web version is deployed to Netlify as the live site (when NETLIFY_AUTH_TOKEN and
 #      NETLIFY_SITE_ID are set), so the hosted app always matches the newest release
 # A push that doesn't raise the version builds nothing. "Run workflow" in the Actions tab does the same
@@ -20,6 +22,8 @@
 # Secrets (Settings › Secrets and variables › Actions):
 #   RELEASES_TOKEN (required)   a token that can write to Deshan555/Andromon_Releases: a fine-grained
 #                               personal access token for that repository with "Contents: Read and write"
+#                               (and "Administration: Read and write" to turn on its Discussions, where
+#                               Send feedback posts; without it the release still goes out, with a warning)
 #   RELEASE_SIGNING_KEY         signs SHA256SUMS.txt (the private half of build/release-signing-key.pub.pem)
 #   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
 #                               the phone app's signing key, as in Andromon-android
@@ -307,6 +311,14 @@ jobs:
               --title "Andromon $TAG" --notes-file "$RUNNER_TEMP/notes.md" --latest
           fi
           echo "Published [$TAG](https://github.com/$RELEASES_REPO/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+      # Report a bug / Send feedback in both apps and on the website open these (src/feedback.js,
+      # Feedback.kt): the bug form whose field ids they fill in, and Discussions for feedback.
+      - name: Turn on Discussions in Andromon_Releases
+        run: |
+          if [ "$(gh api "repos/$RELEASES_REPO" --jq .has_discussions)" = "true" ]; then echo "Discussions are on"; exit 0; fi
+          gh api -X PATCH "repos/$RELEASES_REPO" -F has_discussions=true --silent \
+            && echo "Turned on Discussions in $RELEASES_REPO" \
+            || echo "::warning::Couldn't turn on Discussions in $RELEASES_REPO (RELEASES_TOKEN needs \"Administration: Read and write\"). Send feedback won't work until they're on: Settings › General › Features › Discussions."
       - name: Update README.md, latest.json and CHANGELOG.md in Andromon_Releases
         working-directory: site
         env:
@@ -315,10 +327,12 @@ jobs:
           cp ../files/SHA256SUMS.txt .
           if [ -f ../files/SHA256SUMS.txt.sig ]; then cp ../files/SHA256SUMS.txt.sig .; else rm -f SHA256SUMS.txt.sig; fi
           cp ../pc/build/release-signing-key.pub.pem .
+          # The bug report form and the issue chooser, kept in pc/build/releases-repo/ISSUE_TEMPLATE.
+          mkdir -p .github/ISSUE_TEMPLATE && cp ../pc/build/releases-repo/ISSUE_TEMPLATE/*.yml .github/ISSUE_TEMPLATE/
           if [ -f .github/scripts/readme.js ]; then node .github/scripts/readme.js; else echo "::warning::No .github/scripts/readme.js in $RELEASES_REPO: README.md not updated"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md latest.json CHANGELOG.md SHA256SUMS.txt release-signing-key.pub.pem
+          git add README.md latest.json CHANGELOG.md SHA256SUMS.txt release-signing-key.pub.pem .github/ISSUE_TEMPLATE
           git add -A SHA256SUMS.txt.sig 2>/dev/null || true # signed, or removed when unsigned
           git diff --cached --quiet || git commit -m "Release $TAG" -m "Built from $SOURCE"
           git pull --rebase --quiet

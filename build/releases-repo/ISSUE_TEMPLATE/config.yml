@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Send feedback or an idea
+    url: https://github.com/Deshan555/Andromon_Releases/discussions/new?category=general
+    about: What you like, what's missing, what's confusing. Feedback goes to Discussions so the issue list stays for bugs.
+  - name: Ask a question
+    url: https://github.com/Deshan555/Andromon_Releases/discussions
+    about: How do I…? Questions and help from other people who use Andromon.

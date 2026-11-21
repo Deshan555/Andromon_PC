@@ -1,0 +1,49 @@
+name: Report a bug
+description: Something in Andromon (PC app) or Andromon Companion (phone app) doesn't work as it should.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The quickest way is **Report a bug** inside the app
+        (PC app: **Feedback** in the sidebar; phone app: **Settings › About › Report a bug**): it fills in the versions for you.
+
+        Please don't paste personal data (phone numbers, messages, account names) into this public page.
+  - type: textarea
+    id: what
+    attributes:
+      label: What went wrong?
+      description: Describe the problem. Include any error message you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen?
+      description: The steps that lead to the problem, one per line.
+      placeholder: |
+        1. Connect the phone over USB
+        2. Open Files
+        3. …
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+  - type: textarea
+    id: env
+    attributes:
+      label: Versions and devices
+      description: Filled in by the app. Otherwise add the Andromon version, your computer's system and your phone's model and Android version.
+      placeholder: |
+        Andromon 1.0.5 (build 11)
+        Computer: macOS 26.4 (arm64)
+        Phone: Samsung SM-G981N, Android 13 (API 33)
+        Companion: 1.0.5 (37)
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, logs or anything else
+      description: Drag screenshots or log files into this box. Check them for personal data first.
