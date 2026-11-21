@@ -1,0 +1,52 @@
+# Records the real download counts of Andromon's releases once a day, from GitHub's own counters
+# (scripts/download-stats.js). It reads them only: it never downloads a release or changes a count.
+#
+# Writes stats/ in Deshan555/Andromon_Releases: DOWNLOADS.md (tables), downloads.json (the newest snapshot),
+# history.csv (one line per day) and badge.json (the shields.io badge in README.md). Without the
+# RELEASES_TOKEN secret it only shows the numbers in the run's summary.
+#
+# GitHub runs scheduled workflows only from the default branch, so this file must be on main.
+name: Download stats
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # every day at 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: download-stats
+  cancel-in-progress: false
+
+env:
+  RELEASE_REPOSITORY: Deshan555/Andromon_Releases
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+      HAS_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: pc }
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+        with: { repository: "${{ env.RELEASE_REPOSITORY }}", path: site, token: "${{ secrets.RELEASES_TOKEN }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Count the downloads
+        run: node pc/scripts/download-stats.js "${{ env.HAS_TOKEN == 'true' && 'site/stats' || 'stats' }}"
+      - name: Save them in Andromon_Releases
+        if: env.HAS_TOKEN == 'true'
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stats
+          git diff --cached --quiet && { echo "No change"; exit 0; }
+          git commit -m "Download stats $(date -u +%F)"
+          git pull --rebase --quiet
+          git push
