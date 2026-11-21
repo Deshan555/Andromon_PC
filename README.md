@@ -1,6 +1,6 @@
 # Andromon
 
-An Android phone manager for **Windows and macOS**, in the style of the old phone suites (Moborobo, Wandoujia, AirDroid). The app talks ADB to the phone over USB using WebUSB, which is built into Electron's Chromium, through the MIT-licensed [Tango](https://github.com/yume-chan/ya-webadb) library. Nothing needs to be installed on the phone, and no `adb.exe` or Android SDK is needed on the PC.
+An Android phone manager for **Windows, macOS and Linux**, in the style of the old phone suites (Moborobo, Wandoujia, AirDroid). The app talks ADB to the phone over USB using WebUSB, which is built into Electron's Chromium, through the MIT-licensed [Tango](https://github.com/yume-chan/ya-webadb) library. Nothing needs to be installed on the phone, and no `adb.exe` or Android SDK is needed on the PC.
 
 This is the "Phase 1 – ADB-only" design.
 
