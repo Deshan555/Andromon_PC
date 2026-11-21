@@ -42,6 +42,8 @@ import { initMemory } from "./memory.js";
 import { initFolderSync } from "./foldersync.js";
 import { initClipSync } from "./clipsync.js";
 import { initRepair } from "./repair.js";
+import { initFeedback } from "./feedback.js";
+import pkg from "../package.json";
 import { loadShortcuts, comboOf, usableCombo, comboLabel } from "./shortcuts.js";
 import { toCsv, toVcard, parseVcf, buildSmsXml, parseSmsXml, buildCallsCsv, parseCallsFile, threadPeople, mmsPeople, attachmentName, base64ToBytes, makeContactMatcher } from "./pdata.js";
 
@@ -5092,8 +5094,30 @@ downloads = initDownloads({ $, el, fmtSize, fmtDate, show });
 globalThis.andromon?.app?.onEvent((ev) => { if (ev.kind === "saved") toast(ev.ok ? `Saved ${ev.name}` : `Couldn't save ${ev.name}`); });
 document.querySelector(".app").classList.toggle("privacy", privacyOn()); // technician mode, as left last time
 const privacyBlur = initPrivacyBlur({ toast }); // Settings › Accessibility › Blur personal data
+// ---------- Feedback: report a bug or send feedback on GitHub (see ./feedback.js) ----------
+// The versions a bug report needs; no names, serials or anything else from the phone.
+async function feedbackDetails() {
+  const api = globalThis.andromon;
+  const [upd, info, pc] = await Promise.all([api?.updates?.status(), api?.app?.info(), api?.app?.computer?.()].map((p) => Promise.resolve(p).catch(() => null)));
+  const build = upd?.current?.build;
+  const browser = navigator.userAgent.match(/(Edg|Chrome)\/(\d+)/);
+  const computer = pc
+    ? `${pc.os} ${pc.osVersion || ""}`.trim() + (pc.arch ? ` (${pc.arch})` : "") + (info?.versions?.electron ? ` · Electron ${info.versions.electron}` : "")
+    : `${/Mac/.test(navigator.platform) ? "macOS" : /Win/.test(navigator.platform) ? "Windows" : "Linux"}, web version in ${browser ? `${browser[1] === "Edg" ? "Edge" : "Chrome"} ${browser[2]}` : "a browser"}`;
+  let phone = "not connected", companion = "";
+  if (adb) {
+    const [maker, model, release, sdk] = await Promise.all(["ro.product.manufacturer", "ro.product.model", "ro.build.version.release", "ro.build.version.sdk"]
+      .map((p) => sh(`getprop ${p}`).then((v) => v.trim()).catch(() => "")));
+    phone = `${maker} ${model}`.trim() + `, Android ${release || "?"} (API ${sdk || "?"})`;
+    companion = companionInfo ? `${companionInfo.versionName || "?"} (${companionInfo.version})` : "not running";
+  }
+  return [["Andromon", `${pkg.version}${build ? ` (build ${build})` : ""}`], ["Computer", computer], ["Phone", phone], ["Companion", companion]];
+}
+const feedback = initFeedback({ el, toast, details: feedbackDetails });
+$("feedbackBtn").addEventListener("click", () => feedback.open());
+
 settingsUi = initSettings({
-  privacyBlur,
+  privacyBlur, feedback,
   $, el, makeSwitch, fmtSize, fmtDate, busy, showError, toast, armedClick, companionVersion: COMPANION_VERSION, scrcpyVersion: SCRCPY_VERSION,
   mirror: mirrorPrefs, shot: shotPrefs, shell: shellPrefs,
   downloads,

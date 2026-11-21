@@ -124,6 +124,9 @@ function setupAppSettings(handle, { userData, readSettings, writeSettings, origi
     name: require("node:os").hostname().replace(/\.local$/i, "").slice(0, 80),
     os: { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] || process.platform,
     app: require("electron").app.getVersion(),
+    // For Report a bug (src/feedback.js): "26.4" on macOS, the build ("10.0.26100") on Windows, the kernel on Linux.
+    osVersion: process.platform === "linux" ? require("node:os").release() : process.getSystemVersion(),
+    arch: process.arch,
   }));
   handle("app:openData", () => open(userData));
   handle("app:saveOpen", () => open(save().dir));

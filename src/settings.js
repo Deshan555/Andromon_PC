@@ -433,6 +433,10 @@ export function initSettings(ctx) {
     parts.push(section("About",
       row("Andromon", `Version ${pkg.version}${data.upd?.current.build ? ` (build ${data.upd.current.build})` : ""} · bundles companion app version ${ctx.companionVersion}` + (data.info ? ` · Electron ${data.info.versions.electron}` : ""), ""),
       ...(api.updates ? updateRows() : []),
+      row("Help improve Andromon", "Report a problem or tell us what you think. Opens GitHub in your browser; nothing is sent until you press Submit there",
+        el("div", { className: "set-links" }, ...[["Report a bug", "bug"], ["Send feedback", "feedback"]].map(([label, kind]) => {
+          const b = el("button", { className: "btn sm", type: "button", textContent: label }); b.onclick = () => ctx.feedback?.open(kind); return b;
+        }))),
       row("Source code", "", el("div", { className: "set-links" }, a("PC app", "https://github.com/Deshan555/Andromon_PC"), a("Android companion", "https://github.com/Deshan555/Andromon-android"))),
       row("Credits", "ADB by Tango (ya-webadb) · screen mirroring by scrcpy · Wi‑Fi transfer speaks the LocalSend protocol · icons by Lucide · Poppins type", "")));
     $("settingsRoot").replaceChildren(...parts);
